@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>/* es_mdt 2.0.0: this page runs in a frame of html/index.html */ if (typeof window.GetParentResourceName !== 'function') { window.GetParentResourceName = function () { try { return window.parent.GetParentResourceName(); } catch (e) { return 'es_mdt'; } }; }</script>
+
+<meta charset="utf-8">
+<title>MDT</title>
+<link rel="stylesheet" href="https://cfx-nui-whip_core/html/css/fonts.css">
+<link rel="stylesheet" href="https://cfx-nui-whip_core/html/css/base.css">
+<script src="https://cfx-nui-whip_core/html/js/caps.js"></script>
+<script src="https://cfx-nui-whip_core/html/js/page-tools.js"></script>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="ops.css">
+<link rel="stylesheet" href="radar.css">
+<link rel="stylesheet" href="lightbox.css">
+<link rel="stylesheet" href="training.css">
+<link rel="stylesheet" href="officer.css">
+<link rel="stylesheet" href="permits.css">
+<link rel="stylesheet" href="whipev.css">
+</head>
+<body>
+<div id="radar" class="hidden"></div>
+<div id="app" class="hidden">
+  <div class="shell">
+    <aside class="rail">
+      <div class="brand" id="brand">
+        <div class="brand-logo" id="brand-logo"></div>
+        <div class="brand-text"><div class="brand-short" id="brand-short">MDT</div><div class="brand-name" id="brand-name"></div></div>
+      </div>
+      <select id="dept-pick" class="dept-pick hidden" title="Switch department"></select>
+      <nav id="nav" class="nav"></nav>
+      <div class="me" id="me"></div>
+    </aside>
+    <main class="main">
+      <header class="top">
+        <div class="search" id="gsearch-wrap">
+          <span class="s-ico">⌕</span>
+          <input id="gsearch" type="text" placeholder="Search people, phone, plate or serial…  (Ctrl+K)" autocomplete="off" spellcheck="false">
+          <div id="gsearch-pop" class="pop hidden"></div>
+        </div>
+        <div class="top-right">
+          <span id="duty" class="duty"></span>
+          <button class="icon-btn" data-act="close" data-probe-press title="Close (Esc)">✕</button>
+        </div>
+      </header>
+      <div id="ro-banner" class="ro-banner hidden">You are off duty: the MDT is read-only. Clock on to write reports, fines and warrants.</div>
+      <section id="view" class="view"></section>
+    </main>
+  </div>
+  <div id="modal" class="modal hidden"><div class="modal-card" id="modal-card"></div></div>
+  <div id="toast" class="toast"></div>
+</div>
+<div id="radar-remote" class="hidden"></div>
+<script src="app.js"></script>
+<script src="ops.js"></script>
+<script src="radar.js"></script>
+<script src="evidence.js"></script>
+<script src="lightbox.js"></script>
+<script src="cases.js"></script>
+  <script src="repev.js"></script>
+  <script src="jail.js"></script>
+  <script src="training.js"></script>
+  <script src="officer.js"></script>
+  <script src="permits.js"></script>
+  <script src="permitapp.js"></script>
+  <script src="whipev.js"></script>
+</body>
+</html>

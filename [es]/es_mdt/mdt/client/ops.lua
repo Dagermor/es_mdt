@@ -1,0 +1,427 @@
+local _ENV = ESAPP('mdt'); -- es_mdt 1.3.0 client: /911 and /311, the panic button, call / panic / announcement alerts, the mugshot camera,
+-- and the OpenVehicle export. Loaded after client/main.lua (MDTC comes from there).
+local DSP = Config.Dispatch or {}
+local PAN = Config.Panic or {}
+local myPanicAt = 0   -- my own panic: no card for it on my screen
+
+local function wc() return exports.whip_core end
+local function notify(text, kind, ms) wc():Notify(text, kind or 'inform', ms) end
+
+--- "Strawberry Ave / Davis Ave, Davis"
+local function streetHere()
+    local p = GetEntityCoords(PlayerPedId())
+    local s1, s2 = GetStreetNameAtCoord(p.x, p.y, p.z)
+    local a = s1 and s1 ~= 0 and GetStreetNameFromHashKey(s1) or ''
+    local b = s2 and s2 ~= 0 and GetStreetNameFromHashKey(s2) or ''
+    local zone = GetLabelText(GetNameOfZone(p.x, p.y, p.z))
+    local out = a
+    if b ~= '' then out = out .. ' / ' .. b end
+    if zone and zone ~= '' and zone ~= 'NULL' then out = (out ~= '' and (out .. ', ') or '') .. zone end
+    return out:sub(1, 120)
+end
+
+-- ---------------------------------------------------------------- 911 / 311 (anyone)
+
+local function dial(kind, args)
+    local msg = table.concat(args or {}, ' ')
+    if #msg < 3 then return notify(('Type what is happening: /%s <message>'):format(kind == '311' and DSP.nonEmergency or DSP.emergency), 'error') end
+    CreateThread(function()
+        local r, why = wc():Callback('es_mdt:dial', { kind = kind, message = msg, street = streetHere() })
+        if type(r) ~= 'table' then return notify(why or 'Dispatch did not answer', 'error') end
+        notify(r.units > 0 and ('Dispatch has your call (#%d). Units are being told.'):format(r.id)
+            or ('Dispatch has your call (#%d). No units are on duty right now.'):format(r.id), 'success', 7000)
+    end)
+end
+RegisterCommand(DSP.emergency or '911', function(_, args) dial('911', args) end, false)
+RegisterCommand(DSP.nonEmergency or '311', function(_, args) dial('311', args) end, false)
+
+-- ---------------------------------------------------------------- panic
+
+local function pressPanic()
+    myPanicAt = GetGameTimer()
+    CreateThread(function()
+        local r, why = wc():Callback('es_mdt:panic', { street = streetHere() })
+        if type(r) ~= 'table' then return notify(why or 'Panic did not go through', 'error') end
+        notify('PANIC sent. Every unit on duty has your location.', 'error', 6000)
+    end)
+end
+RegisterCommand(PAN.command or 'panic', pressPanic, false)
+RegisterKeyMapping(PAN.command or 'panic', 'Police: panic button', 'keyboard', PAN.key or '')
+RegisterNUICallback('panicBtn', function(_, cb) pressPanic() cb({ ok = true }) end)
+
+-- ---------------------------------------------------------------- alerts
+
+local lastPanic
+local function sound(name, set, times, gap)
+    CreateThread(function()
+        for _ = 1, times or 1 do PlaySoundFrontend(-1, name, set, true) Wait(gap or 250) end
+    end)
+end
+
+-- ---------------------------------------------------------------- 1.3.2: call popup
+-- A compact card (top right) for every new call while the MDT is closed: attend with one key (attaches your unit,
+-- sets GPS), hide it, bring it back with /calls, leave with /detach. Closing a call clears its GPS.
+local POP = DSP.popup or {}
+local POP_ON = POP.enabled ~= false
+local Recent = {}   -- newest first: { id, kind, priority, title, message, street, x, y, z, callerName, at, units, closed, outcome }
+local Queue = {}    -- ids still to show, newest first
+local shown, hideAt, holdUntil, seq = nil, 0, 0, 0
+local flash = nil   -- { id, state = 'attached' | 'closed' | 'error', text }
+local myCall = nil  -- the call my GPS points at
+
+local CMD = { attend = 'mdtcall_respond',   -- 1.3.3: new id so the new default (E) reaches players who had Y saved
+     dismiss = 'mdtcall_dismiss', recall = POP.recallCommand or 'calls', detach = POP.detachCommand or 'detach' }
+
+local function find(id) for i, c in ipairs(Recent) do if c.id == id then return c, i end end end
+local function unqueue(id) for i = #Queue, 1, -1 do if Queue[i] == id then table.remove(Queue, i) end end end
+
+--- what key a player bound to a command (falls back to the default)
+local function keyOf(cmd, def)
+    local ok, s = pcall(GetControlInstructionalButton, 0, GetHashKey(cmd) | 0x80000000, true)
+    if ok and type(s) == 'string' and s:sub(1, 2) == 't_' then return s:sub(3) end
+    if def and def ~= '' then return def end
+    return '/' .. cmd
+end
+
+local function secsFor(c) return ((c.kind == 'panic' and (POP.panicSeconds or 30)) or (POP.seconds or 15)) * 1000 end
+
+-- 1.3.4: distance and age are sent rounded, and only when what the card shows would change
+local function distOf(c)
+    if not c.x then return nil end
+    local me = GetEntityCoords(PlayerPedId())
+    local d = #(vector2(me.x, me.y) - vector2(c.x + 0.0, c.y + 0.0))
+    if d < 1000 then return math.floor(d / 10 + 0.5) * 10 end
+    return math.floor(d / 100 + 0.5) * 100
+end
+local function ageOf(c) return math.floor((GetGameTimer() - c.at) / 1000) end
+local function ageBucket(a) if a < 30 then return 0 elseif a < 90 then return 1 end return math.floor(a / 60 + 0.5) end
+local liveSent = { seq = -1, dist = false, age = false }
+
+--- the whole card: only when a new call shows (restart) or what it says changes (attached, closed, units, queue)
+local function render(restart)
+    local c = shown and find(shown)
+    if not c then SendNUIMessage({ action = 'cpop', show = false }) return end
+    local dist = distOf(c)
+    liveSent = { seq = seq, dist = dist, age = ageBucket(ageOf(c)) }
+    local f = flash and flash.id == c.id and flash or nil
+    SendNUIMessage({ action = 'cpop', show = true, restart = restart, seq = seq,
+        call = { id = c.id, kind = c.kind, priority = c.priority, title = c.title, message = c.message, street = c.street,
+            callerName = c.callerName, units = c.units, closed = c.closed, outcome = c.outcome, mine = myCall == c.id },
+        dist = dist, age = ageOf(c), left = math.max(0, hideAt - GetGameTimer()),
+        more = math.max(0, #Queue - 1), state = f and f.state or nil, note = f and f.text or nil,
+        keys = { attend = keyOf(CMD.attend, POP.attendKey), dismiss = keyOf(CMD.dismiss, POP.dismissKey), recall = '/' .. CMD.recall, detach = '/' .. CMD.detach } })
+end
+
+local function hide()
+    shown, flash = nil, nil
+    SendNUIMessage({ action = 'cpop', show = false })
+end
+
+--- show one call (the newest queued one when id is nil)
+local function show(id, ms)
+    if not POP_ON or MDTC.isOpen() then return end
+    id = id or Queue[1]
+    local c = id and find(id)
+    if not c then return hide() end
+    shown, flash = id, nil
+    seq = seq + 1
+    hideAt = GetGameTimer() + (ms or secsFor(c))
+    render(true)
+end
+
+local function next_()
+    if shown then unqueue(shown) end
+    if Queue[1] then show(Queue[1]) else hide() end
+end
+
+local function setFlash(id, state, text, ms)
+    flash = { id = id, state = state, text = text }
+    holdUntil = GetGameTimer() + (ms or 2500)
+    if state == 'error' then hideAt = math.max(hideAt, holdUntil) else hideAt = holdUntil end
+    render(false)
+end
+
+local function routeTo(c)
+    if c and c.x and c.y then SetNewWaypoint(c.x + 0.0, c.y + 0.0) return true end
+    return false
+end
+-- 1.3.5: where my call is, for the arrival check: { id, x, y, r (radius, nil = off), arrived }
+local Target = nil
+local function onCall(id, x, y, r)
+    myCall = id
+    Target = { id = id, x = tonumber(x), y = tonumber(y), r = tonumber(r), arrived = false }
+end
+--- the waypoint is cleared only when it still points at the call (a waypoint the player set elsewhere stays)
+local function dropCallWaypoint(t)
+    if not IsWaypointActive() then return end
+    if t and t.x then
+        local w = GetBlipInfoIdCoord(GetFirstBlipInfoId(8))
+        if #(vector2(w.x, w.y) - vector2(t.x, t.y)) > 60.0 then return end
+    end
+    SetWaypointOff()
+end
+local function clearRoute(id)
+    if myCall and (id == nil or myCall == id) then
+        myCall = nil
+        local t = Target
+        Target = nil
+        if not (t and t.arrived) then dropCallWaypoint(t) end
+        return true
+    end
+    return false
+end
+
+-- 1.3.5: arrival: once a second, my distance to my call; inside the radius the server checks it and sets On scene
+local arriveWaitUntil = 0
+CreateThread(function()
+    while true do
+        Wait(1000)
+        local t = Target
+        if t and t.r and t.x and not t.arrived and GetGameTimer() >= arriveWaitUntil then
+            local p = GetEntityCoords(PlayerPedId())
+            if #(vector2(p.x, p.y) - vector2(t.x, t.y)) <= t.r then
+                t.arrived = true
+                local r, why = wc():Callback('es_mdt:callArrive', { id = t.id })
+                if type(r) ~= 'table' then
+                    if Target == t then t.arrived = false end
+                    arriveWaitUntil = GetGameTimer() + 5000   -- the server said not yet: ask again in a bit
+                    if why == 'That call is closed' and Target == t then clearRoute(t.id) end
+                elseif not r.already then
+                    dropCallWaypoint(t)
+                    PlaySoundFrontend(-1, 'Menu_Accept', 'Phone_SoundSet_Default', true)
+                    notify(('On scene · call #%d · GPS cleared'):format(t.id), 'success', 5000)
+                end
+            end
+        end
+    end
+end)
+
+--- distance / time-ago text only (the page changes those two in place), at most once a second, only on a change
+local lastLive = 0
+local function live()
+    local now = GetGameTimer()
+    if now - lastLive < 1000 then return end
+    lastLive = now
+    local c = shown and find(shown)
+    if not c then return end
+    local d, a = distOf(c), ageBucket(ageOf(c))
+    if liveSent.seq == seq and liveSent.dist == d and liveSent.age == a then return end
+    liveSent = { seq = seq, dist = d, age = a }
+    SendNUIMessage({ action = 'cpopLive', seq = seq, dist = d, age = ageOf(c) })
+end
+
+-- the card loop: the card hides on time or when the MDT opens; the text ticks through live()
+CreateThread(function()
+    while true do
+        if shown then
+            Wait(250)
+            if not shown then goto continue end
+            if MDTC.isOpen() then hide()
+            elseif GetGameTimer() >= hideAt then
+                if flash and flash.state then next_() else unqueue(shown) Queue = {} hide() end   -- timed out: the rest wait for /calls
+            else live() end
+        else
+            Wait(750)
+        end
+        ::continue::
+    end
+end)
+
+local function push(c)
+    c.at = GetGameTimer()
+    c.units = c.units or {}
+    table.insert(Recent, 1, c)
+    while #Recent > (POP.keep or 6) do table.remove(Recent) end
+    table.insert(Queue, 1, c.id)
+    while #Queue > (POP.keep or 6) do table.remove(Queue) end
+    show(c.id)
+end
+
+local attending = false
+local function attend()
+    -- only while a card is up and the game has the keyboard; nothing is blocked, so other E prompts still work.
+    -- The server checks duty (an off-duty officer gets "Go on duty" on the card).
+    if not shown or attending or MDTC.isOpen() or IsNuiFocused() or IsPauseMenuActive() then return end
+    local c = find(shown)
+    if not c then return end
+    if c.closed then return setFlash(c.id, 'error', 'This call is closed') end
+    if myCall == c.id then routeTo(c) return setFlash(c.id, 'attached', 'GPS set again') end
+    attending = true
+    CreateThread(function()
+        local r, why = wc():Callback('es_mdt:callAttach', { id = c.id, route = false, from = 'popup' })
+        attending = false
+        if type(r) ~= 'table' then return setFlash(c.id, 'error', why or 'Could not attach') end
+        if r.x then c.x, c.y, c.z = r.x, r.y, r.z end
+        onCall(c.id, c.x, c.y, r.arrive)
+        local routed = routeTo(c)
+        if POP.sound ~= false then PlaySoundFrontend(-1, 'Menu_Accept', 'Phone_SoundSet_Default', true) end
+        setFlash(c.id, 'attached', (r.units or 1) > 1 and (routed and 'Attached with your partner · GPS set' or 'Attached with your partner')
+            or (routed and 'Attached · GPS set' or 'Attached (no location on this call)'), 2500)
+    end)
+end
+
+local function detach()
+    if not myCall then return notify('You are not on a call', 'error') end
+    local id = myCall
+    CreateThread(function()
+        local r, why = wc():Callback('es_mdt:callDetach', { id = id })
+        if not r then return notify(why or 'Could not detach', 'error') end
+        clearRoute(id)
+        notify(('Detached from call #%d · GPS cleared'):format(id), 'inform')
+        if shown == id then setFlash(id, 'closed', 'Detached', 1800) end
+    end)
+end
+
+RegisterCommand(CMD.attend, attend, false)
+RegisterKeyMapping(CMD.attend, 'Police: respond to the call on screen (attach + GPS)', 'keyboard', POP.attendKey or 'E')
+RegisterCommand(CMD.dismiss, function() if shown then next_() end end, false)
+RegisterKeyMapping(CMD.dismiss, 'Police: hide the call card', 'keyboard', POP.dismissKey or 'DELETE')
+RegisterCommand(CMD.recall, function()
+    if MDTC.isOpen() then return end
+    -- open calls first, the newest on top
+    Queue = {}
+    for _, c in ipairs(Recent) do if not c.closed then Queue[#Queue + 1] = c.id end end
+    if not Queue[1] then return notify('No recent open calls', 'inform') end
+    show(Queue[1])
+end, false)
+RegisterKeyMapping(CMD.recall, 'Police: show the latest calls again', 'keyboard', POP.recallKey or '')
+RegisterCommand(CMD.detach, detach, false)
+RegisterKeyMapping(CMD.detach, 'Police: leave the call you are on', 'keyboard', POP.detachKey or '')
+
+-- the MDT's own attach / detach (Dispatch tab) keeps the GPS state the same
+MDTC.onCallAttach = function(id, r)
+    id = tonumber(id)
+    if not id then return end
+    local c = find(id)
+    if c and type(r) == 'table' and r.x then c.x, c.y, c.z = r.x, r.y, r.z end
+    r = type(r) == 'table' and r or {}
+    onCall(id, r.x or (c and c.x), r.y or (c and c.y), r.arrive)
+end
+MDTC.onCallDetach = function(id) clearRoute(tonumber(id)) end
+
+RegisterNetEvent('es_mdt:client:call', function(c)
+    if type(c) ~= 'table' then return end
+    local mine = c.kind == 'panic' and GetGameTimer() - myPanicAt < 8000
+    if c.kind ~= 'panic' and POP.sound ~= false then
+        sound('Event_Message_Purple', 'GTAO_FM_Events_Soundset', c.priority == 1 and 2 or 1, 400)
+    end
+    if not MDTC.isOpen() then
+        if POP_ON then
+            if not mine then push(c) end
+        elseif c.kind ~= 'panic' then
+            notify(('%s #%d · %s%s'):format(c.kind == '311' and '311' or c.kind == '911' and '911' or 'Call', c.id,
+                c.message ~= '' and c.message or c.title, c.street ~= '' and (' · ' .. c.street) or ''), c.priority == 1 and 'error' or 'inform', 9000)
+        end
+    elseif POP_ON and not mine then
+        -- keep it for /calls after the MDT closes, but do not pop it now
+        c.at = GetGameTimer() c.units = {}
+        table.insert(Recent, 1, c)
+        while #Recent > (POP.keep or 6) do table.remove(Recent) end
+    end
+    SendNUIMessage({ action = 'call', call = c })
+end)
+
+RegisterNetEvent('es_mdt:client:callUnits', function(d)
+    if type(d) ~= 'table' then return end
+    local c = find(tonumber(d.id))
+    if not c then return end
+    c.units = type(d.units) == 'table' and d.units or {}
+    if shown == c.id then render(false) end
+end)
+
+RegisterNetEvent('es_mdt:client:callClosed', function(d)
+    if type(d) ~= 'table' then return end
+    local id = tonumber(d.id)
+    local c = find(id)
+    if c then c.closed, c.outcome = true, d.outcome end
+    if clearRoute(id) then notify(('Call #%d closed%s · GPS cleared'):format(id, d.outcome and (' (' .. d.outcome .. ')') or ''), 'inform') end
+    if shown == id then setFlash(id, 'closed', 'Closed' .. (d.outcome and (' · ' .. d.outcome) or ''), 2200)
+    else unqueue(id) end
+end)
+
+-- my partner attached / detached our unit
+RegisterNetEvent('es_mdt:client:attached', function(d)
+    if type(d) ~= 'table' or not d.id then return end
+    onCall(tonumber(d.id), d.x, d.y, d.arrive)
+    if d.x and d.y then SetNewWaypoint(d.x + 0.0, d.y + 0.0) end
+    notify(('%s attached your unit to call #%d%s'):format(d.by or 'Your partner', myCall, d.x and ' · GPS set' or ''), 'success', 6000)
+end)
+-- my partner got there first: our unit is On scene
+RegisterNetEvent('es_mdt:client:arrived', function(d)
+    if type(d) ~= 'table' or not d.id then return end
+    local t = Target
+    if t and t.id == tonumber(d.id) and not t.arrived then
+        t.arrived = true
+        dropCallWaypoint(t)
+        notify(('On scene · call #%d (%s arrived) · GPS cleared'):format(t.id, d.by or 'your partner'), 'success', 5000)
+    end
+end)
+RegisterNetEvent('es_mdt:client:detached', function(d)
+    if type(d) ~= 'table' or not d.id then return end
+    if clearRoute(tonumber(d.id)) then notify(('%s detached your unit from call #%d · GPS cleared'):format(d.by or 'Your partner', d.id), 'inform') end
+end)
+
+RegisterNetEvent('es_mdt:client:panic', function(p)
+    if type(p) ~= 'table' then return end
+    lastPanic = p
+    sound('Beep_Red', 'DLC_HEIST_HACKING_SNAKE_SOUNDS', 6, 220)
+    -- the call card shows it (attend = route + attach); without cards, the old notice
+    if not POP_ON or MDTC.isOpen() then
+        notify(('PANIC · %s %s (%s) · %s · /panicgps for a route'):format(p.callsign or '', p.name or '', p.deptShort or '', p.street or ''), 'error', 15000)
+    end
+    SendNUIMessage({ action = 'panic', panic = p })
+end)
+RegisterCommand('panicgps', function()
+    if not lastPanic or not lastPanic.x then return notify('No panic to route to', 'error') end
+    SetNewWaypoint(lastPanic.x + 0.0, lastPanic.y + 0.0)
+    notify('GPS set to the panic', 'success')
+end, false)
+
+RegisterNetEvent('es_mdt:client:announce', function(a)
+    if type(a) ~= 'table' then return end
+    sound('Text_Arrive_Tone', 'Phone_SoundSet_Default', 1)
+    if not MDTC.isOpen() then notify(('Announcement (%s) · %s, by %s'):format(a.deptShort or '', a.title or '', a.by or ''), 'inform', 9000) end
+    SendNUIMessage({ action = 'announce', announce = a })
+end)
+
+-- ---------------------------------------------------------------- mugshot camera
+-- A scripted camera in front of the suspect's face, then WHIP RequestScreenshot (game only, no MDT) on the server.
+local shooting = false
+RegisterNUICallback('mugshotCam', function(d, cb)
+    if shooting then return cb({ ok = false, why = 'Already taking one' }) end
+    local charId = tonumber(type(d) == 'table' and d.charId)
+    if not charId then return cb({ ok = false, why = 'Pick a person' }) end
+    shooting = true
+    CreateThread(function()
+        local prep, why = wc():Callback('es_mdt:mugshotPrep', { charId = charId })
+        if type(prep) ~= 'table' then shooting = false return cb({ ok = false, why = why or 'Not possible right now' }) end
+        local me = GetPlayerServerId(PlayerId())
+        local ped = prep.source == me and PlayerPedId() or GetPlayerPed(GetPlayerFromServerId(prep.source))
+        if not ped or ped == 0 or not DoesEntityExist(ped) then shooting = false return cb({ ok = false, why = 'They are too far away to see' }) end
+        local head = GetPedBoneCoords(ped, 31086, 0.0, 0.0, 0.0)
+        local f = GetEntityForwardVector(ped)
+        local cam = CreateCamWithParams('DEFAULT_SCRIPTED_CAMERA', head.x + f.x * 0.95, head.y + f.y * 0.95, head.z + 0.05, 0.0, 0.0, 0.0, 38.0, false, 0)
+        PointCamAtCoord(cam, head.x, head.y, head.z + 0.02)
+        SetCamActive(cam, true)
+        RenderScriptCams(true, false, 0, true, true)
+        Wait(450)
+        local res, err = wc():Callback('es_mdt:mugshotTake', { charId = charId, reportId = tonumber(d.reportId) })
+        RenderScriptCams(false, false, 0, true, true)
+        SetCamActive(cam, false)
+        DestroyCam(cam, false)
+        shooting = false
+        if type(res) ~= 'table' then return cb({ ok = false, why = err or 'The camera did not work' }) end
+        cb({ ok = true, data = res })
+    end)
+end)
+
+-- ---------------------------------------------------------------- other scripts
+
+--- exports.es_mdt:OpenVehicle('ABC123'): the MDT opens on that plate
+exports('OpenVehicle', function(plate)
+    if type(plate) ~= 'string' or plate == '' then return false end
+    MDTC.goTo('vehicles', plate)
+    return true
+end)
+
+MDTC.opsLoaded = true

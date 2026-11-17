@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jail</title>
+<link rel="stylesheet" href="https://cfx-nui-whip_core/html/css/fonts.css">
+<link rel="stylesheet" href="https://cfx-nui-whip_core/html/css/base.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!-- cuffed: a small pill with what you can do -->
+<div id="cuffs" class="pill-hint hidden">
+  <span class="ico">⛓</span><span id="cf-what">Cuffed</span>
+  <span class="sep"></span>
+  <span id="cf-break" class="dim"><span class="kc" id="cf-key">X</span> Struggle &nbsp;<span id="cf-left"></span></span>
+  <span id="cf-pick" class="dim hidden"><span class="kc">F1</span> Pick the lock</span>
+  <span id="cf-stuck" class="dim hidden">Locked on</span>
+</div>
+
+<!-- breaking out: shake the mouse, only while the cuffs go on (1.0.3) -->
+<div id="shake" class="shake hidden">
+  <div class="sh-head">
+    <div class="sh-title sh-go">Shake your mouse!</div>
+    <div class="sh-title sh-ready">Being cuffed! Press <span class="kc" id="sh-key">X</span> and shake</div>
+    <div class="sh-hint sh-ready">Slip the <span id="sh-what">cuffs</span> before they lock</div>
+    <div class="sh-sub"><span id="sh-try">Escape 1 of 3</span> · <span id="sh-time">0.0s</span></div>
+  </div>
+  <div class="sh-bar"><div class="sh-fill" id="sh-fill"></div><div class="sh-mark"></div></div>
+  <div class="sh-mouse" aria-hidden="true"><span>⟵</span><b>🖱</b><span>⟶</span></div>
+  <div class="sh-result hidden" id="sh-result"></div>
+</div>
+
+<!-- in jail: time left, the job -->
+<div id="jail" class="jail hidden">
+  <div class="jl-top"><span class="jl-ico">⛓</span><span class="jl-name">Bolingbroke</span><span class="jl-time" id="jl-time">0:00</span></div>
+  <div class="jl-bar"><div class="jl-fill" id="jl-fill"></div></div>
+  <div class="jl-sub" id="jl-sub">Work at the job board in the yard to cut your time</div>
+</div>
+<!-- 1.0.1: staff test mode / jail debug -->
+<div id="testtag" class="testtag hidden"><span class="tt-dot"></span>TEST MODE <span class="tt-sub">cuffs</span></div>
+<div id="dbg" class="dbg hidden"><b id="dbg-in">Inside the fence</b><span id="dbg-xyz" class="tt-sub"></span></div>
+<script src="app.js"></script>
+</body>
+</html>

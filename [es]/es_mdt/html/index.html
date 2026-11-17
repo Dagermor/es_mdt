@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>es_mdt</title>
+<!-- es_mdt 2.0.0: one NUI page for the MDT, Departments and the DOJ. Each part is its own frame (its own styles and
+     scripts, as when they were separate resources); shell.js hands each part its own messages and puts the part
+     that has the game's focus on top. -->
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  iframe.part { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: transparent;
+    pointer-events: none; z-index: 1; color-scheme: normal; }
+  iframe.part.focus { pointer-events: auto; z-index: 3; }
+</style>
+</head>
+<body>
+<iframe class="part" id="part-mdt" src="mdt/index.html" allowtransparency="true" title="MDT"></iframe>
+<iframe class="part" id="part-departments" src="departments/index.html" allowtransparency="true" title="Departments"></iframe>
+<iframe class="part" id="part-doj" src="doj/index.html" allowtransparency="true" title="DOJ"></iframe>
+<script src="shell.js"></script>
+</body>
+</html>

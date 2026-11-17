@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>/* es_mdt 2.0.0: this page runs in a frame of html/index.html */ if (typeof window.GetParentResourceName !== 'function') { window.GetParentResourceName = function () { try { return window.parent.GetParentResourceName(); } catch (e) { return 'es_mdt'; } }; }</script>
+
+<meta charset="utf-8">
+<title>Departments</title>
+<link rel="stylesheet" href="https://cfx-nui-whip_core/html/css/fonts.css">
+<link rel="stylesheet" href="https://cfx-nui-whip_core/html/css/base.css">
+<script src="https://cfx-nui-whip_core/html/js/caps.js"></script>
+<script src="https://cfx-nui-whip_core/html/js/page-tools.js"></script>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app" class="hidden">
+  <div class="shell">
+    <aside class="side">
+      <div class="side-head">
+        <div><div class="title">Departments</div><div class="hint">Esc to close</div></div>
+        <button class="icon-btn" data-act="close" data-probe-press title="Close (Esc)">✕</button>
+      </div>
+      <button id="btn-health" class="health-nav hidden" data-act="health" data-probe-press><span class="hn-ico">♥</span><span class="hn-text"><b>Health</b><small>Department heads &amp; activity</small></span><span id="hn-badge" class="hn-badge hidden"></span></button>
+      <div id="dept-list" class="dept-list"></div>
+      <button id="btn-new" class="btn accent hidden" data-act="new" data-probe-press>+ New department</button>
+    </aside>
+    <main class="main">
+      <div id="empty" class="empty"><div class="empty-ico">🛡</div><div class="empty-title">Pick a department</div><div class="hint">Choose one on the left to see its details, ranks and members.</div></div>
+      <div id="dept" class="hidden">
+        <header class="dept-head">
+          <div class="logo-wrap"><img id="d-logo" alt=""><span id="d-logo-none">No logo</span></div>
+          <div class="dept-titles">
+            <div class="dept-short" id="d-short"></div>
+            <div class="dept-name" id="d-name"></div>
+            <div class="dept-meta" id="d-meta"></div>
+          </div>
+        </header>
+        <nav class="tabs">
+          <button data-tab="overview" class="tab on" data-probe-press>Overview</button>
+          <button data-tab="ranks" class="tab" data-probe-press>Ranks</button>
+          <button data-tab="roster" class="tab" data-probe-press>Roster</button>
+        </nav>
+        <section id="tab-overview" class="tab-body"></section>
+        <section id="tab-ranks" class="tab-body hidden"></section>
+        <section id="tab-roster" class="tab-body hidden"></section>
+      </div>
+      <div id="create" class="hidden"></div>
+      <div id="health" class="hidden"></div>
+    </main>
+  </div>
+  <div id="toast" class="toast"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

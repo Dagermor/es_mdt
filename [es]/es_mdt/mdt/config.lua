@@ -189,6 +189,14 @@ Config.Dispatch = {
     },
 }
 
+-- Display size of the MDT, Departments and DOJ pages (2.0.2). Each player picks their own with the Aa button in a
+-- page's header or /mdtscale <percent>; it is saved on their PC. This is the size for players who never picked one.
+Config.UI = {
+    defaultScale = 1.0,     -- 1.0 = 100%
+    minScale     = 0.7,     -- the smallest a player may pick (0.5 at the least)
+    maxScale     = 1.5,     -- the largest (2.0 at the most)
+}
+
 -- Panic button: any on-duty officer. Key (players can rebind it in GTA Settings > Key Bindings > FiveM).
 Config.Panic = {
     command  = 'panic',     -- /panic (also the MDT's red button)

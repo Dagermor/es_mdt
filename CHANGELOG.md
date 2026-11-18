@@ -1,5 +1,15 @@
 # Changelog
 
+## es_mdt 2.0.2 (2026-11-17)
+
+**Display size.** Players can make the MDT, Departments and DOJ pages smaller or larger.
+
+- An **Aa** button in each page's header opens a display size popover: a slider from 70% to 150% in 5% steps that resizes the pages as you drag, quick sizes (Small, Default, Large, Larger), and Reset.
+- `/mdtscale <percent>` sets it from chat (`/mdtscale 120`, `/mdtscale reset`; `/mdtscale` alone shows the size).
+- Each player's size is saved on their PC (client KVP) and used every time a page opens.
+- `Config.UI` in `mdt/config.lua`: `defaultScale` (1.0), `minScale` (0.7) and `maxScale` (1.5).
+- Each page is scaled as a whole, so it stays centred and on screen. Clicks, menus, dialogs and the photo viewer line up at any size. The dispatch call cards and the radar display are drawn by the MDT page, so they follow the same size.
+
 ## es_mdt 2.0.1 (2026-11-17)
 
 **Dispatch API.** Any resource can put a call on the dispatch board. See [Dispatch API](README.md#dispatch-api).

@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.0.1'
+version '2.0.2'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -67,6 +67,7 @@ client_scripts {
     'mdt/client/radar.lua',
     'mdt/client/permits.lua',
     'doj/client/main.lua',
+    'client/ui.lua',               -- 2.0.2: each player's display size (KVP), /mdtscale
 }
 
 ui_page 'html/index.html'
@@ -75,6 +76,7 @@ nui_callback_strict_mode 'true'
 files {
     'html/index.html',
     'html/shell.js',
+    'html/scale.js',
     'html/mdt/app.css',
     'html/mdt/app.js',
     'html/mdt/cases.js',

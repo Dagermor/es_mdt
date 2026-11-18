@@ -6,17 +6,69 @@
 <!-- es_mdt 2.0.0: one NUI page for the MDT, Departments and the DOJ. Each part is its own frame (its own styles and
      scripts, as when they were separate resources); shell.js hands each part its own messages and puts the part
      that has the game's focus on top. -->
+<link rel="stylesheet" href="https://cfx-nui-whip_core/html/css/fonts.css">
 <style>
   html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
   iframe.part { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: transparent;
     pointer-events: none; z-index: 1; color-scheme: normal; }
   iframe.part.focus { pointer-events: auto; z-index: 3; }
+  /* 2.0.2: each page is scaled as a whole frame (a frame of 100/s % scaled by s fills the screen), so inside a page
+     nothing changes: its clicks, menus, dialogs and previews line up at any size. */
+  iframe.part.scaled { transform-origin: 0 0; }
+  /* the display-size popover, above the pages so it holds still while they resize */
+  #es-scale-back { position: fixed; inset: 0; z-index: 20; }
+  .es-scale { position: fixed; z-index: 21; width: 320px; padding: 16px 16px 14px; border-radius: 14px;
+    background: rgba(17, 21, 31, .97); border: 1px solid rgba(255,255,255,.12); color: #e8ecf3;
+    box-shadow: 0 18px 48px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.35); font: 14px/1.35 'Barlow', 'Segoe UI', sans-serif;
+    opacity: 0; transform: translateY(-4px); transition: opacity .14s, transform .14s; user-select: none; }
+  .es-scale.on { opacity: 1; transform: none; }
+  .es-scale[hidden], #es-scale-back[hidden] { display: none; }
+  .es-scale .hd { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+  .es-scale .t { font-weight: 700; font-size: 15px; letter-spacing: .01em; }
+  .es-scale .v { font-weight: 700; font-size: 22px; color: #7cb4ff; font-variant-numeric: tabular-nums; }
+  .es-scale .row { display: flex; align-items: center; gap: 10px; }
+  .es-scale .step { width: 32px; height: 32px; flex: none; border-radius: 9px; border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.05); color: #e8ecf3; font: 600 18px/1 inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .es-scale .step:hover { background: rgba(255,255,255,.11); }
+  .es-scale .step:disabled { opacity: .35; cursor: default; }
+  .es-scale input[type=range] { flex: 1; min-width: 0; height: 32px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+  .es-scale input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 6px;
+    background: linear-gradient(90deg, #4f8ff7 var(--p, 50%), rgba(255,255,255,.14) var(--p, 50%)); }
+  .es-scale input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%;
+    background: #fff; border: 3px solid #4f8ff7; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .es-scale input[type=range]:focus { outline: none; }
+  .es-scale input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px rgba(79,143,247,.35); }
+  .es-scale .ticks { display: flex; justify-content: space-between; margin: 2px 42px 12px; font-size: 11.5px; color: rgba(232,236,243,.5); font-variant-numeric: tabular-nums; }
+  .es-scale .chips { display: flex; gap: 6px; margin-bottom: 14px; }
+  .es-scale .chip { flex: 1; padding: 6px 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04);
+    color: rgba(232,236,243,.85); font: 600 12.5px/1.2 inherit; cursor: pointer; }
+  .es-scale .chip:hover { background: rgba(255,255,255,.1); }
+  .es-scale .chip.on { background: rgba(79,143,247,.2); border-color: rgba(79,143,247,.6); color: #fff; }
+  .es-scale .ft { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+  .es-scale .hint { font-size: 12px; color: rgba(232,236,243,.55); }
+  .es-scale .hint b { color: rgba(232,236,243,.8); font-weight: 600; }
+  .es-scale .reset { padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.16); background: transparent; color: #e8ecf3;
+    font: 600 12.5px/1.2 inherit; cursor: pointer; white-space: nowrap; }
+  .es-scale .reset:hover { background: rgba(255,255,255,.08); }
+  .es-scale .reset:disabled { opacity: .4; cursor: default; }
 </style>
 </head>
 <body>
 <iframe class="part" id="part-mdt" src="mdt/index.html" allowtransparency="true" title="MDT"></iframe>
 <iframe class="part" id="part-departments" src="departments/index.html" allowtransparency="true" title="Departments"></iframe>
 <iframe class="part" id="part-doj" src="doj/index.html" allowtransparency="true" title="DOJ"></iframe>
+<div id="es-scale-back" hidden></div>
+<div id="es-scale" class="es-scale" role="dialog" aria-label="Display size" hidden>
+  <div class="hd"><span class="t">Display size</span><span class="v" id="es-scale-val">100%</span></div>
+  <div class="row">
+    <button class="step" id="es-scale-minus" type="button" title="Smaller" aria-label="Smaller">&minus;</button>
+    <input id="es-scale-range" type="range" min="70" max="150" step="5" value="100" aria-label="Display size in percent">
+    <button class="step" id="es-scale-plus" type="button" title="Larger" aria-label="Larger">+</button>
+  </div>
+  <div class="ticks"><span id="es-scale-lo">70%</span><span id="es-scale-hi">150%</span></div>
+  <div class="chips" id="es-scale-chips"></div>
+  <div class="ft"><span class="hint">Saved for you. Also <b>/mdtscale 120</b></span><button class="reset" id="es-scale-reset" type="button">Reset</button></div>
+</div>
 <script src="shell.js"></script>
 </body>
 </html>

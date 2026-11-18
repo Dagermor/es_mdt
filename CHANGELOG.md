@@ -1,5 +1,15 @@
 # Changelog
 
+## es_mdt 2.0.1 (2026-11-17)
+
+**Dispatch API.** Any resource can put a call on the dispatch board. See [Dispatch API](README.md#dispatch-api).
+
+- `exports.es_mdt:AddCall(call)` accepts more field names (`prio`, `desc`/`description`, `location`, `pos`/`position`, `name`/`caller`, `phone`, `charId`) and coordinates as `vector3`, `vector4`, `{x,y,z}` or `{1,2,3}`. It also takes optional blip settings (`blip`, `sprite`, `color`, `blipTime`). Bad coordinates are dropped instead of failing the call.
+- A call with no title is named after its kind (`911 call`, `Alert`, ...). A caller's `name` is never used as the title.
+- New `exports.es_mdt:NotifyDispatch(title, message, coords, priority)`: the short form, an `alert` call.
+- New net event `es_mdt:server:externalCall` for client scripts. Only players on duty, or in the jobs in `Config.Dispatch.external.jobs`, may send it. It is rate limited (one call per 10 s, five a minute), refuses panics, clamps every field, and the caller is always the sender. Set `Config.Dispatch.external.enabled = false` to turn it off.
+- Existing callers (911/311, panic, officer calls, es_jail's prison break alert) work unchanged.
+
 ## es_mdt 2.0.0 (2026-11-17)
 
 **One resource.** es_departments 1.9.1, es_doj 1.1.0 and es_mdt 1.11.3 are now one resource, named es_mdt.

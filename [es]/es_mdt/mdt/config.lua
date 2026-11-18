@@ -178,6 +178,15 @@ Config.Dispatch = {
         arriveRadius = 40,     -- metres
         clearOnLeave = true,   -- detaching or the call closing puts En route / On scene units back to Available
     },
+    -- 2.0.1: the es_mdt:server:externalCall net event (client scripts filing a call; server scripts use exports.es_mdt:AddCall)
+    external = {
+        enabled     = true,
+        onDuty      = true,     -- a player on duty in any department may send it
+        jobs        = {},       -- and/or players in these WHIP jobs, on duty or not, e.g. { 'tow', 'security' }
+        kinds       = { '911', '311', 'alert', 'officer' },   -- a 'panic' is always refused (the panic button does that)
+        cooldownSec = 10,       -- one call per player this often
+        perMinute   = 5,        -- and at most this many a minute
+    },
 }
 
 -- Panic button: any on-duty officer. Key (players can rebind it in GTA Settings > Key Bindings > FiveM).

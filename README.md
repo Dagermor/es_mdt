@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.0).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.1).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -200,8 +200,88 @@ The details are in [docs/whip_evidence_integration.md](docs/whip_evidence_integr
 `exports.es_mdt:*` (also available under `exports.es_departments:*` and `exports.es_doj:*`):
 
 - **Departments:** `HasPerm(source, perm)`, `GetDepartments()`, `GetDepartment(id)`, `GetPlayerDepartments(source)`, `GetActiveDepartment(source)`, `GetRoster(id)`, `GetOnDuty(id)`, `IsStaff(source)`, `GetLogo(id)`, `GetDutySeconds(charId)`, `HasCert(charId, cert)`, …
-- **MDT:** `AddCall(call)`, `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, …
+- **MDT:** `AddCall(call)`, `NotifyDispatch(title, message, coords, priority)` (see [Dispatch API](#dispatch-api)), `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, …
 - **DOJ:** `GetCourtMarks(charId)`, `GetRecordSummary(charId)`, `WarrantsNeedJudge()`, …
+
+## Dispatch API
+
+Any resource can put a call on the MDT dispatch board. Units on duty get the popup, a blip, and the call in the Dispatch tab, the same as a 911 call. Both exports are **server side**. Each returns the call id, or `false, why`.
+
+### `exports.es_mdt:AddCall(call)`
+
+```lua
+local callId = exports.es_mdt:AddCall({
+    kind     = 'alert',                 -- '911' | '311' | 'alert' | 'officer' | 'panic'  (anything else: 'alert')
+    priority = 1,                       -- 1 (urgent) .. 3. Default: panic 1, 311 3, others 2
+    title    = 'Alarm: Fleeca Hawick',  -- up to 120 characters. Default: the kind's name ('911 call', 'Alert', ...)
+    message  = 'Silent alarm tripped',  -- up to 500
+    street   = 'Hawick Ave',            -- up to 120
+    coords   = GetEntityCoords(ped),    -- see the formats below; optional
+    callerName = 'Bank system', callerPhone = '555-0100', callerCharId = nil,   -- optional
+    blip = true, sprite = 280, color = 1, blipTime = 120,                        -- optional blip settings
+})
+```
+
+| Field | Also accepted as | Notes |
+|---|---|---|
+| `kind` | | `911`, `311`, `alert`, `officer`, `panic`. Anything else becomes `alert`. |
+| `priority` | `prio` | 1 to 3, clamped. |
+| `title` | | Up to 120 characters. With no title, the kind's name is used (`911 call`, `311 call`, `Panic`, `Officer call`, `Alert`). `name` is never used as the title. |
+| `message` | `desc`, `description` | Up to 500 characters. |
+| `street` | `location` | Up to 120 characters. |
+| `coords` | `pos`, `position` | Optional. With no valid coords there is no blip. |
+| `callerName` | `name`, `caller` | Up to 80 characters. |
+| `callerPhone` | `phone` | Up to 20 characters. |
+| `callerCharId` | `charId` | A number. |
+| `blip` | | `false`: no map blip. |
+| `sprite`, `color` | | Blip sprite and color. Default: `Config.Dispatch.blip`. |
+| `blipTime` | | Seconds the blip stays, 5 to 1800. Default: `Config.Dispatch.blip.seconds`. |
+| `deptId` | | Optional department id stored with the call. |
+
+Strings are trimmed, control characters are removed (new lines and tabs are kept), and the lengths above are applied.
+
+**Coordinate formats.** All of these work: `vector3(x, y, z)`, `vector4(x, y, z, h)` (the heading is ignored), `{ x = 1.0, y = 2.0, z = 3.0 }` and `{ 1.0, 2.0, 3.0 }`. `z` is optional. Coordinates that are not numbers, or that are outside the map (more than 20000 from the centre), are dropped.
+
+### `exports.es_mdt:NotifyDispatch(title, message, coords, priority)`
+
+The short form: an `alert` call.
+
+```lua
+exports.es_mdt:NotifyDispatch('Store robbery', '24/7 on Innocence Blvd', vector3(25.7, -1347.3, 29.5), 1)
+```
+
+`coords` and `priority` are optional (priority defaults to 2). An optional fifth argument is a table of any other `AddCall` fields, for example `{ street = 'Innocence Blvd', kind = '911' }`.
+
+### From client scripts: the `es_mdt:server:externalCall` net event
+
+A client script cannot call server exports. It can send:
+
+```lua
+TriggerServerEvent('es_mdt:server:externalCall', { title = 'Shots fired', message = 'Near the docks', coords = GetEntityCoords(PlayerPedId()), priority = 1 })
+```
+
+This event is guarded, because any player can send any net event:
+
+- **Who:** a player on duty in a department, or a player whose WHIP job is listed in `Config.Dispatch.external.jobs`. Anyone else is refused.
+- **Rate limit:** one call per player every `cooldownSec` (10 s), and at most `perMinute` (5) a minute.
+- **No panics:** `kind = 'panic'` is refused (the panic button files panics). The allowed kinds are in `Config.Dispatch.external.kinds`.
+- **The caller is the sender:** the caller's name, phone and character come from the server, never from the data. `sprite`, `color`, `blipTime` and `deptId` are ignored.
+- **Clamped:** only `kind`, `priority`, `title`, `message`, `street`, `coords` and `blip` are read, with the limits above. With no valid coords, the sender's own position is used.
+- A refused call shows the player the reason. Every accepted call is printed in the server console.
+
+```lua
+-- mdt/config.lua
+Config.Dispatch.external = {
+    enabled     = true,     -- false: the event is not registered at all (server exports only)
+    onDuty      = true,     -- players on duty in any department may send it
+    jobs        = {},       -- and players in these WHIP jobs, e.g. { 'tow', 'security' }
+    kinds       = { '911', '311', 'alert', 'officer' },
+    cooldownSec = 10,
+    perMinute   = 5,
+}
+```
+
+For calls from members of the public (a store clerk, a bank alarm), use the server exports from your server script. The event is not for that.
 
 ## How it is built
 

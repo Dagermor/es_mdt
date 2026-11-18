@@ -51,40 +51,78 @@ local function plateKey(p) return (type(p) == 'string' and p or ''):upper():gsub
 -- ---------------------------------------------------------------- dispatch calls
 
 local KINDS = { ['911'] = true, ['311'] = true, panic = true, alert = true, officer = true }
+local KIND_TITLE = { ['911'] = '911 call', ['311'] = '311 call', panic = 'Panic', officer = 'Officer call', alert = 'Alert' }
 
---- Files a call and tells every on-duty unit. d = { kind, priority (1-3), title, message, street, coords {x,y,z},
---- callerCharId, callerName, callerPhone, deptId, blip = false }. Returns the call id or false, why.
+--- 2.0.1: x, y, z from vector3 / vector4 / { x, y, z } / { [1], [2], [3] }; nil when there are none (or they are not numbers)
+local function xyzOf(c)
+    local t = type(c)
+    if t ~= 'vector3' and t ~= 'vector4' and t ~= 'table' then return nil end
+    local x, y, z
+    if t == 'table' and c.x == nil and c[1] ~= nil then x, y, z = tonumber(c[1]), tonumber(c[2]), tonumber(c[3])
+    else x, y, z = tonumber(c.x), tonumber(c.y), tonumber(c.z) end
+    if not x or not y or x ~= x or y ~= y or math.abs(x) > 20000 or math.abs(y) > 20000 then return nil end
+    if z and (z ~= z or math.abs(z) > 5000) then z = nil end
+    return x + 0.0, y + 0.0, z and z + 0.0 or nil
+end
+
+--- Files a call and tells every on-duty unit. Returns the call id, or false, why.
+--- d = { kind ('911'|'311'|'panic'|'alert'|'officer', else 'alert'), priority|prio (1-3),
+---   title, message|desc|description, street|location, coords|pos|position (vector3/vector4/{x,y,z}),
+---   callerCharId|charId, callerName|name|caller, callerPhone|phone, deptId,
+---   blip = false, sprite, color, blipTime (seconds) }
+--- 2.0.1: the aliases and coord forms are new; every 2.0.0 call works unchanged. A missing title falls back to the
+--- kind's label, never to the caller's name.
 local function addCall(d)
     if type(d) ~= 'table' then return false, 'A call is a table' end
     local str, int = MDT.str, MDT.int
     local kind = KINDS[d.kind] and d.kind or 'alert'
-    local c = type(d.coords) == 'table' or type(d.coords) == 'vector3' or type(d.coords) == 'vector4'
-    local x, y, z
-    if c then x, y, z = tonumber(d.coords.x), tonumber(d.coords.y), tonumber(d.coords.z) end
-    local pri = int(d.priority or (kind == 'panic' and 1 or kind == '311' and 3 or 2), 1, 3)
+    local x, y, z = xyzOf(d.coords or d.pos or d.position)
+    local pri = int(d.priority or d.prio or (kind == 'panic' and 1 or kind == '311' and 3 or 2), 1, 3)
     local title = str(d.title, 120)
-    if title == '' then title = kind == '911' and '911 call' or kind == '311' and '311 call' or 'Alert' end
+    if title == '' then title = KIND_TITLE[kind] or 'Call' end
+    local message = d.message or d.desc or d.description
+    local street = d.street or d.location
+    local callerName = d.callerName or d.name or d.caller
+    local callerPhone = d.callerPhone or d.phone
+    local callerCharId = tonumber(d.callerCharId or d.charId)
     local cid = MySQL.insert.await([[INSERT INTO `es_mdt_calls` (`kind`,`priority`,`title`,`message`,`callerCharId`,`callerName`,`callerPhone`,`street`,`x`,`y`,`z`,`deptId`)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(d.message, 500), tonumber(d.callerCharId), str(d.callerName, 80),
-        str(d.callerPhone, 20), str(d.street, 120), x, y, z, tonumber(d.deptId) })
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(message, 500), callerCharId, str(callerName, 80),
+        str(callerPhone, 20), str(street, 120), x, y, z, tonumber(d.deptId) })
     if not cid then return false, 'The call could not be saved' end
     local list = onDuty()
-    local payload = { id = cid, kind = kind, priority = pri, title = title, message = str(d.message, 200), street = str(d.street, 120),
-        x = x, y = y, z = z, callerName = str(d.callerName, 80), callerPhone = str(d.callerPhone, 20) }
+    local payload = { id = cid, kind = kind, priority = pri, title = title, message = str(message, 200), street = str(street, 120),
+        x = x, y = y, z = z, callerName = str(callerName, 80), callerPhone = str(callerPhone, 20) }
     for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:call', u.source, payload) end
     if x and y and d.blip ~= false and #list > 0 then
         local b = DSP.blip or {}
         WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. cid, { coords = vector3(x, y, z or 0.0),
-            label = ('#%d %s'):format(cid, title):sub(1, 40), sprite = b.sprite or 280, color = b.color or 1, flash = pri == 1 })
-        SetTimeout((b.seconds or 120) * 1000, function() WC:HideBlip('call:' .. cid) end)
+            label = ('#%d %s'):format(cid, title):sub(1, 40), sprite = math.tointeger(tonumber(d.sprite)) or b.sprite or 280,
+            color = math.tointeger(tonumber(d.color)) or b.color or 1, flash = pri == 1 })
+        local secs = int(d.blipTime or b.seconds or 120, 5, 1800)
+        SetTimeout(secs * 1000, function() WC:HideBlip('call:' .. cid) end)
     end
     MDT.refresh('calls')
     return cid
 end
 MDT.addCall = addCall
+
+--- exports.es_mdt:AddCall(d) -> callId | false, why   (the table above)
 exports('AddCall', function(data)
     local ok, a, b = pcall(addCall, data)
-    if not ok then return false, 'The call could not be filed' end
+    if not ok then print(('^3[es_mdt] AddCall failed: %s^7'):format(tostring(a))) return false, 'The call could not be filed' end
+    return a, b
+end)
+
+--- exports.es_mdt:NotifyDispatch(title, message, coords?, priority?, extra?) -> callId | false, why
+--- The short form: an 'alert' call. extra = any other AddCall fields (street, kind, callerName, blip, ...).
+exports('NotifyDispatch', function(title, message, coords, priority, extra)
+    local d = {}
+    if type(extra) == 'table' then for k, v in pairs(extra) do d[k] = v end end
+    d.title, d.message, d.coords = title, message, coords or d.coords
+    d.priority = priority or d.priority or 2
+    d.kind = d.kind or 'alert'
+    local ok, a, b = pcall(addCall, d)
+    if not ok then print(('^3[es_mdt] NotifyDispatch failed: %s^7'):format(tostring(a))) return false, 'The call could not be filed' end
     return a, b
 end)
 
@@ -404,6 +442,56 @@ function MDT.registerOps()
         if not callId then return false, 'Dispatch did not answer, try again' end
         return { id = callId, units = #onDuty() }
     end)
+
+    -- 2.0.1: es_mdt:server:externalCall, for CLIENT scripts that want to file a call (server scripts use the exports).
+    -- Only a player on duty in a department, or in one of Config.Dispatch.external.jobs; never a panic; rate limited;
+    -- the caller is always the sender (name, phone and character come from the server, not from the data).
+    local EXT = DSP.external or {}
+    if EXT.enabled ~= false then
+        local okKinds = {}
+        for _, k in ipairs(EXT.kinds or { '911', '311', 'alert', 'officer' }) do if KINDS[k] and k ~= 'panic' then okKinds[k] = true end end
+        local okJobs = {}
+        for _, j in ipairs(EXT.jobs or {}) do okJobs[j] = true end
+        local perMin = math.max(1, math.floor(tonumber(EXT.perMinute) or 5))
+        ExtSent = {}   -- [source] = { times sent in the last minute } (reset when whip_core re-registers)
+        local Sent = ExtSent
+        if not ExtDropHooked then ExtDropHooked = true AddEventHandler('playerDropped', function() if ExtSent then ExtSent[source] = nil end end) end
+        local function allowed(source)
+            if EXT.onDuty ~= false then
+                for _, d in ipairs(ED:GetPlayerDepartments(source) or {}) do if d.onDuty then return true end end
+            end
+            if next(okJobs) then
+                local job = WC:GetPlayerJob(source)
+                if job and okJobs[job.key] then return true end
+            end
+            return false
+        end
+        Whip.core:SecureEvent('es_mdt:server:externalCall', { rateLimit = math.max(1, math.floor(tonumber(EXT.cooldownSec) or 10)) * 1000, burst = 1,
+            sheet = 'light', params = { { 'data', 'any' } } }, function(source, _, data)
+            if type(data) ~= 'table' then return false, 'A call is a table' end
+            if not allowed(source) then return false, 'Only units on duty can file calls this way' end
+            if data.kind == 'panic' then return false, 'Use the panic button for a panic' end
+            local t, list = now(), Sent[source] or {}
+            local keep = {}
+            for _, at in ipairs(list) do if t - at < 60 then keep[#keep + 1] = at end end
+            if #keep >= perMin then Sent[source] = keep return false, 'Too many calls, wait a minute' end
+            keep[#keep + 1] = t; Sent[source] = keep
+            local s = function(v) return type(v) == 'string' and v or nil end
+            local cid = WC:GetCharId(source)
+            local x, y, z = xyzOf(data.coords or data.pos or data.position)
+            local pos = (x and { x = x, y = y, z = z }) or coordsOf(source)
+            local callId, why = addCall({
+                kind = okKinds[data.kind] and data.kind or 'alert',
+                priority = MDT.int(data.priority or data.prio or 2, 1, 3),
+                title = MDT.str(s(data.title), 120), message = MDT.str(s(data.message or data.desc or data.description), 500),
+                street = MDT.str(s(data.street or data.location), 120), coords = pos,
+                callerCharId = cid, callerName = cid and MDT.namesOf({ cid })[cid] or nil, callerPhone = phoneOf(cid),
+                blip = data.blip ~= false,
+            })
+            if not callId then return false, why end
+            print(('[es_mdt] externalCall #%d from %s (%s)'):format(callId, tostring(source), GetPlayerName(source) or '?'))
+        end)
+    end
 
     -- the radar may run here (law department, on duty)
     Whip.core:SecureCallback('es_mdt:radarAllowed', { rateLimit = 2000, burst = 3, sheet = 'light' }, function(source)

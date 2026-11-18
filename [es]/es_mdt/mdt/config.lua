@@ -153,9 +153,24 @@ Config.Dispatch = {
     emergency    = '911',   -- /911 <what happened>
     nonEmergency = '311',   -- /311 <what happened>
     cooldownSec  = 30,      -- one call per player this often
-    callTTLMin   = 120,     -- an active call nobody closed is closed by itself after this many minutes (0 = never)
+    -- 2.0.4: auto-close. An active call is closed by itself, silently (no popup, sound or toast; the blip and GPS go and the
+    -- call stays in the call history), once it is this old:
+    autoCloseMinutes  = 15,     -- minutes after the call came in (0 = never)
+    autoCloseAttached = false,  -- false: a call with a unit attached right now is left open (it is being worked); true: closed too
+    callTTLMin   = 120,         -- hard cap: a call with units attached is still closed after this many minutes (0 = never).
+                                -- A PANIC call with a unit attached is never auto-closed, whatever these say.
+    sweepSeconds = 60,          -- how often the server looks for calls to auto-close
+    -- Outcome: 'Auto-closed – no response' when no unit ever attached, 'Auto-closed (timeout)' when one did (even if it left).
     blip         = { sprite = 280, color = 1, seconds = 120 },   -- new-call blip for on-duty officers
-    outcomes     = { 'Resolved', 'Report filed', 'Arrest made', 'Citation issued', 'Unfounded', 'Gone on arrival', 'Referred' },
+    -- 2.0.4: what an officer picks when closing a call. color = the badge (hex); note = 'required' makes the note mandatory.
+    outcomes     = {
+        { label = 'Resolved',         color = '#22c55e', icon = '✔' },
+        { label = 'Handled on scene', color = '#14b8a6', icon = '⚑' },
+        { label = 'Unfounded',        color = '#6b7fd7', icon = '∅' },
+        { label = 'No contact',       color = '#f59e0b', icon = '☏' },
+        { label = 'Suspect gone',     color = '#f97316', icon = '➜' },
+        { label = 'Other',            color = '#a855f7', icon = '✎', note = 'required' },
+    },
     -- 1.3.2: on-screen call card for officers on duty (not while the MDT is open, it shows calls itself).
     -- Keys are defaults only: each player can rebind them in GTA Settings > Key Bindings > FiveM.
     popup = {
@@ -191,6 +206,11 @@ Config.Dispatch = {
 
 -- Display size of the MDT, Departments and DOJ pages (2.0.2). Each player picks their own with the Aa button in a
 -- page's header or /mdtscale <percent>; it is saved on their PC. This is the size for players who never picked one.
+-- 2.0.4: department announcements (Dashboard). Priority: Normal, Important or Urgent (red, a toast for everyone on duty).
+Config.Announcements = {
+    urgentFreshHours = 12,  -- an urgent one posted this recently is shown to an on-duty member when they open the MDT (once; 0 = off)
+}
+
 Config.UI = {
     defaultScale = 1.0,     -- 1.0 = 100%
     minScale     = 0.7,     -- the smallest a player may pick (0.5 at the least)

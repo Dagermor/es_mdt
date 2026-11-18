@@ -50,6 +50,39 @@ local function plateKey(p) return (type(p) == 'string' and p or ''):upper():gsub
 
 -- ---------------------------------------------------------------- dispatch calls
 
+--- 2.0.4: the call and panic blips on duty maps: kept here so they follow the duty list (someone going off duty loses
+--- them, someone coming on gets the ones still up). [id] = { spec, gen }
+local DutyBlips = {}
+local blipGen = 0
+local function showDutyBlip(id, spec, secs, list)
+    blipGen = blipGen + 1
+    local gen = blipGen
+    DutyBlips[id] = { spec = spec, gen = gen }
+    WC:ShowBlip({ people = sourcesOf(list or onDuty()) }, id, spec)
+    if secs then
+        SetTimeout(secs * 1000, function()
+            local b = DutyBlips[id]
+            if b and b.gen == gen then DutyBlips[id] = nil pcall(function() WC:HideBlip(id) end) end
+        end)
+    end
+end
+local function hideDutyBlip(id)
+    DutyBlips[id] = nil
+    pcall(function() WC:HideBlip(id) end)
+end
+--- every duty blip again, to who is on duty now (whip_core takes it off anyone no longer in the list)
+local function repushDutyBlips()
+    if next(DutyBlips) == nil then return end
+    local people = sourcesOf(onDuty())
+    for id, b in pairs(DutyBlips) do
+        pcall(function()
+            -- nobody on duty: down for now (kept here, so it comes back to whoever clocks on while it is still live)
+            if #people == 0 then WC:HideBlip(id) else WC:ShowBlip({ people = people }, id, b.spec) end
+        end)
+    end
+end
+MDT.repushDutyBlips = repushDutyBlips
+
 local KINDS = { ['911'] = true, ['311'] = true, panic = true, alert = true, officer = true }
 local KIND_TITLE = { ['911'] = '911 call', ['311'] = '311 call', panic = 'Panic', officer = 'Officer call', alert = 'Alert' }
 
@@ -110,11 +143,9 @@ local function addCall(d)
     for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:call', u.source, payload) end
     if x and y and d.blip ~= false and #list > 0 then
         local b = DSP.blip or {}
-        WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. cid, { coords = vector3(x, y, z or 0.0),
+        showDutyBlip('call:' .. cid, { coords = vector3(x, y, z or 0.0),
             label = ('#%d %s'):format(cid, title):sub(1, 40), sprite = math.tointeger(tonumber(d.sprite)) or b.sprite or 280,
-            color = math.tointeger(tonumber(d.color)) or b.color or 1, flash = pri == 1 })
-        local secs = int(d.blipTime or b.seconds or 120, 5, 1800)
-        SetTimeout(secs * 1000, function() WC:HideBlip('call:' .. cid) end)
+            color = math.tointeger(tonumber(d.color)) or b.color or 1, flash = pri == 1 }, int(d.blipTime or b.seconds or 120, 5, 1800), list)
     end
     MDT.refresh('calls')
     return cid
@@ -215,12 +246,12 @@ local PanicCall = {}   -- [charId] = the call id of their last panic
 local function callGone(cid)
     cid = tonumber(cid)
     if not cid then return end
-    pcall(function() WC:HideBlip('call:' .. cid) end)
+    hideDutyBlip('call:' .. cid)
     for charId, pc in pairs(PanicCall) do
         if pc == cid then
             PanicCall[charId] = nil
             if MDT.Panic then MDT.Panic[charId] = nil end
-            pcall(function() WC:HideBlip('panic:' .. charId) end)
+            hideDutyBlip('panic:' .. charId)
             MDT.refresh('units')
         end
     end
@@ -276,15 +307,15 @@ local function panic(c, street)
     if callId then PanicCall[c.charId] = callId end
     local list = onDuty()
     local b = PAN.blip or {}
-    WC:ShowBlip({ people = sourcesOf(list) }, 'panic:' .. c.charId, { coords = vector3(pos.x, pos.y, pos.z),
-        label = ('PANIC %s'):format(me.u.callsign or ''):sub(1, 40), sprite = b.sprite or 161, color = b.color or 1, flash = true, scale = 1.2 })
+    showDutyBlip('panic:' .. c.charId, { coords = vector3(pos.x, pos.y, pos.z),
+        label = ('PANIC %s'):format(me.u.callsign or ''):sub(1, 40), sprite = b.sprite or 161, color = b.color or 1, flash = true, scale = 1.2 }, nil, list)
     local payload = { charId = c.charId, callsign = me.u.callsign, name = me.u.name, deptShort = me.g.short, street = MDT.str(street, 120),
         x = pos.x, y = pos.y, callId = callId, seconds = secs }
     for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:panic', u.source, payload) end
     SetTimeout(secs * 1000, function()
         if (MDT.Panic[c.charId] or 0) <= now() then
             MDT.Panic[c.charId] = nil
-            WC:HideBlip('panic:' .. c.charId)
+            hideDutyBlip('panic:' .. c.charId)
             MDT.refresh('units')
         end
     end)
@@ -302,9 +333,42 @@ MDT.clearPlateCache = function() for k in pairs(PlateCache) do PlateCache[k] = n
 --- What the MDT knows about a plate. { plate, level = 'high'|'low'|nil, hits = { {kind, level, text} }, vehicleId, owner, label, boloId }
 -- ---------------------------------------------------------------- 2.0.3: closing a call, test calls
 
---- Close a call from any path (MDT button, expiry, CloseCall export, /mdttestcall clear): the row, the units on it,
+--- 2.0.4: what an officer picks when closing a call (Config.Dispatch.outcomes: plain strings, or { label, color, icon, note })
+local DEFAULT_OUTCOMES = {
+    { label = 'Resolved', color = '#22c55e', icon = '✔' }, { label = 'Handled on scene', color = '#14b8a6', icon = '⚑' },
+    { label = 'Unfounded', color = '#6b7fd7', icon = '∅' }, { label = 'No contact', color = '#f59e0b', icon = '☏' },
+    { label = 'Suspect gone', color = '#f97316', icon = '➜' }, { label = 'Other', color = '#a855f7', icon = '✎', note = 'required' },
+}
+local AUTO_NONE, AUTO_TIMEOUT = 'Auto-closed – no response', 'Auto-closed (timeout)'
+MDT.AUTO_NONE, MDT.AUTO_TIMEOUT = AUTO_NONE, AUTO_TIMEOUT
+local function hexColor(v) return type(v) == 'string' and v:match('^#%x%x%x%x?%x?%x?$') and #v ~= 5 and v or nil end
+local function outcomeList()
+    local out = {}
+    for _, o in ipairs(DSP.outcomes or {}) do
+        local label = type(o) == 'string' and o or type(o) == 'table' and o.label or nil
+        label = type(label) == 'string' and MDT.str(label, 40) or ''
+        if label ~= '' then
+            local t = type(o) == 'table' and o or {}
+            out[#out + 1] = { label = label, color = hexColor(t.color), icon = type(t.icon) == 'string' and t.icon:sub(1, 8) or nil,
+                note = (t.note == 'required' or (t.note == nil and label:lower() == 'other')) and 'required' or nil }
+        end
+    end
+    if #out == 0 then out = DEFAULT_OUTCOMES end
+    return out
+end
+MDT.outcomeList = outcomeList
+--- the configured outcome an officer picked (any case), or nil
+local function pickOutcome(v)
+    v = type(v) == 'string' and v:lower():gsub('^%s+', ''):gsub('%s+$', '') or ''
+    for _, o in ipairs(outcomeList()) do if o.label:lower() == v then return o end end
+    return nil
+end
+
+--- Close a call from any path (MDT button, auto-close, CloseCall export, /mdttestcall clear): the row, the units on it,
 --- its blips, every on-duty popup, the MDT lists. -> true | false, why
-local function closeCall(cid, outcome, note, byCharId, onlyIf)
+--- 2.0.4: silent = true (auto-close, test clean-up): no popup / toast / sound for anyone; the blip, GPS route and card
+--- still go (es_mdt:client:callGone) and the MDT lists still update.
+local function closeCall(cid, outcome, note, byCharId, onlyIf, silent)
     cid = tonumber(cid)
     if not cid then return false, 'No such call' end
     local str = MDT.str
@@ -317,10 +381,80 @@ local function closeCall(cid, outcome, note, byCharId, onlyIf)
     freeUnits(onIt)
     callGone(cid)
     MDT.refresh('calls')
-    tellClosed(cid, outcome)
+    if not silent then tellClosed(cid, outcome) end
+    -- everyone (on duty or not any more): drop a GPS route still pointing at this call, quietly
+    TriggerClientEvent('es_mdt:client:callGone', -1, { id = cid })
     return true
 end
 MDT.closeCall = closeCall
+
+--- 2.0.4: auto-close. Every active call older than Config.Dispatch.autoCloseMinutes is closed SILENTLY (no popup, toast or
+--- sound; blip, GPS route and card go; the call stays in the history with its outcome and a note):
+---   * no unit on it now           -> closed at autoCloseMinutes (or at callTTLMin when autoCloseMinutes = 0)
+---   * a unit on it now            -> left open (it is being worked) unless autoCloseAttached = true; callTTLMin is the hard cap
+---   * a PANIC call with a unit on -> never
+--- Outcome: 'Auto-closed – no response' when no unit ever attached, 'Auto-closed (timeout)' when one did (even if it left).
+--- -> how many calls it closed
+local NO_UNITS = ' AND NOT EXISTS (SELECT 1 FROM `es_mdt_call_units` u WHERE u.`callId` = `es_mdt_calls`.`id`)'
+local function autoCloseSweep()
+    local mins = tonumber(DSP.autoCloseMinutes)
+    if mins == nil then mins = 15 end
+    local cap = tonumber(DSP.callTTLMin) or 120
+    if mins <= 0 and cap <= 0 then return 0 end
+    local oldest = (mins > 0 and cap > 0) and math.min(mins, cap) or (mins > 0 and mins or cap)
+    local rows = MySQL.query.await([[SELECT c.`id`, c.`kind`, c.`everAttached`, TIMESTAMPDIFF(SECOND, c.`createdAt`, NOW()) AS `age`,
+        (SELECT COUNT(*) FROM `es_mdt_call_units` u WHERE u.`callId` = c.`id`) AS `onIt`
+        FROM `es_mdt_calls` c WHERE c.`status` = 'active' AND c.`createdAt` <= NOW() - INTERVAL ? MINUTE]], { oldest }) or {}
+    local closed = 0
+    for _, r in ipairs(rows) do
+        local age = (tonumber(r.age) or 0) / 60
+        local onIt = (tonumber(r.onIt) or 0) > 0
+        local close
+        if onIt then
+            close = r.kind ~= 'panic' and ((DSP.autoCloseAttached == true and mins > 0 and age >= mins) or (cap > 0 and age >= cap))
+        else
+            close = (mins > 0 and age >= mins) or (cap > 0 and age >= cap)
+        end
+        if close then
+            local ever = onIt or r.everAttached == true or tonumber(r.everAttached) == 1   -- oxmysql reads TINYINT(1) as a boolean
+            local outcome = ever and AUTO_TIMEOUT or AUTO_NONE
+            local note = ('Closed automatically after %d min%s'):format(math.floor(age + 0.5), ever and '' or ' (no unit attached)')
+            -- a unit attaching right now keeps an unattended call open (the guard is in the UPDATE itself)
+            if closeCall(r.id, outcome, note, nil, not onIt and NO_UNITS or nil, true) then
+                closed = closed + 1
+                print(('[es_mdt] call #%d auto-closed: %s'):format(r.id, outcome))
+            end
+        end
+    end
+    return closed
+end
+MDT.autoCloseSweep = autoCloseSweep
+
+--- 2.0.4: an officer leaves duty (clock off, log out or disconnect: WHIP's clockedOff covers all three). Off the active calls
+--- they were on (a note says why), off the call / panic blips, and their own game drops the call's GPS route and card.
+local function unitGone(charId, source)
+    charId = tonumber(charId)
+    if not charId then return end
+    local _, idx = MDT.dutyNow()
+    if idx[charId] then return end   -- still on duty in another department
+    local rows = MySQL.query.await([[SELECT u.`callId` FROM `es_mdt_call_units` u JOIN `es_mdt_calls` c ON c.`id` = u.`callId`
+        WHERE u.`charId` = ? AND c.`status` = 'active']], { charId }) or {}
+    for _, r in ipairs(rows) do
+        MySQL.update.await('DELETE FROM `es_mdt_call_units` WHERE `callId` = ? AND `charId` = ?', { r.callId, charId })
+        MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { r.callId, charId, 'Detached (went off duty)' })
+        tellUnits(r.callId)
+    end
+    if #rows > 0 then MDT.refresh('calls') end
+    repushDutyBlips()
+    if source and GetPlayerName(source) then TriggerClientEvent('es_mdt:client:offDuty', source) end
+end
+MDT.unitGone = unitGone
+AddEventHandler('whip_core:job:clockedOff', function(e)
+    if type(e) ~= 'table' then return end
+    local cid, src = e.charId, tonumber(e.source)
+    SetTimeout(250, function() local ok, err = pcall(unitGone, cid, src) if not ok then print(('^3[es_mdt] off-duty clean-up failed: %s^7'):format(tostring(err))) end end)
+end)
+AddEventHandler('whip_core:job:clockedOn', function() SetTimeout(250, function() pcall(repushDutyBlips) end) end)
 
 --- exports.es_mdt:CloseCall(callId, outcome?, note?) -> true | false, why   (outcome defaults to 'Closed')
 exports('CloseCall', function(cid, outcome, note)
@@ -355,7 +489,7 @@ end)
 local function clearTestCalls()
     local rows = MySQL.query.await("SELECT `id`,`status` FROM `es_mdt_calls` WHERE `sourceLabel` = 'test'") or {}
     for _, r in ipairs(rows) do
-        if r.status == 'active' then closeCall(r.id, 'Test removed', nil, nil, " AND `sourceLabel` = 'test'") end
+        if r.status == 'active' then closeCall(r.id, 'Test removed', nil, nil, " AND `sourceLabel` = 'test'", true) end
         callGone(r.id)
     end
     if #rows > 0 then
@@ -494,10 +628,16 @@ MDT.suspectNear = suspectNear   -- 1.5.3: fingerprints (server/evidence.lua) use
 
 -- ---------------------------------------------------------------- announcements & templates
 
-local function announcementsFor(c, limit)
-    local rows = MySQL.query.await([[SELECT `id`,`deptId`,`title`,`body`,`pinned`,`createdBy`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`,
+--- 2.0.4: priority: normal / important / urgent
+local ANN_LEVEL = { normal = true, important = true, urgent = true }
+local function annLevel(v) return ANN_LEVEL[v] and v or 'normal' end
+local function announcementsFor(c, limit, onlyUrgentHours)
+    local extra, args = '', { c.dept.id }
+    if onlyUrgentHours then extra = " AND `level` = 'urgent' AND `createdAt` > NOW() - INTERVAL ? HOUR" args[#args + 1] = onlyUrgentHours end
+    args[#args + 1] = limit
+    local rows = MySQL.query.await(([[SELECT `id`,`deptId`,`title`,`body`,`pinned`,`level`,`createdBy`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`,
         UNIX_TIMESTAMP(`expiresAt`) AS `expiresAt` FROM `es_mdt_announcements` WHERE `removed` = 0 AND (`deptId` = ? OR `deptId` IS NULL)
-        AND (`expiresAt` IS NULL OR `expiresAt` > NOW()) ORDER BY `pinned` DESC, `id` DESC LIMIT ?]], { c.dept.id, limit }) or {}
+        AND (`expiresAt` IS NULL OR `expiresAt` > NOW())%s ORDER BY `pinned` DESC, (`level` = 'urgent') DESC, `id` DESC LIMIT ?]]):format(extra), args) or {}
     local ids = {}
     for _, r in ipairs(rows) do ids[#ids + 1] = r.createdBy end
     local names = MDT.namesOf(ids)
@@ -505,11 +645,22 @@ local function announcementsFor(c, limit)
     for _, r in ipairs(rows) do
         r.by = names[r.createdBy] or ('#' .. r.createdBy)
         r.pinned = r.pinned == 1 or r.pinned == true
+        r.level = annLevel(r.level)
         r.all = r.deptId == nil
         r.deptShort = r.deptId and short[r.deptId] and short[r.deptId].short or 'ALL'
         r.canEdit = c.staff or (c.perms.announce and r.deptId == c.dept.id)
     end
     return rows
+end
+
+--- 2.0.4: urgent announcements still fresh (Config.Announcements.urgentFreshHours, default 12): shown once to an on-duty
+--- member when their MDT opens (the page remembers which ones they have seen)
+function MDT.urgentAnnouncements(c)
+    if not (c and c.dept and c.onDuty) then return {} end
+    local h = tonumber((Config.Announcements or {}).urgentFreshHours) or 12
+    if h <= 0 then return {} end
+    local ok, rows = pcall(announcementsFor, c, 5, h)
+    return ok and rows or {}
 end
 
 local function canTemplates(c) return c.staff or c.perms.announce or MDT.isHighCommand(c) or (c.rights and c.rights.canManage) end
@@ -658,7 +809,7 @@ function MDT.registerOps()
         for _, r in ipairs(rows) do if r.closedBy then names[#names + 1] = r.closedBy end end
         names = MDT.namesOf(names)
         for _, r in ipairs(rows) do r.closedByName = r.closedBy and names[r.closedBy] or nil end
-        return { calls = rows, outcomes = DSP.outcomes or {}, now = now() }
+        return { calls = rows, outcomes = outcomeList(), now = now() }
     end)
 
     cb('call', { rate = 300, burst = 6 }, function(c, d)
@@ -689,6 +840,7 @@ function MDT.registerOps()
             street = str(d.street, 120), coords = pos, callerCharId = c.charId, callerName = c.name, deptId = c.dept.id })
         if not cid then return false, 'The call could not be saved' end
         MySQL.insert.await('INSERT IGNORE INTO `es_mdt_call_units` (`callId`,`charId`) VALUES (?,?)', { cid, c.charId })
+        MySQL.update.await('UPDATE `es_mdt_calls` SET `everAttached` = 1 WHERE `id` = ?', { cid })
         MDT.log(c, 'call_create', { callId = cid })
         MDT.refresh('calls')
         return { id = cid }
@@ -702,6 +854,7 @@ function MDT.registerOps()
         if not c.onDuty then return false, 'Go on duty to attach' end
         local who = meAndPartner(c)
         for _, x in ipairs(who) do MySQL.insert.await('INSERT IGNORE INTO `es_mdt_call_units` (`callId`,`charId`) VALUES (?,?)', { cid, x }) end
+        MySQL.update.await('UPDATE `es_mdt_calls` SET `everAttached` = 1 WHERE `id` = ?', { cid })   -- 2.0.4: kept after a detach
         MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { cid, c.charId, #who > 1 and 'Attached with partner' or 'Attached' })
         if d.route and r.x then WC:SetPlayerWaypoint(c.source, vector3(r.x, r.y, r.z or 0.0)) end
         MDT.log(c, 'call_attach', { callId = cid, from = d.from == 'popup' and 'popup' or 'mdt' })
@@ -733,7 +886,7 @@ function MDT.registerOps()
         local r = cid and MySQL.single.await('SELECT `x`,`y`,`z` FROM `es_mdt_calls` WHERE `id` = ?', { cid })
         if not r or not r.x then return false, 'That call has no location' end
         WC:SetPlayerWaypoint(c.source, vector3(r.x, r.y, r.z or 0.0))
-        return true
+        return { id = cid, x = r.x, y = r.y }   -- 2.0.4: the client remembers it, to clear it when the call closes
     end)
 
     -- 1.3.5: the unit reached the call (the client sees it first; the server checks the position itself)
@@ -782,9 +935,12 @@ function MDT.registerOps()
         if r.status ~= 'active' then return false, 'Already closed' end
         local on = MySQL.single.await('SELECT 1 AS `x` FROM `es_mdt_call_units` WHERE `callId` = ? AND `charId` = ?', { cid, c.charId })
         if not (on or c.staff or (c.myLevel or 0) >= 60 or MDT.isHighCommand(c)) then return false, 'Attach to the call to close it' end
-        local outcome = str(d.outcome, 40)
-        if outcome == '' then return false, 'Pick an outcome' end
-        local ok, why = closeCall(cid, outcome, d.note, c.charId)
+        -- 2.0.4: one of the configured outcomes; a note when it asks for one (Other)
+        local pick = pickOutcome(d.outcome)
+        if not pick then return false, 'Pick an outcome' end
+        local outcome, note = pick.label, str(d.note, 500)
+        if pick.note == 'required' and #note < 3 then return false, ('Add a note for "%s"'):format(outcome) end
+        local ok, why = closeCall(cid, outcome, note, c.charId)
         if not ok then return false, why end
         MDT.log(c, 'call_close', { callId = cid, outcome = outcome })
         return true
@@ -886,19 +1042,22 @@ function MDT.registerOps()
         if #title < 3 then return false, 'Give it a title' end
         local hours = int(d.hours, 0, 24 * 90)
         local all = d.all == true and c.staff
-        local aid = MySQL.insert.await(('INSERT INTO `es_mdt_announcements` (`deptId`,`title`,`body`,`pinned`,`createdBy`,`expiresAt`) VALUES (?,?,?,?,?,%s)')
+        local level = annLevel(d.level)
+        local body = str(d.body, 2000)
+        local aid = MySQL.insert.await(('INSERT INTO `es_mdt_announcements` (`deptId`,`title`,`body`,`pinned`,`level`,`createdBy`,`expiresAt`) VALUES (?,?,?,?,?,?,%s)')
             :format(hours > 0 and 'NOW() + INTERVAL ? HOUR' or 'NULL'),
-            hours > 0 and { not all and c.dept.id or nil, title, str(d.body, 2000), d.pinned and 1 or 0, c.charId, hours }
-            or { not all and c.dept.id or nil, title, str(d.body, 2000), d.pinned and 1 or 0, c.charId })
+            hours > 0 and { not all and c.dept.id or nil, title, body, d.pinned and 1 or 0, level, c.charId, hours }
+            or { not all and c.dept.id or nil, title, body, d.pinned and 1 or 0, level, c.charId })
         if not aid then return false, 'It could not be posted' end
-        local payload = { id = aid, title = title, by = c.name, deptShort = all and 'ALL' or c.dept.short }
+        local payload = { id = aid, title = title, by = c.name, deptShort = all and 'ALL' or c.dept.short, level = level,
+            body = level ~= 'normal' and str(body, 160) or nil, createdAt = now() }
         local seen = {}
         for _, d2 in ipairs(all and (ED:GetDepartments() or {}) or { c.dept }) do
             for _, u in ipairs(ED:GetOnDuty(d2.id) or {}) do
                 if u.source and not seen[u.source] then seen[u.source] = true TriggerClientEvent('es_mdt:client:announce', u.source, payload) end
             end
         end
-        MDT.log(c, 'announce', { id = aid, all = all })
+        MDT.log(c, 'announce', { id = aid, all = all, level = level })
         MDT.refresh('announce')
         return { id = aid }
     end)
@@ -1000,14 +1159,20 @@ function MDT.registerOps()
     end)
 
     -- old calls close themselves
+    -- 2.0.4: the auto-close sweep (silent; see autoCloseSweep), and the caches' clean-up every 5 minutes
     CreateThread(function()
+        local every = math.max(15, tonumber(DSP.sweepSeconds) or 60)
+        local lastClean = now()
         while true do
-            Wait(5 * 60 * 1000)
-            local rows = MySQL.query.await("SELECT `id` FROM `es_mdt_calls` WHERE `status` = 'active' AND `createdAt` < NOW() - INTERVAL ? MINUTE", { DSP.callTTLMin or 120 }) or {}
-            for _, r in ipairs(rows) do closeCall(r.id, 'Expired', nil, nil) end
+            Wait(every * 1000)
+            local ok, err = pcall(autoCloseSweep)
+            if not ok then print(('^3[es_mdt] auto-close sweep failed: %s^7'):format(tostring(err))) end
             local t = now()
-            for k, v in pairs(HitSeen) do if v < t - 600 then HitSeen[k] = nil end end
-            for k, v in pairs(PlateCache) do if t - v.at > 600 then PlateCache[k] = nil end end
+            if t - lastClean >= 300 then
+                lastClean = t
+                for k, v in pairs(HitSeen) do if v < t - 600 then HitSeen[k] = nil end end
+                for k, v in pairs(PlateCache) do if t - v.at > 600 then PlateCache[k] = nil end end
+            end
         end
     end)
 end

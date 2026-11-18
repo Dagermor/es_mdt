@@ -333,6 +333,7 @@ local function openData(c)
             status = (Teams[TeamOf[c.charId] or 0] or {}).status or (Units[c.charId] or {}).status or 'available' },
         dept = { id = d.id, short = d.short, name = d.name, color1 = d.color1, color2 = d.color2, logoVer = d.logoVer, type = d.type },
         depts = depts, perms = c.perms, rights = c.rights, staff = c.staff, onDuty = c.onDuty, readOnly = c.readOnly,
+        urgent = MDT.urgentAnnouncements and MDT.urgentAnnouncements(c) or {},   -- 2.0.4: shown once when the MDT opens
         trainee = ED:IsTrainee(d.id, c.charId) == true,
         court = GetResourceState('es_doj') == 'started',   -- 1.10.0: the Court (DOJ) page in the nav
         config = { statuses = Config.UnitStatuses, reportTypes = Config.ReportTypes, personFlags = Config.PersonFlags,
@@ -340,7 +341,7 @@ local function openData(c)
             chargeOverride = { maxFineMult = (Config.ChargeOverride or {}).maxFineMult or 1.0, maxMonthsMult = (Config.ChargeOverride or {}).maxMonthsMult or 1.0 },
             unpaidFineWarrantDays = Config.UnpaidFineWarrantDays or 0, highCommandLevel = Config.HighCommandLevel or 80,
             weaponTypes = weaponTypes(), licenseTypes = W.licenseTypes or { 'Firearm' }, boloOnStolen = W.boloOnStolen ~= false,
-            outcomes = (Config.Dispatch or {}).outcomes or {}, mapRefreshMs = Config.MapRefreshMs or 3000,
+            outcomes = MDT.outcomeList and MDT.outcomeList() or {}, mapRefreshMs = Config.MapRefreshMs or 3000,
             panicKey = (Config.Panic or {}).key or '', panicCommand = (Config.Panic or {}).command or 'panic',
             reportTemplates = Config.ReportTemplates or {}, mugshotRange = (Config.Mugshots or {}).range or 6,
             esEvidence = GetResourceState('es_evidence') == 'started', devTools = EsSuite.DevTools == true },   -- 1.11.1: es_evidence parts hidden when it is off

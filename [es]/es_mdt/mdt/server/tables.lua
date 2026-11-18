@@ -320,6 +320,7 @@ local DEFS = {
         `closedBy` INT UNSIGNED NULL,
         `closedAt` DATETIME NULL,
         `sourceLabel` VARCHAR(40) NULL,
+        `everAttached` TINYINT(1) NOT NULL DEFAULT 0,
         `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
         KEY `idx_es_call_status` (`status`, `id`)
@@ -327,6 +328,13 @@ local DEFS = {
         -- 2.0.3: where a call came from (in the CREATE above too: a new table records this as done without running it)
         { id = '002_source_label', statements = {
             { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `sourceLabel` VARCHAR(40) NULL AFTER `closedAt`', unless = { column = { 'es_mdt_calls', 'sourceLabel' } } },
+        } },
+        -- 2.0.4: did a unit ever attach (kept after a detach: picks the auto-close outcome); calls closed before outcomes
+        -- were required read 'Closed'
+        { id = '003_call_close', statements = {
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `everAttached` TINYINT(1) NOT NULL DEFAULT 0 AFTER `sourceLabel`', unless = { column = { 'es_mdt_calls', 'everAttached' } } },
+            'UPDATE `es_mdt_calls` c SET c.`everAttached` = 1 WHERE EXISTS (SELECT 1 FROM `es_mdt_call_units` u WHERE u.`callId` = c.`id`)',
+            "UPDATE `es_mdt_calls` SET `outcome` = 'Closed' WHERE `status` = 'closed' AND (`outcome` IS NULL OR `outcome` = '')",
         } },
     } },
     { 'es_mdt_call_units', [[CREATE TABLE IF NOT EXISTS `es_mdt_call_units` (
@@ -368,10 +376,16 @@ local DEFS = {
         `removed` TINYINT(1) NOT NULL DEFAULT 0,
         `createdBy` INT UNSIGNED NOT NULL,
         `expiresAt` DATETIME NULL,
+        `level` VARCHAR(10) NOT NULL DEFAULT 'normal',
         `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
         KEY `idx_es_ann_dept` (`deptId`, `removed`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {
+        -- 2.0.4: priority: normal / important / urgent
+        { id = '002_ann_level', statements = {
+            { sql = "ALTER TABLE `es_mdt_announcements` ADD COLUMN `level` VARCHAR(10) NOT NULL DEFAULT 'normal' AFTER `expiresAt`", unless = { column = { 'es_mdt_announcements', 'level' } } },
+        } },
+    } },
     { 'es_mdt_templates', [[CREATE TABLE IF NOT EXISTS `es_mdt_templates` (
         `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
         `deptId` INT UNSIGNED NOT NULL,

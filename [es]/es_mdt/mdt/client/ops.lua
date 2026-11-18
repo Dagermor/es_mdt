@@ -141,8 +141,30 @@ local function setFlash(id, state, text, ms)
     render(false)
 end
 
+-- 2.0.4: every waypoint this game set to a call (card, MDT "Set waypoint", attach, partner, /panicgps): [callId] = { x, y }.
+-- When the call closes (any path) or I go off duty it is cleared, but only while the waypoint still points there
+-- (a waypoint I put somewhere else since then stays).
+local Routed = {}
+local function noteRoute(id, x, y)
+    id, x, y = tonumber(id), tonumber(x), tonumber(y)
+    if id and x and y then Routed[id] = { x = x, y = y } end
+end
+local function waypointNear(x, y)
+    if not IsWaypointActive() then return false end
+    local w = GetBlipInfoIdCoord(GetFirstBlipInfoId(8))
+    return #(vector2(w.x, w.y) - vector2(x + 0.0, y + 0.0)) <= 60.0
+end
+--- forget the waypoint I set to this call; true when it was still on my map and is gone now
+local function dropRoute(id)
+    local r = id and Routed[id]
+    if not r then return false end
+    Routed[id] = nil
+    if waypointNear(r.x, r.y) then SetWaypointOff() return true end
+    return false
+end
+
 local function routeTo(c)
-    if c and c.x and c.y then SetNewWaypoint(c.x + 0.0, c.y + 0.0) return true end
+    if c and c.x and c.y then SetNewWaypoint(c.x + 0.0, c.y + 0.0) noteRoute(c.id, c.x, c.y) return true end
     return false
 end
 -- 1.3.5: where my call is, for the arrival check: { id, x, y, r (radius, nil = off), arrived }
@@ -150,6 +172,7 @@ local Target = nil
 local function onCall(id, x, y, r)
     myCall = id
     Target = { id = id, x = tonumber(x), y = tonumber(y), r = tonumber(r), arrived = false }
+    noteRoute(id, x, y)
 end
 --- the waypoint is cleared only when it still points at the call (a waypoint the player set elsewhere stays)
 local function dropCallWaypoint(t)
@@ -166,9 +189,16 @@ local function clearRoute(id)
         local t = Target
         Target = nil
         if not (t and t.arrived) then dropCallWaypoint(t) end
+        Routed[id or t and t.id or -1] = nil
         return true
     end
     return false
+end
+--- a call is over for me: my unit's route to it and any waypoint I set to it. true when something was on my map.
+local function forgetCall(id)
+    local a = clearRoute(id)
+    local b = dropRoute(id)
+    return a or b
 end
 
 -- 1.3.5: arrival: once a second, my distance to my call; inside the radius the server checks it and sets On scene
@@ -298,6 +328,8 @@ MDTC.onCallAttach = function(id, r)
     onCall(id, r.x or (c and c.x), r.y or (c and c.y), r.arrive)
 end
 MDTC.onCallDetach = function(id) clearRoute(tonumber(id)) end
+-- 2.0.4: the MDT's "Set waypoint" (the server set it; this remembers it so a closed call takes it off the map)
+MDTC.onCallRouted = function(id, r) if type(r) == 'table' then noteRoute(r.id or id, r.x, r.y) end end
 
 RegisterNetEvent('es_mdt:client:call', function(c)
     if type(c) ~= 'table' then return end
@@ -334,9 +366,32 @@ RegisterNetEvent('es_mdt:client:callClosed', function(d)
     local id = tonumber(d.id)
     local c = find(id)
     if c then c.closed, c.outcome = true, d.outcome end
-    if clearRoute(id) then notify(('Call #%d closed%s · GPS cleared'):format(id, d.outcome and (' (' .. d.outcome .. ')') or ''), 'inform') end
+    if forgetCall(id) then notify(('Call #%d closed%s · GPS cleared'):format(id, d.outcome and (' (' .. d.outcome .. ')') or ''), 'inform') end
     if shown == id then setFlash(id, 'closed', 'Closed' .. (d.outcome and (' · ' .. d.outcome) or ''), 2200)
     else unqueue(id) end
+end)
+
+-- 2.0.4: a call is gone (auto-closed, or closed on any path; this comes after callClosed for a closed one).
+-- SILENT: no notice, sound or card. The waypoint I set to it goes (if it still points there), its card leaves the queue.
+RegisterNetEvent('es_mdt:client:callGone', function(d)
+    local id = tonumber(type(d) == 'table' and d.id)
+    if not id then return end
+    forgetCall(id)
+    local c = find(id)
+    if c and not c.closed then
+        c.closed = true
+        unqueue(id)
+        if shown == id then hide() end
+    end
+end)
+-- 2.0.4: I went off duty (or my unit was taken off its calls): GPS routes to calls go, the call cards go
+RegisterNetEvent('es_mdt:client:offDuty', function()
+    local any = false
+    if myCall and clearRoute(myCall) then any = true end
+    for id in pairs(Routed) do if dropRoute(id) then any = true end end
+    Queue = {}
+    if shown then hide() end
+    if any then notify('Off duty · call GPS cleared', 'inform') end
 end)
 
 -- my partner attached / detached our unit
@@ -374,13 +429,20 @@ end)
 RegisterCommand('panicgps', function()
     if not lastPanic or not lastPanic.x then return notify('No panic to route to', 'error') end
     SetNewWaypoint(lastPanic.x + 0.0, lastPanic.y + 0.0)
+    noteRoute(lastPanic.callId, lastPanic.x, lastPanic.y)
     notify('GPS set to the panic', 'success')
 end, false)
 
 RegisterNetEvent('es_mdt:client:announce', function(a)
     if type(a) ~= 'table' then return end
-    sound('Text_Arrive_Tone', 'Phone_SoundSet_Default', 1)
-    if not MDTC.isOpen() then notify(('Announcement (%s) · %s, by %s'):format(a.deptShort or '', a.title or '', a.by or ''), 'inform', 9000) end
+    -- 2.0.4: Important / Urgent say so; Urgent is red, stays longer and has its own tone
+    local lvl = a.level
+    if lvl == 'urgent' then sound('Beep_Red', 'DLC_HEIST_HACKING_SNAKE_SOUNDS', 3, 260)
+    else sound('Text_Arrive_Tone', 'Phone_SoundSet_Default', 1) end
+    if not MDTC.isOpen() then
+        notify(('%sAnnouncement (%s) · %s, by %s'):format(lvl == 'urgent' and 'URGENT · ' or lvl == 'important' and 'Important · ' or '',
+            a.deptShort or '', a.title or '', a.by or ''), lvl == 'urgent' and 'error' or 'inform', lvl == 'urgent' and 20000 or 9000)
+    end
     SendNUIMessage({ action = 'announce', announce = a })
 end)
 

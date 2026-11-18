@@ -9,6 +9,22 @@
   const KIND = { '911': '911', '311': '311', panic: 'PANIC', officer: 'Officer', alert: 'Alert' };
   const priPill = (p) => { const x = PRI[p] || PRI[2]; return `<span class="pri p${p}" title="${x[2]}">${x[0]}</span>`; };
   const kindTag = (k) => `<span class="ck k-${esc(k)}">${esc(KIND[k] || k)}</span>`;
+  // 2.0.4: call outcomes: the configured list (strings in old configs), a coloured badge for each
+  const AUTO_NONE = 'Auto-closed – no response', AUTO_TIMEOUT = 'Auto-closed (timeout)';
+  const OUT_FIXED = { [AUTO_NONE.toLowerCase()]: ['#e2557a', '⌛'], [AUTO_TIMEOUT.toLowerCase()]: ['#7c8aa5', '⏱'], expired: ['#7c8aa5', '⏱'] };
+  const outs = () => (cfg().outcomes || []).map((o) => (typeof o === 'string' ? { label: o, note: o.toLowerCase() === 'other' ? 'required' : null } : o)).filter((o) => o && o.label);
+  const rgb = (hex) => { let h = String(hex || '').replace('#', ''); if (h.length === 3) h = h.split('').map((c) => c + c).join(''); const n = parseInt(h, 16); return isNaN(n) || h.length !== 6 ? null : [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const outLook = (o) => {
+    const t = String(o || 'Closed'), k = t.toLowerCase();
+    const x = outs().find((q) => q.label.toLowerCase() === k);
+    const f = OUT_FIXED[k];
+    return { text: t, color: (x && x.color) || (f && f[0]) || '#8a93a6', icon: (x && x.icon) || (f && f[1]) || '■' };
+  };
+  const outBadge = (o, big) => {
+    const L = outLook(o), c = rgb(L.color) || [138, 147, 166];
+    return `<span class="ob${big ? ' big' : ''}" style="--ob:rgb(${c.join(',')});--obg:rgba(${c.join(',')},.16);--obr:rgba(${c.join(',')},.45)" title="Outcome: ${esc(L.text)}"><span class="ob-i">${esc(L.icon)}</span>${esc(L.text)}</span>`;
+  };
+  M.outBadge = outBadge;
   const UST = { enroute: ['→', 'En route'], scene: ['✓', 'On scene'] };
   const unitChip = (u) => { const st = UST[u.status]; return `<span class="uchip" style="--gc:${esc(u.color1 || '#3b4a6b')}" title="${esc(u.name)}${st ? ' · ' + st[1] : ''}">${esc(u.callsign || u.name.split(' ')[0])}${st ? ' ' + st[0] : ''}</span>`; };
 
@@ -43,7 +59,7 @@
         <div class="c-top">${priPill(c.priority)}${kindTag(c.kind)}<b class="c-title">#${c.id} ${esc(c.title)}</b><span class="hint c-age" data-age="${c.createdAt}">${ago(c.createdAt)}</span></div>
         ${c.message ? `<div class="c-msg">${esc(c.message)}</div>` : ''}
         <div class="c-foot"><span class="hint">📍 ${esc(c.street || 'No location')}</span><span class="spacer"></span>
-          ${c.status === 'closed' ? pill(c.outcome || 'Closed', 'off') : (c.units.length ? c.units.map(unitChip).join('') : '<span class="pill warn">No units</span>')}
+          ${c.status === 'closed' ? outBadge(c.outcome) : (c.units.length ? c.units.map(unitChip).join('') : '<span class="pill warn">No units</span>')}
           ${c.notes ? `<span class="hint">✎ ${c.notes}</span>` : ''}</div></div>`).join('')
       : empty(D.status === 'active' ? 'No active calls. Quiet shift.' : 'No closed calls yet', '☎');
     $$('[data-cpick]', box).forEach((el) => el.onclick = () => { D.sel = +el.dataset.cpick; $$('[data-cpick]', box).forEach((x) => x.classList.toggle('sel', x === el)); dDetail(D.sel); });
@@ -58,7 +74,7 @@
     if (!r.ok) { box.innerHTML = empty(r.why); return; }
     const c = r.data, active = c.status === 'active', on = S.ctx.onDuty && !S.ctx.readOnly;
     box.innerHTML = `<div class="call-head p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}">
-        <div class="row">${priPill(c.priority)}${kindTag(c.kind)}${active ? pill('Active', 'on') : pill('Closed · ' + (c.outcome || ''), 'off')}<span class="spacer"></span><span class="hint">${dateTime(c.createdAt)} · ${ago(c.createdAt)}</span></div>
+        <div class="row">${priPill(c.priority)}${kindTag(c.kind)}${active ? pill('Active', 'on') : pill('Closed', 'off') + outBadge(c.outcome, true)}<span class="spacer"></span><span class="hint">${dateTime(c.createdAt)} · ${ago(c.createdAt)}</span></div>
         <div class="v-title">#${c.id} ${esc(c.title)}</div>
         ${c.message ? `<div class="c-say">“${esc(c.message)}”</div>` : ''}
         <div class="facts"><span><i>Location</i>${esc(c.street || '—')}</span><span><i>Caller</i>${esc(c.callerName || '—')}</span><span><i>Phone</i>${esc(c.callerPhone || '—')}</span></div>
@@ -69,7 +85,7 @@
         <div class="card"><div class="card-title">Units on this call</div>${c.units.length ? c.units.map((u) => `<div class="li click" data-person="${u.charId}">${unitChip(u)}<div class="li-main"><b>${esc(u.name)}</b><span class="hint">${esc(u.deptShort || 'off duty')}</span></div></div>`).join('') : empty('Nobody has attached yet')}</div>
         <div class="card"><div class="card-title">Notes &amp; timeline</div>
           <div class="tl">${(c.notesList || []).map((n) => `<div class="tl-i"><span class="tl-dot"></span><div><b>${esc(n.note)}</b><div class="hint">${esc(n.by)} · ${ago(n.createdAt)}</div></div></div>`).join('') || '<div class="hint">No notes yet.</div>'}
-          ${!active ? `<div class="tl-i end"><span class="tl-dot"></span><div><b>Closed: ${esc(c.outcome || '')}</b>${c.closeNote ? `<div>${esc(c.closeNote)}</div>` : ''}<div class="hint">${esc(c.closedByName || 'Automatically')} · ${ago(c.closedAt)}</div></div></div>` : ''}</div>
+          ${!active ? `<div class="tl-i end"><span class="tl-dot"></span><div><div class="row tight"><b>Closed</b>${outBadge(c.outcome)}</div>${c.closeNote ? `<div class="tl-note">${esc(c.closeNote)}</div>` : ''}<div class="hint">${esc(c.closedByName || 'Automatically')} · ${c.closedAt ? dateTime(c.closedAt) + ' · ' + ago(c.closedAt) : ''}</div></div></div>` : ''}</div>
           ${active && !S.ctx.readOnly ? '<div class="note-add"><input type="text" id="cd-note" maxlength="500" placeholder="Add a note… (Enter)"><button class="btn small" id="cd-note-go">Add</button></div>' : ''}</div>
       </div>`;
     const reload = () => { dList(true); dDetail(id, true); };
@@ -81,15 +97,33 @@
     if ($('#cd-note-go')) { $('#cd-note-go').onclick = addNote; $('#cd-note').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addNote(); } }; }
   }
 
+  // 2.0.4: close a call: pick how it ended (big buttons, 1-6 on the keyboard); Other needs a note
   function closeForm(c, after) {
-    const outs = cfg().outcomes || [];
-    let pick = outs[0] || 'Resolved';
-    modal(`<div class="m-title">Close call #${c.id}</div><p class="hint">${esc(c.title)}</p>
-      <div class="field"><label>Outcome</label><div class="chips" id="co-o">${outs.map((o, i) => `<button class="chip-b${i === 0 ? ' on' : ''}" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div></div>
-      <div class="field"><label>Closing note <span class="hint">(optional)</span></label><textarea id="co-n" maxlength="500" placeholder="What happened, report number…"></textarea></div>
-      <div class="row end"><button class="btn ghost" data-x>Cancel</button><button class="btn danger" id="co-go" data-primary>Close call</button></div>`, (card, closeIt) => {
-      $$('[data-o]', card).forEach((b) => b.onclick = () => { pick = b.dataset.o; $$('[data-o]', card).forEach((x) => x.classList.toggle('on', x === b)); });
-      $('#co-go', card).onclick = (e) => busy(e.currentTarget, async () => { if (said(await call('callClose', { id: c.id, outcome: pick, note: $('#co-n', card).value }), 'Call closed')) { closeIt(); after(); } });
+    const list = outs();
+    let pick = null;
+    modal(`<div class="m-title">Close call #${c.id}</div>
+      <div class="co-call">${priPill(c.priority)}${kindTag(c.kind)}<b>${esc(c.title)}</b><span class="hint">📍 ${esc(c.street || 'No location')}</span></div>
+      <div class="field"><label>How did it end?</label><div class="oc-grid" id="co-o">${list.map((o, i) => {
+        const col = rgb(o.color) || [138, 147, 166];
+        return `<button type="button" class="oc" data-o="${esc(o.label)}" style="--ob:rgb(${col.join(',')});--obg:rgba(${col.join(',')},.14)"><span class="oc-k">${i + 1}</span><span class="oc-i">${esc(o.icon || '■')}</span><span class="oc-l">${esc(o.label)}</span>${o.note === 'required' ? '<span class="oc-req">note needed</span>' : ''}</button>`; }).join('')}</div></div>
+      <div class="field"><label>Closing note <span class="hint" id="co-nh">(optional)</span></label><textarea id="co-n" maxlength="500" placeholder="What happened, report number…"></textarea><div class="co-err" id="co-err"></div></div>
+      <div class="row end"><button class="btn ghost" data-x>Cancel</button><button class="btn danger" id="co-go" data-primary disabled>Pick an outcome</button></div>`, (card, closeIt) => {
+      const go_ = $('#co-go', card), note = $('#co-n', card), err = $('#co-err', card), nh = $('#co-nh', card);
+      const needNote = () => { const o = list.find((x) => x.label === pick); return !!(o && o.note === 'required'); };
+      const check = () => {
+        const need = needNote(), short = need && note.value.trim().length < 3;
+        nh.textContent = need ? '(required)' : '(optional)'; nh.classList.toggle('req', need);
+        note.placeholder = need ? 'Say what happened (required for Other)…' : 'What happened, report number…';
+        err.textContent = pick && short ? 'Add a short note for “' + pick + '”.' : '';
+        go_.disabled = !pick || short;
+        go_.textContent = pick ? 'Close as ' + pick : 'Pick an outcome';
+      };
+      const choose = (label) => { pick = label; $$('[data-o]', card).forEach((x) => x.classList.toggle('on', x.dataset.o === label)); check(); if (needNote()) note.focus(); };
+      $$('[data-o]', card).forEach((b) => b.onclick = () => choose(b.dataset.o));
+      note.oninput = check;
+      card.addEventListener('keydown', (e) => { if (e.target === note) return; const n = +e.key; if (n >= 1 && n <= list.length) { e.preventDefault(); choose(list[n - 1].label); } });
+      go_.onclick = (e) => busy(e.currentTarget, async () => { if (said(await call('callClose', { id: c.id, outcome: pick, note: note.value }), 'Call closed · ' + pick)) { closeIt(); after(); } });
+      check();
     });
   }
 
@@ -136,30 +170,79 @@
     wireAnn(host);
   };
 
-  const annHtml = (a) => `<div class="ann${a.pinned ? ' pinned' : ''}"><div class="ann-top">${a.pinned ? '<span class="a-pin" title="Pinned">📌</span>' : ''}<b>${esc(a.title)}</b>${a.all ? pill('All departments', 'accent') : ''}<span class="spacer"></span>
+  // 2.0.4: announcements: priority (Normal / Important / Urgent), a body that keeps its lines, **bold** and "- " bullets
+  const LVL = { normal: ['Normal', ''], important: ['Important', '❗'], urgent: ['Urgent', '🚨'] };
+  const lvlOf = (a) => (LVL[a && a.level] ? a.level : 'normal');
+  const annText = (t) => {
+    const lines = esc(t || '').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').split(/\r?\n/);
+    let out = '', inList = false;
+    lines.forEach((l) => {
+      const m = l.match(/^\s*[-•*]\s+(.*)$/);
+      if (m) { if (!inList) { out += '<ul>'; inList = true; } out += `<li>${m[1]}</li>`; return; }
+      if (inList) { out += '</ul>'; inList = false; }
+      out += l.trim() ? `<p>${l}</p>` : '<p class="gap"></p>';
+    });
+    return out + (inList ? '</ul>' : '');
+  };
+  M.annText = annText;
+  const annHtml = (a) => { const lv = lvlOf(a); return `<div class="ann lv-${lv}${a.pinned ? ' pinned' : ''}"><div class="ann-top">${a.pinned ? '<span class="a-pin" title="Pinned">📌</span>' : ''}${lv !== 'normal' ? `<span class="ann-lv lv-${lv}">${LVL[lv][1]} ${LVL[lv][0]}</span>` : ''}<b class="ann-title">${esc(a.title)}</b>${a.all ? pill('All departments', 'accent') : ''}<span class="spacer"></span>
       ${a.canEdit && !S.ctx.readOnly ? `<button class="icon-btn" data-apin="${a.id}" title="${a.pinned ? 'Unpin' : 'Pin to the top'}">${a.pinned ? '⇣' : '📌'}</button><button class="icon-btn" data-adel="${a.id}" title="Remove">✕</button>` : ''}</div>
-    ${a.body ? `<div class="ann-body">${esc(a.body).replace(/\n/g, '<br>')}</div>` : ''}
-    <div class="hint">${esc(a.by)} · ${ago(a.createdAt)}${a.expiresAt ? ' · until ' + dateTime(a.expiresAt) : ''}</div></div>`;
+    ${a.body ? `<div class="ann-body">${annText(a.body)}</div>` : ''}
+    <div class="ann-meta"><span class="ann-by">✎ ${esc(a.by)}${a.deptShort && !a.all ? ' · ' + esc(a.deptShort) : ''}</span><span title="${dateTime(a.createdAt)}">${dateTime(a.createdAt)} · ${ago(a.createdAt)}</span>${a.expiresAt ? `<span>until ${dateTime(a.expiresAt)}</span>` : ''}</div></div>`; };
   function wireAnn(host) {
     $$('[data-apin]', host).forEach((b) => b.onclick = () => busy(b, async () => { if (said(await call('announceAct', { id: +b.dataset.apin, act: 'pin' }))) go('dashboard'); }));
     $$('[data-adel]', host).forEach((b) => b.onclick = async () => { if (await confirmBox('Remove announcement', 'Take this announcement down for everyone?', 'Remove', true)) if (said(await call('announceAct', { id: +b.dataset.adel, act: 'remove' }), 'Removed')) go('dashboard'); });
   }
   function annForm() {
-    let hours = 0;
+    let hours = 0, level = 'normal';
     const H = [[0, 'Never'], [12, '12 hours'], [24, '1 day'], [72, '3 days'], [168, '1 week'], [720, '30 days']];
     modal(`<div class="m-title">Post an announcement</div><p class="hint">Shown on the ${S.ctx.staff ? 'chosen' : esc(S.ctx.dept.short)} Dashboard. Officers on duty get a notification.</p>
       <div class="field"><label>Title</label><input id="af-t" maxlength="120" placeholder="Briefing at 20:00, Mission Row"></div>
-      <div class="field"><label>Message</label><textarea id="af-b" maxlength="2000" placeholder="Details…"></textarea></div>
+      <div class="field"><label>Priority</label><div class="lv-pick" id="af-l">${Object.keys(LVL).map((k) => `<button type="button" data-lv="${k}" class="lv-o lv-${k}${k === 'normal' ? ' on' : ''}"><b>${LVL[k][1]} ${LVL[k][0]}</b><span>${k === 'normal' ? 'On the Dashboard, a quiet notice' : k === 'important' ? 'Highlighted in amber' : 'Red banner + alert for everyone on duty'}</span></button>`).join('')}</div></div>
+      <div class="field"><label>Message <span class="hint">· new lines stay · **bold** · start a line with "- " for a list</span></label><textarea id="af-b" maxlength="2000" rows="5" placeholder="Details…"></textarea></div>
+      <div class="field"><label>Preview</label><div class="ann-prev" id="af-prev"></div></div>
       <div class="field"><label>Takes itself down after</label><div class="seg" id="af-h">${H.map(([h, l]) => `<button data-h="${h}" class="${h === 0 ? 'on' : ''}">${l}</button>`).join('')}</div></div>
       <div class="row"><label class="chip-t"><input type="checkbox" id="af-pin"><span>📌 Pin to the top</span></label>${S.ctx.staff ? '<label class="chip-t"><input type="checkbox" id="af-all"><span>All departments</span></label>' : ''}</div>
       <div class="row end"><button class="btn ghost" data-x>Cancel</button><button class="btn accent" id="af-go" data-primary>Post</button></div>`, (card, closeIt) => {
       $$('[data-h]', card).forEach((b) => b.onclick = () => { hours = +b.dataset.h; $$('[data-h]', card).forEach((x) => x.classList.toggle('on', x === b)); });
+      const prev = () => { $('#af-prev', card).innerHTML = annHtml({ id: 0, title: $('#af-t', card).value || 'Title', body: $('#af-b', card).value, level, by: S.ctx.me.name, deptShort: S.ctx.dept.short, createdAt: Math.floor(Date.now() / 1000), pinned: $('#af-pin', card).checked }); };
+      $$('[data-lv]', card).forEach((b) => b.onclick = () => { level = b.dataset.lv; $$('[data-lv]', card).forEach((x) => x.classList.toggle('on', x === b)); prev(); });
+      ['#af-t', '#af-b'].forEach((q) => $(q, card).addEventListener('input', prev)); $('#af-pin', card).addEventListener('change', prev); prev();
       $('#af-go', card).onclick = (e) => busy(e.currentTarget, async () => {
-        const r = await call('announceSave', { title: $('#af-t', card).value, body: $('#af-b', card).value, hours, pinned: $('#af-pin', card).checked, all: !!($('#af-all', card) && $('#af-all', card).checked) });
+        const r = await call('announceSave', { title: $('#af-t', card).value, body: $('#af-b', card).value, hours, level, pinned: $('#af-pin', card).checked, all: !!($('#af-all', card) && $('#af-all', card).checked) });
         if (said(r, 'Posted')) { closeIt(); go('dashboard'); }
       });
     });
   }
+
+  // ================================================================ 2.0.4: URGENT announcement banner
+  const seenKey = () => 'es_mdt_urgent_seen_' + ((S.ctx && S.ctx.me && S.ctx.me.charId) || 0);
+  const seenGet = () => { try { return JSON.parse(localStorage.getItem(seenKey()) || '[]'); } catch (e) { return []; } };
+  const seenAdd = (id) => { try { const s = seenGet().filter((x) => x !== id); s.push(id); localStorage.setItem(seenKey(), JSON.stringify(s.slice(-50))); } catch (e) { /* no storage */ } };
+  function urgentBanner(a) {
+    if (!a || !$('.main')) return;
+    let b = $('#urgent-banner');
+    if (!b) { b = document.createElement('div'); b.id = 'urgent-banner'; b.className = 'urgent-banner'; $('.main').insertBefore(b, $('.main').children[1]); }
+    b.innerHTML = `<span class="ub-ico">🚨</span><div class="li-main"><b>URGENT · ${esc(a.deptShort || '')} · ${esc(a.title)}</b>${a.body ? `<span class="ub-body">${esc(String(a.body).split(/\r?\n/)[0]).slice(0, 160)}</span>` : ''}<span class="hint">✎ ${esc(a.by || '')}${a.createdAt ? ' · ' + ago(a.createdAt) : ''}</span></div>
+      <button class="btn" id="ub-view">Read</button><button class="btn ghost" id="ub-ok">Got it</button>`;
+    b.classList.remove('hidden');
+    seenAdd(a.id);
+    $('#ub-view').onclick = () => { b.classList.add('hidden'); go('dashboard'); };
+    $('#ub-ok').onclick = () => b.classList.add('hidden');
+  }
+  M.urgentBanner = urgentBanner;
+  // the MDT opens: an urgent announcement this member has not seen yet (fresh ones only, the server picks them)
+  function urgentOnOpen(ctx) {
+    const list = (ctx && ctx.urgent) || [];
+    if (!ctx || !ctx.onDuty || !list.length) return;
+    const seen = seenGet();
+    const fresh = list.filter((a) => !seen.includes(a.id));
+    if (!fresh.length) return;
+    urgentBanner(fresh[0]);
+    toast(`🚨 Urgent announcement · ${fresh[0].title}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`, 'err');
+    fresh.slice(1).forEach((a) => seenAdd(a.id));
+  }
+  M.urgentOnOpen = urgentOnOpen;
 
   // ================================================================ PANIC banner (inside the MDT)
   let panicT = null;
@@ -579,7 +662,11 @@
       panicBanner(m.panic); M.loadBadges();
     } else if (m.action === 'announce') {
       if (!S.open || !m.announce) return;
-      toast(`📣 ${m.announce.deptShort || ''} · ${m.announce.title}`, 'ok');
+      const a = m.announce, lv = lvlOf(a);
+      toast(`${lv === 'urgent' ? '🚨 URGENT' : lv === 'important' ? '❗ Important' : '📣'} ${a.deptShort || ''} · ${a.title}`, lv === 'urgent' ? 'err' : 'ok');
+      if (lv === 'urgent') urgentBanner(a);
+      if (S.view === 'dashboard' && !(M.modalOpen && M.modalOpen())) go('dashboard');
+    } else if (m.action === 'open') { setTimeout(() => urgentOnOpen(S.ctx), 350);
     } else if (m.action === 'close') { stopMap(); }
   });
 })();

@@ -147,7 +147,8 @@ RegisterNUICallback('call', function(d, cb)
         if res == false or res == nil then cb({ ok = false, why = why or 'That did not work' }) else cb({ ok = true, data = res }) end
         -- 1.3.2: the call card's GPS follows attach / detach made in the Dispatch tab
         if res and name == 'callAttach' and MDTC.onCallAttach then MDTC.onCallAttach(data.id, res)
-        elseif res and name == 'callDetach' and MDTC.onCallDetach then MDTC.onCallDetach(data.id) end
+        elseif res and name == 'callDetach' and MDTC.onCallDetach then MDTC.onCallDetach(data.id)
+        elseif res and name == 'callRoute' and MDTC.onCallRouted then MDTC.onCallRouted(data.id, res) end
     end)
 end)
 

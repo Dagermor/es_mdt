@@ -1,5 +1,17 @@
 # Changelog
 
+## es_mdt 2.0.4 (2026-11-18)
+
+**Call outcomes, silent auto-close, GPS cleanup, announcement priority.** See [Dispatch: closing calls, auto-close and announcements](README.md#dispatch-closing-calls-auto-close-and-announcements).
+
+- **Close outcomes:** closing a call opens a picker: Resolved, Handled on scene, Unfounded, No contact, Suspect gone, Other (keys 1 to 6). Other needs a note. The server checks the outcome against `Config.Dispatch.outcomes`, which now takes `{ label, color, icon, note }` (plain strings still work). The outcome, note, closer and time are saved on the call. Each outcome has its own coloured badge in the call list, on the call page and in its timeline. Calls closed before 2.0.4 with no outcome read **Closed**.
+- **Auto-close:** `Config.Dispatch.autoCloseMinutes` (15; 0 = off) replaces the old 2-hour expiry, and a sweep runs every `sweepSeconds` (60). Calls with a unit on them are left open unless `autoCloseAttached = true`. `callTTLMin` (120) stays as the hard cap for those. Panic calls with a unit on them are never auto-closed. The outcome is `Auto-closed – no response` (nobody ever attached) or `Auto-closed (timeout)` (someone did, even if they left), each with its own badge. Auto-close is **silent**: no popup, sound, toast or notification. The call stays in the history with a note. Fixes `callTTLMin = 0` closing every call instead of none.
+- **GPS and blip cleanup:** when a call closes by any path, everyone's waypoint that still points at it is cleared (call card, Set waypoint, attach, partner, `/panicgps`). A waypoint moved elsewhere stays. Officers who go off duty, log out or disconnect are taken off their calls (with a timeline note), and their call blips, route and cards go. Call and panic blips follow the on-duty list.
+- **Announcements:** priority Normal, Important or Urgent; cards with a coloured accent; line breaks, `**bold**` and `- ` lists in the message; author, department and time on each card; a live preview when posting. Urgent: a red banner in the MDT, a red in-game alert for everyone on duty, and the banner once for on-duty members who open the MDT within `Config.Announcements.urgentFreshHours` (12).
+- `/mdttestcall clear` removes test calls silently.
+- **Database:** `es_mdt_calls.everAttached` and `es_mdt_announcements.level`, added by migrations `003_call_close` and `002_ann_level` on existing servers (old calls with units get `everAttached = 1`; closed calls with no outcome get `Closed`), and created with the tables on fresh installs.
+- **Unchanged:** 911/311, panic, officer calls, es_jail's alerts and the dispatch exports. The source label stays admin-only.
+
 ## es_mdt 2.0.3 (2026-11-18)
 
 **Dispatch API: test calls, blip cleanup on close, admin-only source logging.**

@@ -332,7 +332,7 @@ local DEFS = {
 
 function DOJ.ensureTables()
     for _, d in ipairs(DEFS) do
-        local ok, why = Whip.core:EnsureTable(d[1], d[2], d[3] or {})
+        local ok, why = EsSchema.ensure(d[1], d[2], d[3] or {})
         if not ok then return false, ('%s: %s'):format(d[1], tostring(why)) end
     end
     return true

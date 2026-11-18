@@ -114,7 +114,7 @@ function Fto.tables()
         } } },
     }
     for _, t in ipairs(defs) do
-        local ok, why = Whip.core:EnsureTable(t[1], t[2], MIG[t[1]] or {})
+        local ok, why = EsSchema.ensure(t[1], t[2], MIG[t[1]] or {})
         if not ok then return false, ('%s: %s'):format(t[1], tostring(why)) end
     end
     return true

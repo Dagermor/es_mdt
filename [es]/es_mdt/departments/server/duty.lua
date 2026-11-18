@@ -33,7 +33,7 @@ local function trackingSince()
 end
 
 function Duty.tables()
-    local ok, why = Whip.core:EnsureTable('es_duty_sessions', [[CREATE TABLE IF NOT EXISTS `es_duty_sessions` (
+    local ok, why = EsSchema.ensure('es_duty_sessions', [[CREATE TABLE IF NOT EXISTS `es_duty_sessions` (
         `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
         `charId` INT UNSIGNED NOT NULL,
         `jobId` INT UNSIGNED NOT NULL,
@@ -49,7 +49,7 @@ function Duty.tables()
         CONSTRAINT `fk_es_duty_char` FOREIGN KEY (`charId`) REFERENCES `characters` (`charId`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {})
     if not ok then return false, why end
-    ok, why = Whip.core:EnsureTable('es_dept_health_flags', [[CREATE TABLE IF NOT EXISTS `es_dept_health_flags` (
+    ok, why = EsSchema.ensure('es_dept_health_flags', [[CREATE TABLE IF NOT EXISTS `es_dept_health_flags` (
         `jobId` INT UNSIGNED NOT NULL,
         `charId` INT UNSIGNED NOT NULL,
         `level` TINYINT UNSIGNED NOT NULL,
@@ -59,7 +59,7 @@ function Duty.tables()
         CONSTRAINT `fk_es_hflag_char` FOREIGN KEY (`charId`) REFERENCES `characters` (`charId`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {})
     if not ok then return false, why end
-    ok, why = Whip.core:EnsureTable('es_dept_loa', [[CREATE TABLE IF NOT EXISTS `es_dept_loa` (
+    ok, why = EsSchema.ensure('es_dept_loa', [[CREATE TABLE IF NOT EXISTS `es_dept_loa` (
         `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
         `deptId` INT UNSIGNED NOT NULL,
         `charId` INT UNSIGNED NOT NULL,

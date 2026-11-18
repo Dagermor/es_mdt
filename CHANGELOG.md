@@ -1,5 +1,18 @@
 # Changelog
 
+## es_mdt 2.0.5 (2026-11-18)
+
+**Database fix and a startup schema self-check.** Fixes `Unknown column 'kind'` (MDT dashboard, warrants) and `Unknown column 'origin'` (issuing a weapon license) on servers that installed 2.0.x on an empty database.
+
+- **The cause:** when WHIP's `EnsureTable` creates a table, it records all of that table's migrations as done without running them, because it expects the CREATE statement to already have every column. Some es_mdt CREATE statements were missing columns that only a migration added: `es_mdt_warrants` (`caseId`, `kind`, `scope`, `judgeCharId`, `judgeName`, `judgeNote`, `decidedAt`, key `idx_es_war_case`), `es_mdt_weapon_licenses` (`origin`) and `es_mdt_reports` (`caseId`, key `idx_es_rep_case`). So a fresh install never got them, and the migrations never ran later. Servers that upgraded from 1.x got them through the migrations and were not affected.
+- **Fixed:** every CREATE statement now has every column and key its migrations add. The migrations stay, for older databases.
+- **Safeguard: schema self-check on every start.** Every es_mdt table (MDT, Departments, DOJ and jail; 68 tables) now goes through `EsSchema.ensure` (`server/schema.lua`). Each table's CREATE statement is its single source of truth for columns and keys. On every start, after the migrations, es_mdt compares that list with the live database (`information_schema`) and adds any missing column or key. It never drops, renames or changes an existing column, key or row, and it doesn't add foreign keys or primary keys. Missing columns no longer depend on a migration marker in `schema_migrations`: a skipped or wrongly recorded migration is caught at the next start.
+  - Each fix is logged: `[es_mdt] schema: added missing column `es_mdt_warrants`.`kind``.
+  - A fix that fails prints a red **SCHEMA ERROR** block in the server console with the exact SQL to run by hand, and is reported as a WHIP start problem. It never fails silently. About 20 seconds after start, one line sums it up: `[es_mdt] schema check: 68 tables OK`, or the list of problems.
+  - If a migration fails but the table still ends up with every column and key, es_mdt logs it and carries on. whip_core retries the migration at the next start.
+- **Upgrading:** nothing to do. Start the server: a database with missing columns is repaired on the first start, and the console lists what was added.
+- **Tested** against a real MariaDB database with whip_core's own migration code: a fresh database, an old 1.x database with data in it, a broken 2.0.4 fresh install (the reported errors reproduced, then repaired), extra columns and keys left untouched, and a fix that fails (loud error, the other fixes still made, repaired at the next start).
+
 ## es_mdt 2.0.4 (2026-11-18)
 
 **Call outcomes, silent auto-close, GPS cleanup, announcement priority.** See [Dispatch: closing calls, auto-close and announcements](README.md#dispatch-closing-calls-auto-close-and-announcements).

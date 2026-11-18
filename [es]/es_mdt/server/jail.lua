@@ -114,7 +114,7 @@ end
 
 -- ---------------------------------------------------------------- the MDT's own record (every sentence, any jail)
 local function ensureTable()
-    return Whip.core:EnsureTable('es_mdt_jail_sentences', [[CREATE TABLE IF NOT EXISTS `es_mdt_jail_sentences` (
+    return EsSchema.ensure('es_mdt_jail_sentences', [[CREATE TABLE IF NOT EXISTS `es_mdt_jail_sentences` (
         `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
         `charId` INT UNSIGNED NOT NULL,
         `months` INT UNSIGNED NOT NULL DEFAULT 0,

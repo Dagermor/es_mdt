@@ -139,7 +139,7 @@ local function load()
 end
 
 local function ensureTables()
-    local ok, why = Whip.core:EnsureTable('es_departments', [[CREATE TABLE IF NOT EXISTS `es_departments` (
+    local ok, why = EsSchema.ensure('es_departments', [[CREATE TABLE IF NOT EXISTS `es_departments` (
         `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
         `jobId` INT UNSIGNED NOT NULL,
         `short` VARCHAR(12) NOT NULL,
@@ -159,7 +159,7 @@ local function ensureTables()
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {})
     if not ok then return false, why end
 
-    ok, why = Whip.core:EnsureTable('es_dept_ranks', [[CREATE TABLE IF NOT EXISTS `es_dept_ranks` (
+    ok, why = EsSchema.ensure('es_dept_ranks', [[CREATE TABLE IF NOT EXISTS `es_dept_ranks` (
         `roleId` INT UNSIGNED NOT NULL,
         `jobId` INT UNSIGNED NOT NULL,
         `abbr` VARCHAR(8) NULL,
@@ -171,7 +171,7 @@ local function ensureTables()
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {})
     if not ok then return false, why end
 
-    ok, why = Whip.core:EnsureTable('es_dept_members', [[CREATE TABLE IF NOT EXISTS `es_dept_members` (
+    ok, why = EsSchema.ensure('es_dept_members', [[CREATE TABLE IF NOT EXISTS `es_dept_members` (
         `jobId` INT UNSIGNED NOT NULL,
         `charId` INT UNSIGNED NOT NULL,
         `callsign` VARCHAR(16) NULL,

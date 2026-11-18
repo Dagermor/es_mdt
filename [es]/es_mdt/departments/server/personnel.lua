@@ -97,7 +97,7 @@ function Pers.tables()
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
     }
     for _, t in ipairs(defs) do
-        local ok, why = Whip.core:EnsureTable(t[1], t[2], {})
+        local ok, why = EsSchema.ensure(t[1], t[2], {})
         if not ok then return false, t[1] .. ': ' .. tostring(why) end
     end
     return true

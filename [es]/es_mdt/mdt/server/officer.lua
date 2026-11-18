@@ -74,7 +74,7 @@ local function dayEnd(s)
 end
 
 function MDT.registerOfficer()
-    local ok, why = Whip.core:EnsureTable('es_mdt_officer_photos', [[CREATE TABLE IF NOT EXISTS `es_mdt_officer_photos` (
+    local ok, why = EsSchema.ensure('es_mdt_officer_photos', [[CREATE TABLE IF NOT EXISTS `es_mdt_officer_photos` (
         `charId` INT UNSIGNED NOT NULL,
         `image` MEDIUMTEXT NOT NULL,
         `origin` VARCHAR(12) NOT NULL DEFAULT 'upload',

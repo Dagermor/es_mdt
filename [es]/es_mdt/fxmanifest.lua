@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.0.4'
+version '2.0.5'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -28,6 +28,7 @@ shared_scripts {
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     '@whip_core/server/db_guard.lua',
+    'server/schema.lua',           -- 2.0.5: EsSchema, the startup schema self-check every table goes through
     'server/adopt.lua',
     'server/jail.lua',
     'departments/server/logo.lua',

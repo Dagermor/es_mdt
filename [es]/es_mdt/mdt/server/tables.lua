@@ -27,11 +27,13 @@ local DEFS = {
         `body` TEXT NULL,
         `location` VARCHAR(120) NULL,
         `authorCharId` INT UNSIGNED NOT NULL,
+        `caseId` INT UNSIGNED NULL,
         `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
         KEY `idx_es_rep_dept` (`deptId`, `createdAt`),
         KEY `idx_es_rep_author` (`authorCharId`),
+        KEY `idx_es_rep_case` (`caseId`),
         CONSTRAINT `fk_es_rep_dept` FOREIGN KEY (`deptId`) REFERENCES `es_departments` (`id`) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {
         -- 1.5.0: a report can belong to a case
@@ -95,12 +97,20 @@ local DEFS = {
         `fineId` INT UNSIGNED NULL,
         `auto` TINYINT(1) NOT NULL DEFAULT 0,
         `bolosPosted` TINYINT(1) NOT NULL DEFAULT 0,
+        `caseId` INT UNSIGNED NULL,
+        `kind` VARCHAR(10) NOT NULL DEFAULT 'arrest',
+        `scope` VARCHAR(300) NULL,
+        `judgeCharId` INT UNSIGNED NULL,
+        `judgeName` VARCHAR(80) NULL,
+        `judgeNote` VARCHAR(300) NULL,
+        `decidedAt` DATETIME NULL,
         `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
         UNIQUE KEY `uk_es_war_fine` (`fineId`),
         KEY `idx_es_war_status` (`status`),
         KEY `idx_es_war_char` (`charId`),
+        KEY `idx_es_war_case` (`caseId`),
         CONSTRAINT `fk_es_war_dept` FOREIGN KEY (`deptId`) REFERENCES `es_departments` (`id`) ON DELETE CASCADE,
         CONSTRAINT `fk_es_war_char` FOREIGN KEY (`charId`) REFERENCES `characters` (`charId`) ON DELETE CASCADE,
         CONSTRAINT `fk_es_war_rep` FOREIGN KEY (`reportId`) REFERENCES `es_mdt_reports` (`id`) ON DELETE SET NULL
@@ -260,6 +270,7 @@ local DEFS = {
         `updatedBy` INT UNSIGNED NULL,
         `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         `note` VARCHAR(300) NULL,
+        `origin` VARCHAR(16) NULL,
         PRIMARY KEY (`id`),
         UNIQUE KEY `uk_es_wlic` (`charId`, `type`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {
@@ -518,11 +529,14 @@ local DEFS = {
 
 function Tables.ensure()
     for _, t in ipairs(DEFS) do
-        local ok, why = Whip.core:EnsureTable(t[1], t[2], t[3] or {})
+        local ok, why = EsSchema.ensure(t[1], t[2], t[3] or {})
         if not ok then return false, ('%s: %s'):format(t[1], tostring(why)) end
     end
     return true
 end
+
+-- for the schema tests (EsSchema, server/schema.lua, checks every table against its CREATE at each start)
+Tables.DEFS = DEFS
 
 --- The starter penal code, once (an empty table only)
 function Tables.seedPenal()

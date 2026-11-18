@@ -132,7 +132,7 @@ function MDT.registerCases()
     end)
 
     -- ------------------------------------------------------------ one case, everything linked
-    cb('case', { rate = 300, burst = 6 }, function(c, d)
+    cb('case', { rate = 250, burst = 8 }, function(c, d)
         local k = getCase(d.id)
         if not k then return false, 'No such case' end
         local ids = { k.leadCharId, k.createdBy }

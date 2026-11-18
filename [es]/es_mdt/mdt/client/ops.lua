@@ -4,6 +4,7 @@ local DSP = Config.Dispatch or {}
 local PAN = Config.Panic or {}
 local myPanicAt = 0   -- my own panic: no card for it on my screen
 local myBackupAt = -60000   -- 2.0.6: my own backup request: no card for it either
+local Board = { open = false, poke = function() end, close = function() end }   -- 2.0.7: the call board (below)
 
 local function wc() return exports.whip_core end
 local function notify(text, kind, ms) wc():Notify(text, kind or 'inform', ms) end
@@ -33,6 +34,7 @@ local function dial(kind, args)
     CreateThread(function()
         local r, why = wc():Callback('es_mdt:dial', { kind = kind, message = msg, street = streetHere() })
         if type(r) ~= 'table' then return notify(why or 'Dispatch did not answer', 'error') end
+        if r.merged then return notify(('Dispatch already has this (#%d) · your report was added'):format(r.id), 'success', 7000) end
         notify(r.units > 0 and ('Dispatch has your call (#%d). Units are being told.'):format(r.id)
             or ('Dispatch has your call (#%d). No units are on duty right now.'):format(r.id), 'success', 7000)
     end)
@@ -55,7 +57,7 @@ local function pressPanic()
     CreateThread(function()
         local r, why = wc():Callback('es_mdt:panic', { street = streetHere() })
         if type(r) ~= 'table' then return notify(why or 'Panic did not go through', 'error') end
-        notify('OFFICER DOWN sent. Units on duty have your location.', 'error', 6000)
+        notify('Panic sent · units alerted', 'success', 6000)   -- 2.0.7: short (whip's toast cuts long text), success style
     end)
 end
 RegisterCommand(PAN.command or 'panic', pressPanic, false)
@@ -71,10 +73,45 @@ RegisterNUICallback('panicBtn', function(_, cb) pressPanic() cb({ ok = true }) e
 
 local lastPanic
 local function sound(name, set, times, gap)
+    if (times or 1) <= 1 then PlaySoundFrontend(-1, name, set, true) return end
     CreateThread(function()
         for _ = 1, times or 1 do PlaySoundFrontend(-1, name, set, true) Wait(gap or 250) end
     end)
 end
+--- 2.0.7: an alert sound by tier ('routine', 'priority', 'critical', 'soft', 'ok', 'announce', 'urgent'), at the player's own
+--- volume / mute (client/ui.lua EsAlertSound; the Aa popover). -> played
+local function tone(tier)
+    local es = rawget(_G, 'EsAlertSound')   -- client/ui.lua's (a real global, not a stub)
+    if type(es) == 'function' then return es(tier) end
+    -- client/ui.lua not loaded (should not happen): GTA's own sounds, the same as its 'game' engine
+    if tier == 'critical' or tier == 'urgent' then sound('Beep_Red', 'DLC_HEIST_HACKING_SNAKE_SOUNDS', 4, 220)
+    elseif tier == 'soft' or tier == 'announce' then sound('Text_Arrive_Tone', 'Phone_SoundSet_Default', 1)
+    elseif tier == 'ok' then sound('Menu_Accept', 'Phone_SoundSet_Default', 1)
+    else sound('Event_Message_Purple', 'GTAO_FM_Events_Soundset', tier == 'priority' and 2 or 1, 400) end
+    return true
+end
+local function tierOf(c) return (c.critical and 'critical') or (c.priority == 1 and 'priority') or 'routine' end
+
+-- 2.0.7: a CRITICAL call's alarm repeats (Config.Dispatch.critical) until this unit acknowledges it (Respond / Hide on its
+-- card, Ack on the board, attaching anywhere) or, with stopOnUnit, until any unit responds; and always when it closes.
+local CRIT = DSP.critical or {}
+local Alarm = {}   -- [callId] = { left = repeats still to play }
+local function ack(id) if id then Alarm[tonumber(id)] = nil end end
+MDTC.ackCall = ack
+local function startAlarm(id)
+    if CRIT.enabled == false then return end
+    Alarm[id] = { left = math.max(0, math.floor(tonumber(CRIT.maxRepeats) or 8)) }
+end
+CreateThread(function()
+    local gap = math.max(2, tonumber(CRIT.repeatSeconds) or 4) * 1000
+    while true do
+        Wait(gap)
+        for id, a in pairs(Alarm) do
+            if a.left <= 0 then Alarm[id] = nil
+            else a.left = a.left - 1 tone('critical') end
+        end
+    end
+end)
 
 -- ---------------------------------------------------------------- 1.3.2: call popup
 -- A compact card (top right) for every new call while the MDT is closed: attend with one key (attaches your unit,
@@ -125,7 +162,8 @@ local function render(restart)
     SendNUIMessage({ action = 'cpop', show = true, restart = restart, seq = seq,
         call = { id = c.id, kind = c.kind, priority = c.priority, title = c.title, message = c.message, street = c.street,
             callerName = c.callerName, units = c.units, closed = c.closed, outcome = c.outcome, mine = myCall == c.id,
-            escalated = c.escalated, parentId = c.parentId },
+            escalated = c.escalated, parentId = c.parentId,
+            critical = c.critical, icon = c.icon, reports = c.reports, radius = c.radius, details = c.details, alarm = Alarm[c.id] ~= nil },
         dist = dist, age = ageOf(c), left = math.max(0, hideAt - GetGameTimer()),
         more = math.max(0, #Queue - 1), state = f and f.state or nil, note = f and f.text or nil,
         keys = { attend = keyOf(CMD.attend, POP.attendKey), dismiss = keyOf(CMD.dismiss, POP.dismissKey), recall = '/' .. CMD.recall, detach = '/' .. CMD.detach } })
@@ -293,6 +331,7 @@ local function attend()
     if not shown or attending or MDTC.isOpen() or IsNuiFocused() or IsPauseMenuActive() then return end
     local c = find(shown)
     if not c then return end
+    ack(c.id)   -- 2.0.7: pressing Respond acknowledges a critical alarm
     if c.closed then return setFlash(c.id, 'error', 'This call is closed') end
     if myCall == c.id then routeTo(c) return setFlash(c.id, 'attached', 'GPS set again') end
     attending = true
@@ -303,7 +342,7 @@ local function attend()
         if r.x then c.x, c.y, c.z = r.x, r.y, r.z end
         onCall(c.id, c.x, c.y, r.arrive)
         local routed = routeTo(c)
-        if POP.sound ~= false then PlaySoundFrontend(-1, 'Menu_Accept', 'Phone_SoundSet_Default', true) end
+        if POP.sound ~= false then tone('ok') end
         setFlash(c.id, 'attached', (r.units or 1) > 1 and (routed and 'Attached with your partner · GPS set' or 'Attached with your partner')
             or (routed and 'Attached · GPS set' or 'Attached (no location on this call)'), 2500)
     end)
@@ -323,7 +362,7 @@ end
 
 RegisterCommand(CMD.attend, attend, false)
 RegisterKeyMapping(CMD.attend, 'Police: respond to the call on screen (attach + GPS)', 'keyboard', POP.attendKey or 'E')
-RegisterCommand(CMD.dismiss, function() if shown then next_() end end, false)
+RegisterCommand(CMD.dismiss, function() if shown then ack(shown) next_() end end, false)
 RegisterKeyMapping(CMD.dismiss, 'Police: hide the call card', 'keyboard', POP.dismissKey or 'DELETE')
 RegisterCommand(CMD.recall, function()
     if MDTC.isOpen() then return end
@@ -341,6 +380,7 @@ RegisterKeyMapping(CMD.detach, 'Police: leave the call you are on', 'keyboard', 
 MDTC.onCallAttach = function(id, r)
     id = tonumber(id)
     if not id then return end
+    ack(id)
     local c = find(id)
     if c and type(r) == 'table' and r.x then c.x, c.y, c.z = r.x, r.y, r.z end
     r = type(r) == 'table' and r or {}
@@ -353,8 +393,10 @@ MDTC.onCallRouted = function(id, r) if type(r) == 'table' then noteRoute(r.id or
 RegisterNetEvent('es_mdt:client:call', function(c)
     if type(c) ~= 'table' then return end
     local mine = (c.kind == 'panic' and GetGameTimer() - myPanicAt < 8000) or (c.kind == 'backup' and GetGameTimer() - myBackupAt < 8000)
-    if c.kind ~= 'panic' and not mine and POP.sound ~= false then
-        sound('Event_Message_Purple', 'GTAO_FM_Events_Soundset', c.priority == 1 and 2 or 1, 400)
+    -- 2.0.7: three tiers (routine, P1, critical); a critical one repeats until acknowledged (never my own panic / backup)
+    if not mine and POP.sound ~= false then
+        tone(tierOf(c))
+        if c.critical then startAlarm(tonumber(c.id)) end
     end
     if not MDTC.isOpen() then
         if POP_ON then
@@ -377,7 +419,22 @@ RegisterNetEvent('es_mdt:client:callUnits', function(d)
     local c = find(tonumber(d.id))
     if not c then return end
     c.units = type(d.units) == 'table' and d.units or {}
+    if CRIT.stopOnUnit ~= false and #c.units > 0 then ack(c.id) end
     if shown == c.id then render(false) end
+    if Board.open then Board.poke() end
+end)
+
+-- 2.0.7: another report folded into a call: the count, its priority, the smaller search circle (the card updates quietly)
+RegisterNetEvent('es_mdt:client:callMerged', function(d)
+    if type(d) ~= 'table' or not tonumber(d.id) then return end
+    local c = find(tonumber(d.id))
+    if c then
+        c.reports, c.priority = tonumber(d.reports) or c.reports, tonumber(d.priority) or c.priority
+        if d.x then c.x, c.y, c.radius = d.x, d.y, tonumber(d.radius) end
+        if shown == c.id then render(false) end
+    end
+    SendNUIMessage({ action = 'callMerged', call = d })
+    if Board.open then Board.poke() end
 end)
 
 RegisterNetEvent('es_mdt:client:callClosed', function(d)
@@ -385,6 +442,7 @@ RegisterNetEvent('es_mdt:client:callClosed', function(d)
     local id = tonumber(d.id)
     local c = find(id)
     if c then c.closed, c.outcome = true, d.outcome end
+    ack(id)
     if forgetCall(id) then notify(('Call #%d closed%s · GPS cleared'):format(id, d.outcome and (' (' .. d.outcome .. ')') or ''), 'inform') end
     if shown == id then setFlash(id, 'closed', 'Closed' .. (d.outcome and (' · ' .. d.outcome) or ''), 2200)
     else unqueue(id) end
@@ -396,6 +454,8 @@ RegisterNetEvent('es_mdt:client:callGone', function(d)
     local id = tonumber(type(d) == 'table' and d.id)
     if not id then return end
     forgetCall(id)
+    ack(id)
+    if Board.open then Board.poke() end
     local c = find(id)
     if c and not c.closed then
         c.closed = true
@@ -408,6 +468,8 @@ RegisterNetEvent('es_mdt:client:offDuty', function()
     local any = false
     if myCall and clearRoute(myCall) then any = true end
     for id in pairs(Routed) do if dropRoute(id) then any = true end end
+    Alarm = {}
+    if Board.open then Board.close() end
     Queue = {}
     if shown then hide() end
     if any then notify('Off duty · call GPS cleared', 'inform') end
@@ -438,7 +500,7 @@ end)
 RegisterNetEvent('es_mdt:client:panic', function(p)
     if type(p) ~= 'table' then return end
     lastPanic = p
-    sound('Beep_Red', 'DLC_HEIST_HACKING_SNAKE_SOUNDS', 6, 220)
+    -- 2.0.7: the sound is the panic CALL's (es_mdt:client:call, critical tier, repeating until acknowledged)
     -- the call card shows it (attend = route + attach); without cards, the old notice
     if not POP_ON or MDTC.isOpen() then
         notify(('PANIC · %s %s (%s) · %s · /panicgps for a route'):format(p.callsign or '', p.name or '', p.deptShort or '', p.street or ''), 'error', 15000)
@@ -456,8 +518,7 @@ RegisterNetEvent('es_mdt:client:announce', function(a)
     if type(a) ~= 'table' then return end
     -- 2.0.4: Important / Urgent say so; Urgent is red, stays longer and has its own tone
     local lvl = a.level
-    if lvl == 'urgent' then sound('Beep_Red', 'DLC_HEIST_HACKING_SNAKE_SOUNDS', 3, 260)
-    else sound('Text_Arrive_Tone', 'Phone_SoundSet_Default', 1) end
+    tone(lvl == 'urgent' and 'urgent' or 'announce')
     if not MDTC.isOpen() then
         notify(('%sAnnouncement (%s) · %s, by %s'):format(lvl == 'urgent' and 'URGENT · ' or lvl == 'important' and 'Important · ' or '',
             a.deptShort or '', a.title or '', a.by or ''), lvl == 'urgent' and 'error' or 'inform', lvl == 'urgent' and 20000 or 9000)
@@ -493,11 +554,11 @@ RegisterNetEvent('es_mdt:client:callEscalated', function(d)
         c.priority = d.priority
         c.escalated = d.from
     elseif POP_ON then
-        c = { id = id, kind = d.kind, priority = d.priority, title = d.title, street = d.street, x = d.x, y = d.y, z = d.z, message = '', escalated = d.from }
+        c = { id = id, kind = d.kind, priority = d.priority, title = d.title, street = d.street, x = d.x, y = d.y, z = d.z, message = '', escalated = d.from, radius = d.radius }
     end
     SendNUIMessage({ action = 'callEscalated', call = { id = id, priority = d.priority, from = d.from, title = d.title, street = d.street } })
     if MDTC.isOpen() then return end
-    if POP.sound ~= false then PlaySoundFrontend(-1, 'Text_Arrive_Tone', 'Phone_SoundSet_Default', true) end
+    if POP.sound ~= false then tone('soft') end
     if not POP_ON then
         return notify(('Call #%d now P%d · no unit yet%s'):format(id, d.priority or 2, d.street and d.street ~= '' and (' · ' .. d.street) or ''), 'inform', 7000)
     end
@@ -528,7 +589,12 @@ if SHOTS.enabled ~= false then
                     local _, w = GetCurrentPedWeapon(ped, true)
                     if not skip[w] and not (SHOTS.ignoreSuppressed ~= false and IsPedCurrentWeaponSilenced(ped)) then
                         last = GetGameTimer()
-                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'shots', street = streetHere() })
+                        local veh, model = GetVehiclePedIsIn(ped, false), nil
+                        if veh ~= 0 then
+                            model = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(veh)))
+                            if model == 'NULL' then model = GetDisplayNameFromVehicleModel(GetEntityModel(veh)) end
+                        end
+                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'shots', street = streetHere(), model = model })
                     end
                 end
             else
@@ -570,6 +636,172 @@ if THEFT.enabled ~= false then
     end)
 end
 
+-- 2.0.7: fights (a melee hit with someone watching), a person down, speeding (off by default). The server decides
+-- (on-duty units exempt, chance, cooldowns, per-kind rate, merging) and reads position, weapon, plate and speed itself.
+local FIGHT, DOWN, SPEED = ALR.fight or {}, ALR.down or {}, ALR.speeding or {}
+local function witnesses(range, need)
+    local me = PlayerPedId()
+    local p = GetEntityCoords(me)
+    local n = 0
+    for _, ped in ipairs(GetGamePool('CPed')) do
+        if ped ~= me and not IsPedAPlayer(ped) and not IsPedDeadOrDying(ped, true) and #(GetEntityCoords(ped) - p) <= range then
+            n = n + 1
+            if n >= need then return true end
+        end
+    end
+    return false
+end
+if FIGHT.enabled ~= false then
+    local gap = math.max(5, tonumber(FIGHT.cooldown) or 60) * 1000
+    local last = -gap
+    AddEventHandler('gameEventTriggered', function(name, args)
+        if name ~= 'CEventNetworkEntityDamage' or GetGameTimer() - last < gap then return end
+        local victim, attacker, weapon = args[1], args[2], args[7]
+        local me = PlayerPedId()
+        if attacker ~= me or victim == me or not victim or not DoesEntityExist(victim) or not IsEntityAPed(victim) then return end
+        -- melee only (fists, bats, knives): damage type 2
+        if not weapon or GetWeaponDamageType(weapon) ~= 2 then return end
+        if not witnesses(tonumber(FIGHT.witnessRange) or 30.0, math.max(1, math.floor(tonumber(FIGHT.witnesses) or 1))) then return end
+        last = GetGameTimer()
+        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'fight', street = streetHere() })
+    end)
+end
+if DOWN.enabled ~= false then
+    -- down for `delay` seconds (a quick revive sends nothing); the server checks whip's own death state again
+    CreateThread(function()
+        local since, sent = nil, false
+        while true do
+            Wait(2000)
+            local dead = false
+            local okd, v = pcall(function() return wc():IsPlayerDead() end)
+            if okd then dead = v == true else dead = IsEntityDead(PlayerPedId()) end
+            if dead then
+                since = since or GetGameTimer()
+                if not sent and GetGameTimer() - since >= math.max(5, tonumber(DOWN.delay) or 20) * 1000 then
+                    sent = true
+                    TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'down', street = streetHere() })
+                end
+            else since, sent = nil, false end
+        end
+    end)
+end
+if SPEED.enabled == true then
+    CreateThread(function()
+        local over, gap, last = nil, math.max(10, tonumber(SPEED.cooldown) or 120) * 1000, -1e9
+        local limit = (tonumber(SPEED.mph) or 120) / 2.236936   -- m/s
+        while true do
+            local ped = PlayerPedId()
+            local v = GetVehiclePedIsIn(ped, false)
+            if v ~= 0 and GetPedInVehicleSeat(v, -1) == ped and GetVehicleClass(v) ~= 18 and GetEntitySpeed(v) >= limit then
+                over = over or GetGameTimer()
+                if GetGameTimer() - over >= math.max(1, tonumber(SPEED.seconds) or 4) * 1000 and GetGameTimer() - last >= gap then
+                    last = GetGameTimer()
+                    local model = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(v)))
+                    if model == 'NULL' then model = GetDisplayNameFromVehicleModel(GetEntityModel(v)) end
+                    TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'speeding', street = streetHere(), model = model })
+                end
+                Wait(500)
+            else
+                over = nil
+                Wait(v ~= 0 and 1000 or 2500)
+            end
+        end
+    end)
+end
+
+-- ---------------------------------------------------------------- 2.0.7: the quick call board
+-- A compact overlay of the active calls (hotkey, Config.Dispatch.board.key, O by default; players can rebind it): respond
+-- (attach + GPS), waypoint, ack, detach. It has the mouse while open; Esc or the key again closes it. Live: it re-reads the
+-- list when calls change (throttled).
+local BRD = DSP.board or {}
+local BOARD_SCREEN = 'mdtboard'
+local boardKeyCmd = BRD.command or 'callboard'
+local function boardKey()
+    local ok, s = pcall(GetControlInstructionalButton, 0, GetHashKey(boardKeyCmd) | 0x80000000, true)
+    if ok and type(s) == 'string' and s:sub(1, 2) == 't_' then return s:sub(3) end
+    return BRD.key or ''
+end
+local boardSeq, boardAt, boardPending = 0, 0, false
+local function boardLoad()
+    if not Board.open then return end
+    boardAt = GetGameTimer()
+    boardSeq = boardSeq + 1
+    local my = boardSeq
+    CreateThread(function()
+        local r, why = wc():Callback('es_mdt:board', {})
+        if not Board.open or my ~= boardSeq then return end
+        if type(r) ~= 'table' then
+            SendNUIMessage({ action = 'board', show = true, error = why or 'The board did not load' })
+            return
+        end
+        for _, c in ipairs(r.calls or {}) do c.alarm = Alarm[c.id] ~= nil end
+        SendNUIMessage({ action = 'board', show = true, calls = r.calls, now = r.now, myCall = myCall, key = boardKey() })
+    end)
+end
+Board.poke = function()
+    if not Board.open or boardPending then return end
+    local wait = math.max(0, 1200 - (GetGameTimer() - boardAt))   -- at most one reload a second and a bit
+    boardPending = true
+    SetTimeout(wait, function() boardPending = false boardLoad() end)
+end
+Board.close = function()
+    if not Board.open then return end
+    Board.open = false
+    SetNuiFocus(false, false)
+    wc():SetScreenOpen(false, BOARD_SCREEN)
+    SendNUIMessage({ action = 'board', show = false })
+end
+local function boardOpen()
+    if Board.open then return Board.close() end
+    if BRD.enabled == false or MDTC.isOpen() then return end
+    if wc():IsAnyScreenOpen() then return notify('Close what is open first', 'error') end
+    Board.open = true
+    if shown then hide() end
+    wc():SetScreenOpen(true, BOARD_SCREEN)
+    SetNuiFocus(true, true)
+    SetNuiFocusKeepInput(false)
+    SendNUIMessage({ action = 'board', show = true, loading = true, key = boardKey() })
+    boardLoad()
+end
+if BRD.enabled ~= false then
+    RegisterCommand(boardKeyCmd, boardOpen, false)
+    RegisterKeyMapping(boardKeyCmd, 'Police: call board (active calls)', 'keyboard', BRD.key or 'O')
+end
+AddEventHandler('es_mdt:client:refresh', function(what) if Board.open and (what == 'calls' or what == 'units') then Board.poke() end end)
+RegisterNUICallback('boardClose', function(_, cb) Board.close() cb({ ok = true }) end)
+--- { id, act = 'respond' | 'route' | 'detach' | 'ack' }
+RegisterNUICallback('boardAct', function(d, cb)
+    d = type(d) == 'table' and d or {}
+    local id = tonumber(d.id)
+    if not id then return cb({ ok = false, why = 'No call' }) end
+    ack(id)
+    if d.act == 'ack' then cb({ ok = true }) Board.poke() return end
+    CreateThread(function()
+        if d.act == 'respond' then
+            local r, why = wc():Callback('es_mdt:callAttach', { id = id, route = false, from = 'board' })
+            if type(r) ~= 'table' then return cb({ ok = false, why = why or 'Could not attach' }) end
+            local c = find(id)
+            if c then c.x, c.y, c.z = r.x or c.x, r.y or c.y, r.z or c.z end
+            onCall(id, r.x, r.y, r.arrive)
+            if r.x and r.y then SetNewWaypoint(r.x + 0.0, r.y + 0.0) end
+            tone('ok')
+            cb({ ok = true, units = r.units, gps = r.x ~= nil })
+        elseif d.act == 'route' then
+            local r, why = wc():Callback('es_mdt:callRoute', { id = id })
+            if type(r) ~= 'table' then return cb({ ok = false, why = why or 'No location' }) end
+            noteRoute(id, r.x, r.y)
+            cb({ ok = true })
+        elseif d.act == 'detach' then
+            local r, why = wc():Callback('es_mdt:callDetach', { id = id })
+            if not r then return cb({ ok = false, why = why or 'Could not detach' }) end
+            clearRoute(id)
+            cb({ ok = true })
+        else cb({ ok = false, why = 'Unknown action' }) end
+        Board.poke()
+    end)
+end)
+AddEventHandler('onResourceStop', function(res) if res == GetCurrentResourceName() and Board.open then Board.close() end end)
+
 -- 2.0.6: chat suggestions (whip_chat / stock chat)
 if DSP.chatSuggestions ~= false then
     CreateThread(function()
@@ -580,6 +812,7 @@ if DSP.chatSuggestions ~= false then
         if MED then TriggerEvent('chat:addSuggestion', '/' .. MED, 'Medical emergency: EMS get your location', msg) end
         TriggerEvent('chat:addSuggestion', '/' .. (PAN.command or 'panic'), 'Officers on duty: PANIC · officer down at your location')
         if BKP.enabled ~= false then TriggerEvent('chat:addSuggestion', '/' .. (BKP.command or 'backup'), 'Officers on duty: request backup at your location') end
+        if (DSP.board or {}).enabled ~= false then TriggerEvent('chat:addSuggestion', '/' .. ((DSP.board or {}).command or 'callboard'), 'Units on duty: the call board (active calls)') end
     end)
 end
 

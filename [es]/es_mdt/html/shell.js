@@ -128,6 +128,65 @@
   }
   ask();
 
+  // ---------------------------------------------------------------- 2.0.7: alert sounds (tones at each player's volume)
+  // Lua (client/ui.lua EsAlertSound) sends { __shell: 'tone', tier }; the volume / mute live in KVP and show in the popover.
+  const VOL = { volume: 70, muted: false, def: 70, engine: 'nui' };
+  let actx = null;
+  function ctx() {
+    if (!actx) { const A = window.AudioContext || window.webkitAudioContext; if (!A) return null; actx = new A(); }
+    if (actx.state === 'suspended') actx.resume().catch(() => {});
+    return actx;
+  }
+  // [freq Hz, start s, length s, wave] per note; the critical one is a two-tone alarm
+  const TONES = {
+    routine:  [[880, 0, 0.11, 'sine'], [1175, 0.14, 0.13, 'sine']],
+    priority: [[988, 0, 0.12, 'triangle'], [1319, 0.15, 0.12, 'triangle'], [988, 0.32, 0.12, 'triangle'], [1319, 0.47, 0.16, 'triangle']],
+    critical: [[1480, 0, 0.16, 'square'], [988, 0.18, 0.16, 'square'], [1480, 0.36, 0.16, 'square'], [988, 0.54, 0.16, 'square'], [1480, 0.72, 0.22, 'square']],
+    soft:     [[660, 0, 0.12, 'sine']],
+    ok:       [[523, 0, 0.08, 'sine'], [784, 0.09, 0.12, 'sine']],
+    announce: [[784, 0, 0.14, 'sine'], [1047, 0.16, 0.2, 'sine']],
+    urgent:   [[1175, 0, 0.14, 'triangle'], [1175, 0.2, 0.14, 'triangle'], [1568, 0.4, 0.24, 'triangle']],
+  };
+  const LOUD = { critical: 0.16, priority: 0.26, urgent: 0.26 };   // square waves are louder: scaled down
+  function playTone(tier, force) {
+    if (!force && (VOL.muted || VOL.volume <= 0)) return false;
+    const c = ctx(); if (!c) return false;
+    const notes = TONES[tier] || TONES.soft, peak = (VOL.volume / 100) * (LOUD[tier] || 0.3), t0 = c.currentTime + 0.02;
+    notes.forEach(([f, at, len, wave]) => {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = wave; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + at);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t0 + at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+      o.connect(g); g.connect(c.destination);
+      o.start(t0 + at); o.stop(t0 + at + len + 0.03);
+    });
+    return true;
+  }
+  const vr = $('es-vol-range'), vm = $('es-vol-mute');
+  function drawVol() {
+    if (!vr) return;
+    vr.value = VOL.volume; vr.style.setProperty('--p', VOL.volume + '%');
+    $('es-vol-val').textContent = VOL.muted ? 'Muted' : VOL.volume + '%';
+    vm.classList.toggle('on', VOL.muted); vm.textContent = VOL.muted || VOL.volume === 0 ? '🔇' : VOL.volume < 40 ? '🔈' : '🔊';
+    vm.title = VOL.muted ? 'Unmute alert sounds' : 'Mute alert sounds';
+    $('es-snd').classList.toggle('muted', VOL.muted);
+  }
+  function takeVol(d) {
+    if (!d || typeof d !== 'object' || typeof d.volume !== 'number') return;
+    VOL.volume = Math.max(0, Math.min(100, Math.round(d.volume))); VOL.muted = !!d.muted; VOL.def = Number(d.def) || 70; VOL.engine = d.engine || 'nui';
+    drawVol();
+  }
+  let volT = null;
+  function saveVol(body) { clearTimeout(volT); volT = setTimeout(() => post('esui_volume', body).then(takeVol).catch(() => {}), 250); }
+  if (vr) {
+    vr.addEventListener('input', () => { VOL.volume = +vr.value; if (VOL.muted && VOL.volume > 0) VOL.muted = false; drawVol(); saveVol({ volume: VOL.volume, muted: VOL.muted }); });
+    vr.addEventListener('change', () => playTone('priority'));
+    vm.addEventListener('click', () => { VOL.muted = !VOL.muted; drawVol(); saveVol({ muted: VOL.muted }); if (!VOL.muted) playTone('soft'); });
+    $('es-vol-test').addEventListener('click', () => playTone('critical', false));
+  }
+  post('esui_volume_get').then(takeVol).catch(() => {});
+
   window.addEventListener('message', (ev) => {
     // a part's frame may only ask for the display-size popover
     if (ev.source && ev.source !== window && ev.source !== window.parent) {
@@ -142,9 +201,12 @@
     if (!d || typeof d !== 'object') return;
     if (d.__shell === 'focus') { focus(d.app, !!d.on); if (d.on && !SC.known) ask(); if (!top) closePop(); return; }
     if (d.__shell === 'scale') { takeState(d); return; }
+    if (d.__shell === 'volume') { takeVol(d); return; }
+    if (d.__shell === 'tone') { playTone(String(d.tier || 'soft')); return; }
     if (d.__app) { send(d.__app, d.m); return; }
     PARTS.forEach((p) => send(p, d));
   });
 
-  window.EsShell = { send, focus, parts: PARTS, scale: () => SC.scale, setScale: (v) => setScale(v, false), openScale: () => openPop(top) };
+  window.EsShell = { send, focus, parts: PARTS, scale: () => SC.scale, setScale: (v) => setScale(v, false), openScale: () => openPop(top),
+    volume: () => Object.assign({}, VOL), tone: playTone, takeVol };
 })();

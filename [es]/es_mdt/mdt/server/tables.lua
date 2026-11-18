@@ -336,9 +336,20 @@ local DEFS = {
         `parentId` INT UNSIGNED NULL,
         `escalations` TINYINT UNSIGNED NOT NULL DEFAULT 0,
         `escalatedAt` DATETIME NULL,
+        `preset` VARCHAR(24) NULL,
+        `critical` TINYINT(1) NOT NULL DEFAULT 0,
+        `reports` SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+        `lastReportAt` DATETIME NULL,
+        `fx` FLOAT NULL, `fy` FLOAT NULL,
+        `radius` SMALLINT UNSIGNED NULL,
+        `details` VARCHAR(500) NULL,
+        `reportId` INT UNSIGNED NULL,
+        `warrantId` INT UNSIGNED NULL,
+        `caseId` INT UNSIGNED NULL,
         `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
-        KEY `idx_es_call_status` (`status`, `id`)
+        KEY `idx_es_call_status` (`status`, `id`),
+        KEY `idx_es_call_closed` (`status`, `closedAt`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {
         -- 2.0.3: where a call came from (in the CREATE above too: a new table records this as done without running it)
         { id = '002_source_label', statements = {
@@ -358,6 +369,23 @@ local DEFS = {
             { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `parentId` INT UNSIGNED NULL AFTER `audience`', unless = { column = { 'es_mdt_calls', 'parentId' } } },
             { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `escalations` TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER `parentId`', unless = { column = { 'es_mdt_calls', 'escalations' } } },
             { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `escalatedAt` DATETIME NULL AFTER `escalations`', unless = { column = { 'es_mdt_calls', 'escalatedAt' } } },
+        } },
+        -- 2.0.7: presets, the critical tier, merged repeat reports, the witness search circle (fx/fy/radius: what clients
+        -- see; x/y stay on the server), suspect details, report / warrant / case links (kept by the retention cleanup),
+        -- and the index the retention cleanup reads (status, closedAt)
+        { id = '005_dispatch207', statements = {
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `preset` VARCHAR(24) NULL AFTER `escalatedAt`', unless = { column = { 'es_mdt_calls', 'preset' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `critical` TINYINT(1) NOT NULL DEFAULT 0 AFTER `preset`', unless = { column = { 'es_mdt_calls', 'critical' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `reports` SMALLINT UNSIGNED NOT NULL DEFAULT 1 AFTER `critical`', unless = { column = { 'es_mdt_calls', 'reports' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `lastReportAt` DATETIME NULL AFTER `reports`', unless = { column = { 'es_mdt_calls', 'lastReportAt' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `fx` FLOAT NULL AFTER `lastReportAt`', unless = { column = { 'es_mdt_calls', 'fx' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `fy` FLOAT NULL AFTER `fx`', unless = { column = { 'es_mdt_calls', 'fy' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `radius` SMALLINT UNSIGNED NULL AFTER `fy`', unless = { column = { 'es_mdt_calls', 'radius' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `details` VARCHAR(500) NULL AFTER `radius`', unless = { column = { 'es_mdt_calls', 'details' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `reportId` INT UNSIGNED NULL AFTER `details`', unless = { column = { 'es_mdt_calls', 'reportId' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `warrantId` INT UNSIGNED NULL AFTER `reportId`', unless = { column = { 'es_mdt_calls', 'warrantId' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `caseId` INT UNSIGNED NULL AFTER `warrantId`', unless = { column = { 'es_mdt_calls', 'caseId' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD KEY `idx_es_call_closed` (`status`, `closedAt`)', unless = { index = { 'es_mdt_calls', 'idx_es_call_closed' } } },
         } },
     } },
     { 'es_mdt_call_units', [[CREATE TABLE IF NOT EXISTS `es_mdt_call_units` (

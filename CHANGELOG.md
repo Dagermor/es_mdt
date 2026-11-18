@@ -1,5 +1,54 @@
 # Changelog
 
+## es_mdt 2.0.7 (2026-11-18)
+
+**Dispatch: ready-made alerts, a critical tier, merged repeat reports, search circles, suspect details, more automatic alerts, a quick call board, and call retention. Also fixes the evidence locker and the panic message.** See [Dispatch: alerts, critical calls and the call board](README.md#dispatch-alerts-critical-calls-and-the-call-board).
+
+- **Ready-made alerts for other scripts** (server exports, set in `Config.Dispatch.presets`):
+  - `StoreRobbery`, `BankRobbery` (Fleeca, Paleto or Pacific), `JewelryRobbery`, `HouseRobbery`, `DrugSale`, `Explosion`, `Fight`, `SuspiciousActivity` and `Carjacking`, plus `Alert(name, data)` for any preset, including ones you add.
+  - Each preset sets the call kind, priority, title, icon, blip and who gets it. Pass `player = source` and the server reads that player's position, car (plate and colour) and weapon itself.
+  - New call kinds: `robbery`, `drugs`, `explosion`, `fight`, `suspicious`, `down` and `speeding`.
+- **Critical tier, above P1** (`Config.Dispatch.critical`):
+  - Critical calls are the panic button (OFFICER DOWN) and presets with `critical = true` (Paleto and Pacific Standard by default). Escalation never makes a call critical.
+  - The card pulses and shows a CRITICAL badge, and the blip flashes.
+  - The alarm repeats every 4 s, up to 8 times, until the unit acknowledges it (Respond or Hide on the card, Ack on the call board), a unit responds, or the call closes.
+- **Alert sounds:**
+  - Three tiers: routine, P1 and critical.
+  - Each player sets their own volume, or mutes them, in the **Aa** popover or with `/mdtvolume <0-100|mute|unmute>`. The setting is saved on their PC.
+  - Sounds play in the page (`Config.Dispatch.sounds.engine = 'nui'`, the default). `'game'` uses GTA's sounds; mute still works there, volume doesn't.
+- **Repeat reports merge** (`Config.Dispatch.merge`):
+  - A report of the same kind (and preset) within 150 m while the call is fresh (3 min since its last report) goes onto the open call. The call shows **×3 reports**, gets a note, and its priority can only go up.
+  - Panic, backup and officer calls never merge. Plain `alert` calls without a preset (es_jail's, `NotifyDispatch`) stay one call each, unless the script passes `merge = true`. Any call can pass `merge = false`.
+- **"N responding"** on the card, in the MDT list and in the call's page.
+- **Search circle for witness reports** (`Config.Dispatch.witness`):
+  - Automatic alerts and witness presets show a circle (120 m) on the map, the blip and the board instead of a pin. The exact spot is inside it, but never at its centre.
+  - Each repeat report shrinks the circle (×0.75, down to 40 m) and it still contains the spot.
+  - **The true position never leaves the server.** Players get only the circle's centre and radius. Arriving counts anywhere inside the circle.
+- **Suspect details:** plate, vehicle, colour, direction, a short description, and the weapon as a class with a threat grade (Melee 1 to Explosives 5). Everything is cleaned server side, and the exact weapon is never sent.
+- **More automatic alerts** (`Config.Dispatch.alerts`):
+  - **Fights:** melee hits with a witness nearby.
+  - **Explosions:** from the game's explosion event; harmless types like steam, flames, flares and smoke don't count.
+  - **A civilian down:** after 20 s, sent to EMS (or law if there's no EMS); the server checks they really are down.
+  - **Speeding:** off by default; the server checks the speed itself.
+  - Each alert has its own toggle, chance, cooldown and priority. On-duty law never sets them off.
+  - At most `perMinute` (6) new calls of one kind a minute, server wide. Reports near an open call still merge.
+- **Quick call board** (key **O**, or `/callboard`; rebindable):
+  - A compact overlay with the active calls you can see (critical first) and their units, reports, search area and details.
+  - Buttons: **Respond** (attach and GPS), **Waypoint**, **GPS** and **Leave** for your own call, and **Ack alarm**. It updates live and follows the display size. Press Esc or O to close it.
+- **Call retention** (`Config.Dispatch.keepClosedDays = 90`; 0 keeps every call):
+  - **Closed** calls older than that are deleted with their notes and unit rows, at start and once a day, in batches of 500 with a pause between them. The console logs the counts: `[es_mdt] call retention (90 days): removed N closed call(s), …`.
+  - Open calls are never deleted, and neither are calls linked to a report, warrant or case. Link one with **＋ Link report / warrant / case** on the call's page or `exports.es_mdt:LinkCall(callId, 'report', id)`.
+  - Before this, calls were kept forever.
+- **Fix: Open locker from a case in the MDT.**
+  - whip_core doesn't open an inventory or stash while another screen (the MDT) is open. The server said "opened" but the stash never showed, and pressing again hit the rate limit ("Rate limited").
+  - Now the button closes the MDT, waits until no screen is open, then asks for the locker once. The stash opens and the MDT stays closed. A second press while that's under way does nothing, and a refusal (not at a locker, no access) is a notice.
+  - The MDT page also retries a request that hit WHIP's rate limit (twice, under a second), so a burst of normal clicks doesn't show "Rate limited". The locker's and the case page's own limits were loosened a little.
+- **Fix: the panic message** is now a short green notice, "Panic sent · units alerted". It was a red, cut-off "OFFICER DOWN sent. Units on duty have your lo…".
+- **Database:**
+  - New `es_mdt_calls` columns: `preset`, `critical`, `reports`, `lastReportAt`, `fx`, `fy`, `radius`, `details`, `reportId`, `warrantId`, `caseId`, plus the key `idx_es_call_closed (status, closedAt)`.
+  - Migration `005_dispatch207` adds them on existing servers; fresh installs get them in the table. The schema self-check covers them.
+- **Unchanged:** close outcomes, silent auto-close, escalation, backup, the unit list, the panic key (END, also while downed), GPS and blip clean-up, admin-only source labels, the external event, `/911` and `/311`, and es_jail's alerts.
+
 ## es_mdt 2.0.6 (2026-11-18)
 
 **Dispatch: routing, a live unit list, officer-down panic key, request backup, escalation, and shots-fired and vehicle-theft alerts.** See [Dispatch: routing, panic, backup and alerts](README.md#dispatch-routing-panic-backup-and-alerts).

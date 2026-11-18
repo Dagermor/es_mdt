@@ -14,7 +14,17 @@
       return await r.json();
     } catch (e) { return { ok: false, why: 'The game did not answer' }; }
   }
-  const call = (name, data) => post('call', { name, data: data || {} });
+  // 2.0.7: a burst of legitimate requests (the MDT reopening on a page, a live refresh arriving at the same moment) can
+  // meet whip's per-callback limit: wait a moment and ask again (twice) instead of showing "Rate limited"
+  const call = async (name, data) => {
+    const body = { name, data: data || {} };
+    let r = await post('call', body);
+    for (let i = 0; i < 2 && r && r.ok === false && r.why === 'Rate limited'; i++) {
+      await new Promise((ok) => setTimeout(ok, 450 + i * 500));
+      r = await post('call', body);
+    }
+    return r;
+  };
 
   // ---------------------------------------------------------------- small tools
   let toastTimer = null;

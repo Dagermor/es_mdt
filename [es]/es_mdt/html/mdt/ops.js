@@ -6,7 +6,25 @@
   const { S, $, $$, esc, money, call, post, toast, said, busy, ago, dateTime, modal, confirmBox, personPicker, pill, empty, can, P, go, VIEWS, HOOK } = M;
   const cfg = () => (S.ctx && S.ctx.config) || {};
   const PRI = { 1: ['P1', 'bad', 'Emergency'], 2: ['P2', 'warn', 'Urgent'], 3: ['P3', 'accent', 'Routine'] };
-  const KIND = { '911': '911', '311': '311', panic: 'PANIC', officer: 'Officer', alert: 'Alert', medical: 'Medical', shots: 'Shots fired', theft: 'Vehicle theft', backup: 'Backup' };
+  const KIND = { '911': '911', '311': '311', panic: 'PANIC', officer: 'Officer', alert: 'Alert', medical: 'Medical', shots: 'Shots fired', theft: 'Vehicle theft', backup: 'Backup',
+    robbery: 'Robbery', drugs: 'Drugs', explosion: 'Explosion', fight: 'Fight', suspicious: 'Suspicious', down: 'Person down', speeding: 'Speeding' };
+  // 2.0.7: critical tier, merged reports, "N responding", search circle, suspect details
+  const GRADE_CLS = ['', 'g1', 'g2', 'g3', 'g4', 'g5'];
+  const critTag = (c) => c.critical && c.status !== 'closed' ? '<span class="crit-tag" title="Critical: above P1">CRITICAL</span>' : '';
+  const repTag = (c) => (c.reports || 1) > 1 ? `<span class="rep-tag" title="Repeat reports merged into this call">×${c.reports} reports</span>` : '';
+  const respTag = (c) => c.status === 'closed' ? '' : `<span class="resp-tag${(c.units || []).length ? '' : ' none'}">${(c.units || []).length} responding</span>`;
+  const iconOf = (c) => c.icon ? `<span class="c-ico">${esc(c.icon)}</span>` : '';
+  const detailsHtml = (d) => {
+    if (!d || typeof d !== 'object') return '';
+    const out = [];
+    if (d.plate) out.push(`<span class="sd"><i>Plate</i><b class="mono">${esc(d.plate)}</b></span>`);
+    if (d.vehicle || d.color) out.push(`<span class="sd"><i>Vehicle</i><b>${esc([d.color, d.vehicle].filter(Boolean).join(' '))}</b></span>`);
+    if (d.weapon) out.push(`<span class="sd ${GRADE_CLS[d.grade] || ''}"><i>Weapon</i><b>${esc(d.weapon)}</b>${d.gradeLabel ? `<em>${esc(d.gradeLabel)} threat</em>` : ''}</span>`);
+    if (d.dir) out.push(`<span class="sd"><i>Heading</i><b>${esc(d.dir)}</b></span>`);
+    if (d.desc) out.push(`<span class="sd wide"><i>Suspect</i><b>${esc(d.desc)}</b></span>`);
+    return out.length ? `<div class="sdetails">${out.join('')}</div>` : '';
+  };
+  M.callDetailsHtml = detailsHtml;
   const priPill = (p) => { const x = PRI[p] || PRI[2]; return `<span class="pri p${p}" title="${x[2]}">${x[0]}</span>`; };
   const kindTag = (k) => `<span class="ck k-${esc(k)}">${esc(KIND[k] || k)}</span>`;
   // 2.0.4: call outcomes: the configured list (strings in old configs), a coloured badge for each
@@ -57,10 +75,10 @@
     if (!r.ok) { box.innerHTML = empty(r.why); return; }
     D.list = r.data.calls || [];
     if (D.status === 'active' && $('#d-n')) $('#d-n').textContent = D.list.length || '';
-    box.innerHTML = D.list.length ? D.list.map((c) => `<div class="call res click p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}${D.sel === c.id ? ' sel' : ''}" data-cpick="${c.id}">
-        <div class="c-top">${priPill(c.priority)}${kindTag(c.kind)}${escTag(c)}<b class="c-title">#${c.id} ${esc(c.title)}</b><span class="hint c-age" data-age="${c.createdAt}">${ago(c.createdAt)}</span></div>
+    box.innerHTML = D.list.length ? D.list.map((c) => `<div class="call res click p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}${c.critical && c.status !== 'closed' ? ' is-crit' : ''}${D.sel === c.id ? ' sel' : ''}" data-cpick="${c.id}">
+        <div class="c-top">${critTag(c)}${priPill(c.priority)}${kindTag(c.kind)}${escTag(c)}${iconOf(c)}<b class="c-title">#${c.id} ${esc(c.title)}</b>${repTag(c)}<span class="hint c-age" data-age="${c.createdAt}">${ago(c.createdAt)}</span></div>
         ${c.message ? `<div class="c-msg">${esc(c.message)}</div>` : ''}
-        <div class="c-foot"><span class="hint">📍 ${esc(c.street || 'No location')}</span><span class="spacer"></span>
+        <div class="c-foot"><span class="hint">📍 ${esc(c.street || (c.x != null ? 'See the map' : 'No location'))}${c.radius ? ` · ~${c.radius} m search area` : ''}</span>${respTag(c)}<span class="spacer"></span>
           ${c.status === 'closed' ? outBadge(c.outcome) : (c.units.length ? c.units.map(unitChip).join('') : '<span class="pill warn">No units</span>')}
           ${c.notes ? `<span class="hint">✎ ${c.notes}</span>` : ''}</div></div>`).join('')
       : empty(D.status === 'active' ? 'No active calls. Quiet shift.' : 'No closed calls yet', '☎');
@@ -75,13 +93,17 @@
     if (!$('#d-detail') || D.sel !== id) return;
     if (!r.ok) { box.innerHTML = empty(r.why); return; }
     const c = r.data, active = c.status === 'active', on = S.ctx.onDuty && !S.ctx.readOnly;
-    box.innerHTML = `<div class="call-head p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}">
-        <div class="row">${priPill(c.priority)}${kindTag(c.kind)}${escTag(c)}${active ? pill('Active', 'on') : pill('Closed', 'off') + outBadge(c.outcome, true)}<span class="spacer"></span><span class="hint">${dateTime(c.createdAt)} · ${ago(c.createdAt)}</span></div>
-        <div class="v-title">#${c.id} ${esc(c.title)}</div>
+    const links = [['report', c.reportId], ['warrant', c.warrantId], ['case', c.caseId]].filter((x) => x[1]);
+    box.innerHTML = `<div class="call-head p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}${c.critical && active ? ' is-crit' : ''}">
+        <div class="row">${critTag(c)}${priPill(c.priority)}${kindTag(c.kind)}${escTag(c)}${repTag(c)}${respTag(c)}${active ? pill('Active', 'on') : pill('Closed', 'off') + outBadge(c.outcome, true)}<span class="spacer"></span><span class="hint">${dateTime(c.createdAt)} · ${ago(c.createdAt)}</span></div>
+        <div class="v-title">${iconOf(c)}#${c.id} ${esc(c.title)}</div>
         ${c.parent ? `<div class="link-call" data-gocall="${c.parent.id}">⤴ Backup for call <b>#${c.parent.id}</b> ${esc(c.parent.title || '')}${c.parent.status === 'closed' ? ' · closed' : ''}</div>` : ''}
         ${(c.backups || []).length ? `<div class="link-row">${c.backups.map((b) => `<span class="link-call small${b.status === 'closed' ? ' off' : ''}" data-gocall="${b.id}">🚨 Backup #${b.id} · P${b.priority}${b.status === 'closed' ? ' · closed' : ''}</span>`).join('')}</div>` : ''}
         ${c.message ? `<div class="c-say">“${esc(c.message)}”</div>` : ''}
-        <div class="facts"><span><i>Location</i>${esc(c.street || '—')}</span><span><i>Caller</i>${esc(c.callerName || '—')}</span><span><i>Phone</i>${esc(c.callerPhone || '—')}</span></div>
+        <div class="facts"><span><i>Location</i>${esc(c.street || '—')}${c.radius ? ` <em class="hint">· search area ~${c.radius} m</em>` : ''}</span><span><i>Caller</i>${esc(c.callerName || '—')}</span><span><i>Phone</i>${esc(c.callerPhone || '—')}</span></div>
+        ${detailsHtml(c.details)}
+        <div class="link-row cl-links">${links.map(([k, v]) => `<span class="link-call small kept" title="Kept: a linked call is never removed by the call retention">🔗 ${k} #${v}${active || c.canClose ? ` <b data-unlink="${k}" title="Remove the link">×</b>` : ''}</span>`).join('')}
+          ${!S.ctx.readOnly && (c.attached || c.canClose) ? '<span class="link-call small ghost" id="cd-link" title="Link a report, warrant or case: the call is then kept for good">＋ Link report / warrant / case</span>' : ''}</div>
         <div class="row">${c.x != null ? '<button class="btn" id="cd-route" data-probe-press>⌖ Set waypoint</button>' : ''}
           ${active && on ? (c.attached ? '<button class="btn ghost" id="cd-detach" data-probe-press>Detach</button>' : '<button class="btn accent" id="cd-attach" data-probe-press title="You and your partner attach together">＋ Attach &amp; route</button>') : ''}
           ${c.canBackup && !S.ctx.readOnly ? '<button class="btn warnb" id="cd-backup" data-probe-press title="A backup call at your position, linked to this one">🚨 Request backup</button>' : ''}
@@ -103,6 +125,17 @@
       if (said(x, x.ok ? `Backup requested · P${x.data.priority} call #${x.data.id}` : '')) reload();
     });
     $$('[data-gocall]', box).forEach((n) => n.onclick = () => { const to = +n.dataset.gocall; D.sel = to; dList(true); dDetail(to); });
+    // 2.0.7: links (report / warrant / case): a linked call is kept by the retention cleanup
+    $$('[data-unlink]', box).forEach((n) => n.onclick = async (e) => { e.stopPropagation(); if (said(await call('callLink', { id, kind: n.dataset.unlink, ref: null }), 'Link removed')) reload(); });
+    if ($('#cd-link')) $('#cd-link').onclick = () => {
+      const close = modal(`<div class="m-title">Link call #${id}</div><p class="m-text hint">A linked call is kept for good (the call retention never removes it).</p>
+        <div class="row"><select id="cl-kind"><option value="report">Report</option><option value="warrant">Warrant</option><option value="case">Case</option></select>
+        <input type="number" id="cl-ref" min="1" placeholder="Its number (#)"></div>
+        <div class="row end"><button class="btn ghost" data-x>Cancel</button><button class="btn accent" id="cl-go" data-primary>Link</button></div>`);
+      const go = async () => { const ref = +($('#cl-ref').value || 0); if (!ref) return toast('Type its number', 'err');
+        if (said(await call('callLink', { id, kind: $('#cl-kind').value, ref }), 'Linked')) { close(); reload(); } };
+      $('#cl-go').onclick = go; $('#cl-ref').onkeydown = (e) => { if (e.key === 'Enter') go(); };
+    };
     const addNote = () => { const inp = $('#cd-note'); const t = inp.value.trim(); if (!t) return; busy($('#cd-note-go'), async () => { if (said(await call('callNote', { id, note: t }))) { inp.value = ''; reload(); } }); };
     if ($('#cd-note-go')) { $('#cd-note-go').onclick = addNote; $('#cd-note').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addNote(); } }; }
   }
@@ -318,7 +351,10 @@
     const host = $('#map-pins'); if (!host || !MAP.data) return;
     const d = MAP.data, out = [];
     if (MAP.show.bolos) (d.bolos || []).forEach((b) => { const [x, y] = toMap(b.x, b.y); out.push(`<div class="mpin mp-bolo" style="left:${x}px;top:${y}px" data-mp="b:${b.id}"><span class="pm">⚑</span><span class="pl">${esc(b.plate || 'BOLO')}</span></div>`); });
-    if (MAP.show.calls) (d.calls || []).forEach((c) => { const [x, y] = toMap(c.x, c.y); out.push(`<div class="mpin mp-call p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}" style="left:${x}px;top:${y}px" data-mp="c:${c.id}"><span class="pm">${c.kind === 'panic' ? '⚠' : '☎'}</span><span class="pl">#${c.id}</span></div>`); });
+    // 2.0.7: a witness call's search area (its centre is not the spot; the spot is somewhere inside)
+    if (MAP.show.calls) (d.calls || []).forEach((c) => { if (!c.radius) return; const [x, y] = toMap(c.x, c.y); const r = (0.02072 * c.radius / 256) * MAP.size;
+      out.push(`<div class="marea p${c.priority}" style="left:${x}px;top:${y}px;width:${2 * r}px;height:${2 * r}px"></div>`); });
+    if (MAP.show.calls) (d.calls || []).forEach((c) => { const [x, y] = toMap(c.x, c.y); out.push(`<div class="mpin mp-call p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}${c.critical ? ' is-crit' : ''}" style="left:${x}px;top:${y}px" data-mp="c:${c.id}"><span class="pm">${c.kind === 'panic' ? '⚠' : '☎'}</span><span class="pl">#${c.id}</span></div>`); });
     if (MAP.show.units) (d.units || []).forEach((u) => { const [x, y] = toMap(u.x, u.y); const me = u.charId === S.ctx.me.charId; const st = M.statusOf(u.status);
       out.push(`<div class="mpin mp-unit${u.panic ? ' is-panic' : ''}${me ? ' me' : ''}" style="left:${x}px;top:${y}px;--sc:${esc(st.color)};--gc:${esc(u.color1 || '#3b82f6')}" data-mp="u:${u.charId}"><span class="pm"><i class="hd" style="transform:rotate(${-(u.h || 0)}deg)"></i></span><span class="pl">${esc(u.callsign || u.name.split(' ')[0])}</span></div>`); });
     host.innerHTML = out.join('');
@@ -676,7 +712,7 @@
       toast(`${lv === 'urgent' ? '🚨 URGENT' : lv === 'important' ? '❗ Important' : '📣'} ${a.deptShort || ''} · ${a.title}`, lv === 'urgent' ? 'err' : 'ok');
       if (lv === 'urgent') urgentBanner(a);
       if (S.view === 'dashboard' && !(M.modalOpen && M.modalOpen())) go('dashboard');
-    } else if (m.action === 'callEscalated') {   // 2.0.6: quiet (the Dispatch tab refreshes by itself)
+    } else if (m.action === 'callEscalated' || m.action === 'callMerged') {   // 2.0.6 / 2.0.7: quiet (the Dispatch tab refreshes by itself)
       if (S.open) M.loadBadges();
     } else if (m.action === 'open') { setTimeout(() => urgentOnOpen(S.ctx), 350);
     } else if (m.action === 'close') { stopMap(); }
@@ -687,7 +723,18 @@
 // Lua owns the queue and timing (client/ops.lua); this only draws what it is told: { action: 'cpop', show, call, ... }.
 (() => {
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const CODE = { '911': '911', '311': '311', panic: 'PANIC', officer: 'OFFICER', alert: 'ALERT', medical: 'MEDICAL', shots: 'SHOTS', theft: 'THEFT', backup: 'BACKUP' };
+  const CODE = { '911': '911', '311': '311', panic: 'PANIC', officer: 'OFFICER', alert: 'ALERT', medical: 'MEDICAL', shots: 'SHOTS', theft: 'THEFT', backup: 'BACKUP',
+    robbery: 'ROBBERY', drugs: 'DRUGS', explosion: 'EXPLOSION', fight: 'FIGHT', suspicious: 'SUSPICIOUS', down: 'PERSON DOWN', speeding: 'SPEEDING' };
+  // 2.0.7: suspect details on the card (one line of chips)
+  const detChips = (d) => {
+    if (!d || typeof d !== 'object') return '';
+    const o = [];
+    if (d.plate) o.push(`<span class="cp-d"><i>Plate</i><b class="mono">${esc(d.plate)}</b></span>`);
+    if (d.vehicle || d.color) o.push(`<span class="cp-d"><i>Veh</i><b>${esc([d.color, d.vehicle].filter(Boolean).join(' '))}</b></span>`);
+    if (d.weapon) o.push(`<span class="cp-d g${esc(d.grade || 2)}"><i>Weapon</i><b>${esc(d.weapon)}</b></span>`);
+    if (d.desc) o.push(`<span class="cp-d wide"><i>Suspect</i><b>${esc(d.desc)}</b></span>`);
+    return o.length ? `<div class="cp-det">${o.join('')}</div>` : '';
+  };
   const PRI = { 1: 'P1', 2: 'P2', 3: 'P3' };
   const keyName = (k) => ({ DELETE: 'DEL', BACK: '⌫', RETURN: 'ENTER', ESCAPE: 'ESC' }[String(k).toUpperCase()] || k);
   const distTxt = (m) => m == null ? '' : m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
@@ -705,7 +752,7 @@
       const st = u.st === 'scene' ? ['sc', '✓'] : u.st === 'enroute' ? ['er', '→'] : ['', ''];
       return `<span class="cp-u${st[0] ? ' ' + st[0] : ''}" title="${esc(u.name || '')}${u.dept ? ' · ' + esc(u.dept) : ''}">${u.cs ? `<b>${esc(u.cs)}</b>` : ''}${u.name ? `<span class="cp-un">${esc(short(u.name))}</span>` : ''}${st[1] ? `<i>${st[1]}</i>` : ''}</span>`;
     };
-    return (units.length ? `<span class="cp-ul">On it · ${units.length}</span>${units.slice(0, 4).map(one).join('')}${units.length > 4 ? `<span class="cp-u">+${units.length - 4}</span>` : ''}`
+    return (units.length ? `<span class="cp-ul">${units.length} responding</span>${units.slice(0, 4).map(one).join('')}${units.length > 4 ? `<span class="cp-u">+${units.length - 4}</span>` : ''}`
       : `<span class="cp-ul none">No units yet</span>`) + (c.callerName ? `<span class="cp-caller">Caller: ${esc(c.callerName)}</span>` : '');
   };
   const setText = (root, sel, txt) => { const n = root.querySelector(sel); if (n && n.textContent !== txt) n.textContent = txt; };
@@ -729,10 +776,12 @@
         <span class="cp-k"><kbd>${esc(keyName(k.dismiss || 'DEL'))}</kbd>${m.more ? 'Next' : 'Hide'}</span>
         ${c.mine ? `<span class="cp-k dim">${esc(k.detach || '/detach')} to leave</span>` : `<span class="cp-k dim">${esc(k.recall || '/calls')}</span>`}
       </div>`;
-    root.innerHTML = `<div class="cp-card cp-p${c.priority || 2}${panic ? ' panic' : ''} st-${state}${enter ? ' enter' : ''}">
+    root.innerHTML = `<div class="cp-card cp-p${c.priority || 2}${panic ? ' panic' : ''}${c.critical && !c.closed ? ' crit' : ''} st-${state}${enter ? ' enter' : ''}">
       <div class="cp-top">
-        <span class="cp-code k-${esc(c.kind)}">${esc(CODE[c.kind] || 'CALL')}</span>
+        ${c.critical && !c.closed ? `<span class="cp-crit${c.alarm ? ' ring' : ''}" title="Critical: above P1">CRITICAL</span>` : ''}
+        <span class="cp-code k-${esc(c.kind)}">${c.icon ? `<span class="cp-ico">${esc(c.icon)}</span>` : ''}${esc(CODE[c.kind] || 'CALL')}</span>
         <span class="cp-pri">${esc(PRI[c.priority] || 'P2')}</span>
+        ${(c.reports || 1) > 1 ? `<span class="cp-rep" title="Repeat reports merged into this call">×${esc(c.reports)} reports</span>` : ''}
         ${c.escalated ? `<span class="cp-esc" title="No unit yet: raised from P${esc(c.escalated)}">↑ from P${esc(c.escalated)}</span>` : ''}
         <span class="cp-id">#${esc(c.id)}</span>
         <span class="cp-sp"></span>
@@ -743,9 +792,11 @@
       ${c.parentId ? `<div class="cp-link">⤴ Backup for call #${esc(c.parentId)}</div>` : ''}
       ${c.message && c.message !== c.title ? `<div class="cp-msg">${esc(c.message)}</div>` : ''}
       <div class="cp-meta">
-        <span class="cp-loc">📍 ${esc(c.street || 'No location given')}</span>
+        <span class="cp-loc">📍 ${esc(c.street || 'Location on your map')}</span>
+        ${c.radius ? `<span class="cp-area" title="A witness report: the spot is somewhere in this circle">◎ ~${esc(c.radius)} m area</span>` : ''}
         <span class="cp-dist${m.dist == null ? ' hidden' : ''}">${esc(distTxt(m.dist))}</span>
       </div>
+      ${detChips(c.details)}
       <div class="cp-units">${unitsHtml(c)}</div>
       ${foot}
       <div class="cp-bar"><i></i></div>
@@ -762,6 +813,7 @@
     const c = m.call, k = m.keys || {};
     // what changes the card's shape; units, distance and age do not
     const sig = [c.id, c.kind, c.priority, c.escalated || '', c.parentId || '', c.title, c.message, c.street, c.callerName, !!c.closed, c.outcome || '', !!c.mine, m.more || 0,
+      !!c.critical, c.icon || '', c.reports || 1, c.radius || 0, JSON.stringify(c.details || null), !!c.alarm,
       m.state || '', m.note || '', k.attend, k.dismiss, k.recall, k.detach].join('|');
     const fresh = m.seq !== cur.seq || !root.querySelector('.cp-card');
     if (fresh) build(m, true);                 // a new call: build, slide in once, bar from full

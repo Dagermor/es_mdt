@@ -51,6 +51,16 @@
     font: 600 12.5px/1.2 inherit; cursor: pointer; white-space: nowrap; }
   .es-scale .reset:hover { background: rgba(255,255,255,.08); }
   .es-scale .reset:disabled { opacity: .4; cursor: default; }
+  /* 2.0.7: alert sounds (volume / mute), each player's own */
+  .es-scale .snd { margin: 0 0 14px; padding: 12px 0 0; border-top: 1px solid rgba(255,255,255,.08); }
+  .es-scale .snd .hd { margin-bottom: 8px; }
+  .es-scale .snd .v { font-size: 15px; }
+  .es-scale .mute { width: 32px; height: 32px; flex: none; border-radius: 9px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05);
+    color: #e8ecf3; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+  .es-scale .mute.on { background: rgba(239,68,68,.18); border-color: rgba(239,68,68,.55); }
+  .es-scale .test { padding: 6px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.16); background: transparent; color: #e8ecf3; font: 600 12px/1.2 inherit; cursor: pointer; white-space: nowrap; }
+  .es-scale .test:hover { background: rgba(255,255,255,.08); }
+  .es-scale .snd.muted input[type=range] { opacity: .4; }
 </style>
 </head>
 <body>
@@ -58,7 +68,7 @@
 <iframe class="part" id="part-departments" src="departments/index.html" allowtransparency="true" title="Departments"></iframe>
 <iframe class="part" id="part-doj" src="doj/index.html" allowtransparency="true" title="DOJ"></iframe>
 <div id="es-scale-back" hidden></div>
-<div id="es-scale" class="es-scale" role="dialog" aria-label="Display size" hidden>
+<div id="es-scale" class="es-scale" role="dialog" aria-label="Display size and alert sounds" hidden>
   <div class="hd"><span class="t">Display size</span><span class="v" id="es-scale-val">100%</span></div>
   <div class="row">
     <button class="step" id="es-scale-minus" type="button" title="Smaller" aria-label="Smaller">&minus;</button>
@@ -67,7 +77,15 @@
   </div>
   <div class="ticks"><span id="es-scale-lo">70%</span><span id="es-scale-hi">150%</span></div>
   <div class="chips" id="es-scale-chips"></div>
-  <div class="ft"><span class="hint">Saved for you. Also <b>/mdtscale 120</b></span><button class="reset" id="es-scale-reset" type="button">Reset</button></div>
+  <div class="snd" id="es-snd">
+    <div class="hd"><span class="t">Alert sounds</span><span class="v" id="es-vol-val">70%</span></div>
+    <div class="row">
+      <button class="mute" id="es-vol-mute" type="button" title="Mute alert sounds" aria-label="Mute alert sounds">🔊</button>
+      <input id="es-vol-range" type="range" min="0" max="100" step="5" value="70" aria-label="Alert volume in percent">
+      <button class="test" id="es-vol-test" type="button" title="Play the critical alarm">Test</button>
+    </div>
+  </div>
+  <div class="ft"><span class="hint">Saved for you. Also <b>/mdtscale 120</b>, <b>/mdtvolume 50</b></span><button class="reset" id="es-scale-reset" type="button">Reset</button></div>
 </div>
 <script src="shell.js"></script>
 </body>

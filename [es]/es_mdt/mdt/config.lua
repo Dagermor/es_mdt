@@ -174,6 +174,14 @@ Config.Dispatch = {
             theft    = { 'law' },
             officer  = { 'law' },          -- calls an officer logs in the MDT
             alert    = { 'law' },          -- AddCall / NotifyDispatch without a kind (es_jail's break-outs too)
+            -- 2.0.7 (a preset's own `groups` wins over these)
+            robbery  = { 'law' },
+            drugs    = { 'law' },
+            explosion = { 'law', 'ems' },
+            fight    = { 'law' },
+            suspicious = { 'law' },
+            down     = { 'ems' },          -- a civilian down: EMS (law when there is no EMS department: `fallback`)
+            speeding = { 'law' },
         },
         fallback = 'law',
         shared   = false,   -- true: every group SEES every call in its Dispatch tab (cards, sounds and blips still follow `kinds`)
@@ -187,10 +195,20 @@ Config.Dispatch = {
     -- 2.0.6: automatic alerts from the game. On-duty law never sets them off. chance = how often a witness calls it in
     -- (0.0 - 1.0); cooldown = seconds per player; a second report near an active one adds a note to it (area) instead
     -- of a new call. Other scripts: exports.es_mdt:ShotsFired(coords) / VehicleTheft(coords, plate, model) always file.
+    -- 2.0.7: fights, explosions, people down and (off by default) speeding too. Every one: a witness call with a search
+    -- circle (the exact spot never reaches a game), suspect details the server reads itself, merged into an open call
+    -- of the same kind nearby, and at most `perMinute` NEW calls of one kind a minute server-wide (street spam).
     alerts = {
         shots = { enabled = true, chance = 0.7, cooldown = 45, priority = 2, ignoreSuppressed = true },
         theft = { enabled = true, chance = 0.5, cooldown = 90, priority = 3 },   -- locked / hot-wired / jacked cars, not your own
-        area  = { radius = 150, seconds = 120 },   -- one call per this many metres, this often
+        fight = { enabled = true, chance = 0.6, cooldown = 60, priority = 3, witnesses = 1, witnessRange = 30.0 },   -- melee hits with someone watching
+        explosion = { enabled = true, chance = 1.0, cooldown = 60, priority = 1 },   -- grenades, car bombs, rockets ... (not steam, flames, flares, smoke)
+        -- ignoreTypes = { 11, 12, 13, ... },   -- GTA explosion types that never count (default: the harmless ones)
+        down  = { enabled = true, chance = 1.0, cooldown = 180, priority = 2, delay = 20 },   -- a civilian down this many seconds -> EMS
+        speeding = { enabled = false, chance = 0.5, cooldown = 120, priority = 3, mph = 120, seconds = 4 },   -- off by default
+        area  = { radius = 150, seconds = 120 },   -- one call per this many metres, this often (repeat reports merge into it)
+        perMinute = 6,           -- at most this many NEW automatic calls of one kind a minute, server-wide
+        searchCircle = true,     -- witness calls show a search area, not the exact spot
         exemptLaw = true,
         quietZones = {   -- no shots alerts here (the Ammu-Nation ranges); { x, y, r = metres }
             { x = 13.5, y = -1097.4, r = 20.0 },
@@ -198,6 +216,66 @@ Config.Dispatch = {
         },
         -- ignoreWeapons = { 'WEAPON_STUNGUN', ... },   -- weapons that never count (default: stun gun, extinguisher, cans, flares, balls)
     },
+    -- 2.0.7: ready-made alerts for other scripts: exports.es_mdt:StoreRobbery(coords, data), BankRobbery(coords, 'fleeca' |
+    -- 'paleto' | 'pacific', data), JewelryRobbery, HouseRobbery, DrugSale, Explosion, Fight, SuspiciousActivity, Carjacking, or
+    -- Alert('<preset name>', data) for any of these (and any you add). Each preset:
+    --   kind      the call kind (routing and the MDT filter)          priority  1-3       critical  true: above P1 (see `critical`)
+    --   title     the card's title                                    icon      an emoji on the card and the board
+    --   blip      { sprite, color, scale, seconds }                   groups    who gets it ({ 'law' }, { 'law', 'ems' }); nil = the kind's route
+    --   witness   true: a search circle (radius metres), not the exact spot      message   the default text
+    --   enabled   false: the export answers "turned off"
+    presets = {
+        store        = { kind = 'robbery', priority = 2, title = 'Store robbery', icon = '🏪', message = 'The store alarm was triggered',
+                         blip = { sprite = 52, color = 1, scale = 1.0 } },
+        bank_fleeca  = { kind = 'robbery', priority = 1, title = 'Fleeca bank robbery', icon = '🏦', message = 'The bank alarm was triggered',
+                         blip = { sprite = 108, color = 1, scale = 1.1 } },
+        bank_paleto  = { kind = 'robbery', priority = 1, critical = true, title = 'Paleto Bay bank robbery', icon = '🏦',
+                         message = 'The Blaine County Savings alarm was triggered', blip = { sprite = 108, color = 1, scale = 1.2 } },
+        bank_pacific = { kind = 'robbery', priority = 1, critical = true, title = 'Pacific Standard robbery', icon = '🏦',
+                         message = 'The Pacific Standard vault alarm was triggered', blip = { sprite = 108, color = 1, scale = 1.25 } },
+        jewelry      = { kind = 'robbery', priority = 1, title = 'Vangelico jewelry robbery', icon = '💎', message = 'The Vangelico alarm was triggered',
+                         blip = { sprite = 617, color = 1, scale = 1.1 } },
+        house        = { kind = 'robbery', priority = 2, title = 'House burglary', icon = '🏠', message = 'A neighbour reports a break-in',
+                         witness = true, radius = 80, blip = { sprite = 40, color = 1 } },
+        drugsale     = { kind = 'drugs', priority = 3, title = 'Suspected drug sale', icon = '💊', message = 'A witness saw what looked like a drug deal',
+                         witness = true, radius = 120, blip = { sprite = 51, color = 2 } },
+        explosion    = { kind = 'explosion', priority = 1, title = 'Explosion', icon = '💥', message = 'A loud explosion was reported',
+                         groups = { 'law', 'ems' }, witness = true, radius = 90, blip = { sprite = 436, color = 1, scale = 1.1 } },
+        fight        = { kind = 'fight', priority = 3, title = 'Fight in progress', icon = '👊', message = 'People fighting in the street',
+                         witness = true, radius = 90, blip = { sprite = 280, color = 17 } },
+        suspicious   = { kind = 'suspicious', priority = 3, title = 'Suspicious activity', icon = '👁', message = 'A witness reports suspicious activity',
+                         witness = true, radius = 130, blip = { sprite = 280, color = 5 } },
+        carjack      = { kind = 'theft', priority = 2, title = 'Carjacking', icon = '🚗', message = 'A driver was pulled from their car',
+                         witness = true, radius = 100, blip = { sprite = 225, color = 47 } },
+        -- the automatic alerts use the preset with their own name for title / icon / blip (their priority etc. is in `alerts`)
+        shots        = { kind = 'shots', title = 'Shots fired', icon = '🔫', witness = true, blip = { sprite = 110, color = 1 } },
+        theft        = { kind = 'theft', title = 'Vehicle theft', icon = '🚙', witness = true, blip = { sprite = 225, color = 47 } },
+        down         = { kind = 'down', title = 'Person down', icon = '🚑', witness = true, radius = 60, blip = { sprite = 153, color = 1 } },
+        speeding     = { kind = 'speeding', title = 'Reckless driver', icon = '💨', witness = true, radius = 150, blip = { sprite = 225, color = 5 } },
+    },
+    -- 2.0.7: the CRITICAL tier, above P1: a pulsing card, a flashing blip and its own alarm that repeats every `repeatSeconds`
+    -- (at most `maxRepeats` times) until the unit acknowledges it (Respond / Hide on the card, the call board) or a unit
+    -- responds (stopOnUnit). Panic is critical (panic = false turns that off); presets set `critical = true`. Escalation
+    -- never makes a call critical.
+    critical = { enabled = true, panic = true, repeatSeconds = 4, maxRepeats = 8, stopOnUnit = true },
+    -- 2.0.7: alert sounds in three tiers (routine, priority = P1, critical). 'nui' plays them in the page, at each player's own
+    -- volume (the Aa popover: volume and mute, saved on their PC); 'game' uses GTA's sounds (mute works, volume does not).
+    sounds = { engine = 'nui', defaultVolume = 70 },
+    -- 2.0.7: a repeat report (same kind, and same preset / title, within `radius` metres while the call is fresh) goes onto
+    -- the open call: "x3 reports", a note, a smaller search circle. Panic, backup and officer calls never merge, and a plain
+    -- 'alert' (no preset, e.g. es_jail's) only merges when the script passes merge = true.
+    merge = { enabled = true, radius = 150, seconds = 180 },   -- kinds = { ['911'] = false } turns one kind off
+    -- 2.0.7: the search circle of witness calls: radius in metres; each repeat report shrinks it (x shrink, never under
+    -- minRadius). The true spot is always inside it and never leaves the server.
+    witness = { enabled = true, radius = 120, minRadius = 40, shrink = 0.75 },
+    -- 2.0.7: the quick call board: the active calls in a compact overlay (respond / waypoint / attach), MDT closed.
+    -- key = the default only (each player can rebind it under GTA Settings > Key Bindings > FiveM). Pick a key your other
+    -- scripts do not use; O is free on a stock WHIP server with es_mdt.
+    board = { enabled = true, command = 'callboard', key = 'O', limit = 25 },
+    -- 2.0.7: call retention. CLOSED calls older than this many days are deleted with their notes and unit rows, at start
+    -- and once a day, in small batches. Never an open call, never a call linked to a report, warrant or case (link one in
+    -- the call's page, or exports.es_mdt:LinkCall). 0 = keep every call forever.
+    keepClosedDays = 90,
     -- 2.0.4: auto-close. An active call is closed by itself, silently (no popup, sound or toast; the blip and GPS go and the
     -- call stays in the call history), once it is this old:
     autoCloseMinutes  = 15,     -- minutes after the call came in (0 = never)

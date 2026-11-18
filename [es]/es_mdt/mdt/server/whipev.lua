@@ -261,12 +261,12 @@ function MDT.registerWhipEv()
         return k
     end
 
-    cb('wevStatus', { rate = 500, burst = 4 }, function()
+    cb('wevStatus', { rate = 300, burst = 6 }, function()
         return { enabled = wanted(), running = on() }
     end)
 
     -- "Add evidence": what this officer carries (pockets + evidence case), marked for this case
-    cb('wevList', { rate = 800, burst = 4 }, function(c, d)
+    cb('wevList', { rate = 500, burst = 6 }, function(c, d)
         if not on() then return false, OFF end
         local k, why = caseFor(c, d.caseId, true)
         if not k then return false, why end
@@ -369,7 +369,7 @@ function MDT.registerWhipEv()
     end)
 
     -- open the case's locker for this officer (only works standing at an evidence locker)
-    cb('wevLocker', { rate = 1500, burst = 2 }, function(c, d)
+    cb('wevLocker', { rate = 1500, burst = 3 }, function(c, d)
         if not on() then return false, OFF end
         local k = MDT.getCase(d.caseId)
         if not k then return false, 'No such case' end

@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.0.6'
+version '2.0.7'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -86,6 +86,7 @@ files {
     'html/mdt/jail.js',
     'html/mdt/lightbox.css',
     'html/mdt/lightbox.js',
+    'html/mdt/board.js',
     'html/mdt/officer.css',
     'html/mdt/officer.js',
     'html/mdt/ops.css',

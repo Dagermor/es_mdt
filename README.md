@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.4).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.7).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -26,6 +26,9 @@ All screenshots use made-up test data.
 | ![Ranks](docs/images/05c_departments_ranks.png) Ranks and permissions | ![DOJ case](docs/images/04_doj_case.png) DOJ court case |
 | ![DOJ money](docs/images/04b_doj_money.png) DOJ fees, bail and fines | ![Urgent announcement](docs/images/11_urgent_announcement.png) Urgent announcement |
 | ![Close a call](docs/images/11_outcome_picker.png) Closing a call: pick the outcome | ![Call history](docs/images/11_history_badges.png) Call history with outcome badges |
+| ![Critical call](docs/images/13_critical_card.png) A critical call (alarm until acknowledged) | ![Call board](docs/images/13_call_board.png) The quick call board (O) |
+| ![Merged call](docs/images/13_merged_call.png) Repeat reports merged: ×3, 2 responding, details, a linked report | ![Search circle](docs/images/13_search_circle.png) A witness call's search circle on the live map |
+| ![Preset alert](docs/images/13_preset_alert_card.png) A ready-made alert (store robbery) with suspect details | ![Alert sounds](docs/images/13_alert_sounds_popover.png) Alert volume and mute in the Aa popover |
 
 ## Requirements
 
@@ -79,6 +82,8 @@ The old names keep working: `exports.es_departments:*`, `exports.es_doj:*`, the 
 | `/ems` | | everyone | medical call to EMS (off by default: `Config.Dispatch.medical = 'ems'`) |
 | `/panic` | END | on-duty officers | panic: P1 OFFICER DOWN at your position; works while downed or dead |
 | `/backup` | (none) | officers on a call | request backup at your position, linked to your call |
+| `/callboard` | O | units on duty | the quick call board: active calls, Respond / Waypoint / Leave / Ack alarm (2.0.7) |
+| `/mdtvolume <0-100\|mute\|unmute>` | | everyone | your own dispatch alert volume (also in the **Aa** popover) (2.0.7) |
 | `/permit` | | everyone | firearm permit application |
 | `/mdtscale <percent>` | | everyone | display size of the MDT, Departments and DOJ pages, e.g. `/mdtscale 120`, `/mdtscale reset` |
 | radar keys | (none) | police in a vehicle | radar and plate reader (Settings → Key Bindings → FiveM) |
@@ -99,7 +104,40 @@ All of this is in `Config.Dispatch` and `Config.Panic` (`es_mdt/mdt/config.lua`)
 - **Panic:** the **END** key (rebind under GTA Settings → Key Bindings → FiveM; `Config.Panic.key`), `/panic`, or the MDT's red button. On-duty officers only, with a `cooldown` (15 s). It files a P1 **OFFICER DOWN** call at the officer's position for law and EMS. It works while the officer is downed, injured or dead: nothing checks health, ragdoll or death, and WHIP lets the call through (`whileDead`).
 - **Request backup:** the button on your call in the MDT, or `/backup` (bindable). It files a backup call at your position, linked to your call and sent where it went: P1 for a panic or P1 call, otherwise P2. The cooldown is 45 s.
 - **Escalation:** a call nobody attached to goes up one priority every 5 minutes, up to P1. Panics are never escalated. The MDT updates quietly, with one soft re-alert to the units (`escalate.realert`).
-- **Shots fired and vehicle theft:** automatic alerts from the game, each with its own `enabled`, `chance`, `cooldown` and `priority`. On-duty law, suppressed weapons and the Ammu-Nation ranges never trigger them, and repeat reports near an open call add a note to it rather than a new call. Other scripts can file them directly with `exports.es_mdt:ShotsFired(coords)` and `exports.es_mdt:VehicleTheft(coords, plate, model)`.
+- **Shots fired and vehicle theft:** automatic alerts from the game, each with its own `enabled`, `chance`, `cooldown` and `priority`. On-duty law, suppressed weapons and the Ammu-Nation ranges never trigger them, and repeat reports near an open call merge into it (×N reports and a note) rather than making a new call. Other scripts can file them directly with `exports.es_mdt:ShotsFired(coords)` and `exports.es_mdt:VehicleTheft(coords, plate, model)`.
+
+## Dispatch: alerts, critical calls and the call board
+
+New in 2.0.7. Everything is in `Config.Dispatch` (`es_mdt/mdt/config.lua`).
+
+**Ready-made alerts for your scripts.** These are server exports, one line each. `data` is optional: `street`, `message`, `title`, `priority`, `critical`, `groups`, `witness`, `radius`, and suspect details (`plate`, `vehicle`, `color`, `weapon`, `suspect`, `direction`). Pass `player = source` and the server reads that player's position, car plate and colour, and the weapon in their hand.
+
+```lua
+exports.es_mdt:StoreRobbery(coords, { street = 'Innocence Blvd', player = source })
+exports.es_mdt:BankRobbery(coords, 'fleeca')            -- 'fleeca' | 'paleto' | 'pacific' (Paleto and Pacific are critical)
+exports.es_mdt:JewelryRobbery(coords)
+exports.es_mdt:HouseRobbery(coords, { suspect = 'Male, dark hoodie' })
+exports.es_mdt:DrugSale(coords, { player = source })
+exports.es_mdt:Explosion(coords)                        -- law and EMS
+exports.es_mdt:Fight(coords)
+exports.es_mdt:SuspiciousActivity(coords, { message = 'Someone trying car doors' })
+exports.es_mdt:Carjacking(coords, { plate = '8ABC123', vehicle = 'Sultan', color = 'Blue', direction = 'North' })
+exports.es_mdt:Alert('store', { coords = coords })       -- any preset by name, including your own
+```
+
+Each returns `callId, merged` (`merged` is true when the report went onto an open call) or `false, why`. Each preset in `Config.Dispatch.presets` sets the call's `kind`, `priority`, `title`, `icon`, `blip` and `groups`, and can be `critical`, a `witness` report (a search circle) or turned off (`enabled = false`). Add your own and call them with `Alert('<name>', data)`.
+
+- **Critical, above P1:** the panic button and presets with `critical = true`. The card pulses with a CRITICAL badge, the blip flashes, and an alarm repeats every 4 s (up to 8 times) until the unit acknowledges it (Respond or Hide on the card, Ack on the board), a unit responds, or the call closes (`Config.Dispatch.critical`).
+- **Alert sounds:** three tiers: routine, P1 and critical. Each player sets their own volume or mutes them in the **Aa** popover or with `/mdtvolume`, saved on their PC (`Config.Dispatch.sounds`).
+- **Repeat reports:** a report of the same kind (and preset) within 150 m while the call is fresh goes onto the open call. The call shows **×3 reports**, gets a note, and its priority can only go up (`Config.Dispatch.merge`). Panic, backup and officer calls never merge. Plain `alert` calls without a preset (es_jail, `NotifyDispatch`) stay one call each unless the script passes `merge = true`.
+- **"N responding"** on the card, in the MDT list and on the call's page.
+- **Search circles:** witness reports show a circle, not a pin. The exact spot is inside it but never at its centre, and the circle shrinks with each repeat report (`Config.Dispatch.witness`). **The true position never leaves the server.** Players only get the circle. Arriving counts anywhere inside it.
+- **Suspect details:** plate, vehicle, colour, direction, a description, and the weapon as a class with a threat grade (Melee 1, Handgun 2, SMG and Shotgun 3, Rifle 4, Machine gun, Sniper and Explosives 5). They're cleaned on the server, and the exact weapon is never sent.
+- **Automatic alerts:** shots, vehicle theft, fights (melee with a witness), explosions (not steam, flames, flares or smoke), a civilian down for 20 s (sent to EMS, or law if there's no EMS), and speeding (off by default). Each has `enabled`, `chance`, `cooldown` and `priority`. On-duty law never sets them off. At most `perMinute` (6) **new** calls of one kind a minute; reports near an open call still merge.
+- **The call board:** **O** (or `/callboard`, rebindable) with the MDT closed. It lists the active calls you can see, critical first, with their units, reports, search area and details. Buttons: **Respond** (attach and GPS), **Waypoint**, **GPS** and **Leave** for your call, and **Ack alarm**. It updates live and follows the display size. Press Esc or O to close it.
+- **Links:** **＋ Link report / warrant / case** on a call's page, or `exports.es_mdt:LinkCall(callId, 'report' | 'warrant' | 'case', id)` (`nil` unlinks). Linked calls are kept forever (see [Call retention](#call-retention)).
+
+**Opening a case's evidence locker from the MDT.** **Open locker** on a case closes the MDT and then opens the whip_evidence stash. WHIP won't open a stash over another screen. Stand at an evidence locker first; the MDT doesn't reopen by itself.
 
 ## Dispatch: closing calls, auto-close and announcements
 
@@ -236,7 +274,7 @@ The details are in [docs/whip_evidence_integration.md](docs/whip_evidence_integr
 `exports.es_mdt:*` (also available under `exports.es_departments:*` and `exports.es_doj:*`):
 
 - **Departments:** `HasPerm(source, perm)`, `GetDepartments()`, `GetDepartment(id)`, `GetPlayerDepartments(source)`, `GetActiveDepartment(source)`, `GetRoster(id)`, `GetOnDuty(id)`, `IsStaff(source)`, `GetLogo(id)`, `GetDutySeconds(charId)`, `HasCert(charId, cert)`, …
-- **MDT:** `AddCall(call)`, `NotifyDispatch(title, message, coords, priority, sourceLabel)`, `CloseCall(id, outcome)`, `TestCall(kind, priority)` (see [Dispatch API](#dispatch-api)), `ShotsFired(coords, opts)`, `VehicleTheft(coords, plate, model, opts)` (2.0.6), `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, …
+- **MDT:** `AddCall(call)`, `NotifyDispatch(title, message, coords, priority, sourceLabel)`, `CloseCall(id, outcome)`, `TestCall(kind, priority)` (see [Dispatch API](#dispatch-api)), `ShotsFired(coords, opts)`, `VehicleTheft(coords, plate, model, opts)` (2.0.6), `Alert(name, data)`, `StoreRobbery`, `BankRobbery`, `JewelryRobbery`, `HouseRobbery`, `DrugSale`, `Explosion`, `Fight`, `SuspiciousActivity`, `Carjacking`, `LinkCall(callId, kind, id)` (2.0.7, see [Dispatch: alerts, critical calls and the call board](#dispatch-alerts-critical-calls-and-the-call-board)), `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, …
 - **DOJ:** `GetCourtMarks(charId)`, `GetRecordSummary(charId)`, `WarrantsNeedJudge()`, …
 
 ## Dispatch API
@@ -248,6 +286,8 @@ Any resource can put a call on the MDT dispatch board. Units on duty get the pop
 ```lua
 local callId = exports.es_mdt:AddCall({
     kind     = 'alert',                 -- '911' | '311' | 'alert' | 'officer' | 'panic' | 'medical' | 'shots' | 'theft' | 'backup'  (anything else: 'alert')
+                                        -- 2.0.7: also 'robbery' | 'drugs' | 'explosion' | 'fight' | 'suspicious' | 'down' | 'speeding'
+    -- preset = 'store',                 -- 2.0.7, optional: fill what is not given from Config.Dispatch.presets
     -- groups = 'ems',                   -- 2.0.6, optional: who gets it ('law', 'ems' or { 'law', 'ems' }); default: Config.Dispatch.routing.kinds
     priority = 1,                       -- 1 (urgent) .. 3. Default: panic 1, 311 3, others 2
     title    = 'Alarm: Fleeca Hawick',  -- up to 120 characters. Default: the kind's name ('911 call', 'Alert', ...)
@@ -277,6 +317,11 @@ local callId = exports.es_mdt:AddCall({
 | `blipTime` | | Seconds the blip stays, 5 to 1800. Default: `Config.Dispatch.blip.seconds`. |
 | `deptId` | | Optional department id stored with the call. |
 | `sourceLabel` | `source`, `from`, `resource` | A text label, up to 40 characters. With none, the name of the resource that called the export. **Admins only**: see below. |
+| `preset` | | 2.0.7: a `Config.Dispatch.presets` name. Its kind, priority, title, message, icon, blip, groups, critical and witness fill what the call doesn't say. |
+| `critical` | | 2.0.7: `true` for the critical tier (pulsing card, flashing blip, a repeating alarm). |
+| `witness`, `radius` | | 2.0.7: `true` for a search circle of `radius` metres (20 to 1000; default `Config.Dispatch.witness.radius`) instead of the exact spot. |
+| `details` | | 2.0.7: `{ plate, vehicle, color, weapon, grade, desc, dir }` shown on the card. Short strings; use the preset exports to have them cleaned for you. |
+| `merge` | | 2.0.7: `false` means always a new call. `true` lets a plain `alert` merge into an open one with the same title. |
 
 Strings are trimmed, control characters are removed (new lines and tabs are kept), and the lengths above are applied.
 
@@ -353,6 +398,10 @@ es_mdt creates and updates its own tables, so there is no SQL to import. Each ta
 
 Each column or key it adds is logged as `[es_mdt] schema: added missing column ...`. If it cannot add one, the server console shows a red **SCHEMA ERROR** block with the SQL to run by hand, and WHIP lists it as a start problem. About 20 seconds after start, `[es_mdt] schema check: 68 tables OK` confirms everything is in place.
 
+### Call retention
+
+Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.Dispatch.keepClosedDays` (90) are deleted with their notes and unit rows. This runs about 90 seconds after start and then once a day, in batches of 500 with a short pause between them, so a big table doesn't stall the server. The console shows what was removed: `[es_mdt] call retention (90 days): removed 120 closed call(s), 410 note(s), 95 unit row(s)`. It never deletes an open call, or a call linked to a report, warrant or case (link one on the call's page or with `exports.es_mdt:LinkCall`). Set `keepClosedDays = 0` to keep every call.
+
 ## How it is built
 
 2.0.0 merged three resources into one, and each part still runs on its own. Each part's Lua runs with its own globals (`shared/env.lua`): its own `Config` and helpers, while the exports are shared. Each part's page runs in its own frame of one NUI page (`html/index.html` and `html/shell.js`), so the MDT, Departments and the DOJ tablet can be open on top of each other.
@@ -360,6 +409,7 @@ Each column or key it adds is logged as `[es_mdt] schema: added missing column .
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.0.7:** in Lua tests: every preset and export (the bank choice and fallback, `Alert` both ways, an unknown preset, no coordinates), suspect details (plate and text cleaning, weapon names and signed hashes as classes and grades, the details the server reads from a player), the search circle (the centre 0.2 to 0.85 of the radius from the spot in 200 random draws, only the centre and radius sent, no height), merging (×N, the shrinking circle still holding the true spot, another kind or after the window is a new call, notes at most every 30 s, priority only up, panics and es_jail alerts never merge, `merge = false`), critical calls (panic, presets, `panic = false`), the automatic alerts (fights, a civilian down only when really down and only for civilians, sent to EMS; speeding off by default and checked against the server's own speed reading; explosions ignoring harmless, invisible and on-duty-law ones, with a cooldown; the per-minute cap while merges still work), the call board (only for units on duty, no phone, audience or source label), links (attached or high rank only, missing records refused, unlink), and retention (batches with pauses, the counts, open and linked calls kept with their notes, a call linked during a sweep kept whole, `0` keeps everything). On the client: the three sound tiers, the alarm repeating and stopping (Hide, a unit responding, the board's Ack, closing, `maxRepeats`), mute and volume (saved, `/mdtvolume`, reset), the merged card, the board (the key O, its screen and focus, Respond with GPS, live reloads at most once a second, not over another screen or the MDT), the panic message, and the locker (MDT closed first, the stash asked for only once no screen is open, one request for two presses, never reopening the MDT, a refusal shown). Against real MariaDB: the 2.0.7 columns and the closed-call index (used by the cleanup query), the circle stored and listed by the real SQL, merging and the real time window, links, and the cleanup's `DELETE … JOIN` guards. The schema test passed again with 2.0.7 (fresh, 1.x and broken 2.0.4 databases). In browser tests: the critical, merged and preset cards, the MDT list and call page (×3, N responding, details, links), the search circles on the live map, the call board, the link dialog, **Open locker** sending one request, the rate-limit retry, and the alert-sound controls. All the 2.0.3 to 2.0.6 tests still pass. On a live server: migration `005_dispatch207` and the schema check, the presets through the real exports (a critical Pacific Standard call, cleaned details), a witness call's circle with the true spot kept on the server, three fight reports merged into one call (×3, a smaller circle that still holds the spot), es_jail-style alerts kept separate, a critical panic test call, `LinkCall`, the per-minute cap, and retention on old test calls (removed, a linked one kept, real calls untouched). Not tested in game with a real player: the sounds and alarm themselves, the O key, the fight, explosion, down and speeding detection, and the locker stash opening after the MDT closes.
 - **Tested for 2.0.6:** in Lua tests: routing for every call kind (including a server with no EMS department, and `shared`), the medical line, chat suggestions, the unit list, the panic key mapping (END, the old mapping kept) and pressing it while dead, at 0 health and ragdolled, the panic callback being `whileDead` with no death checks, the panic cooldown and on-duty rule, OFFICER DOWN going to law and EMS, backup (linking, priority, cooldown, while downed), escalation (never a panic, never past P1, never a call with a unit), and shots and theft alerts (toggles, chance, cooldowns, law and suppressed exemptions, area merging, the exports). In browser tests: the call card's unit list, escalated, officer-down and backup cards, and the MDT call page with units and Request backup. On a live server: the calls filed and routed, and the database migration. Not tested in game with a real player: the END key itself, pressing it while actually downed, and the game-side shots and theft detection.
 - **Tested for 2.0.5:** the schema self-check against a real MariaDB database, using whip_core's own `EnsureTable` and migration code: a fresh database, an old 1.x database with rows in it, and a broken 2.0.4 fresh install all end up with every column and key of all 68 tables. The 2.0.4 errors were reproduced and then repaired. Extra columns, keys and rows were left untouched. A fix that fails gives a loud error and a start problem, and is repaired at the next start. A second start does nothing.
 - **Tested for 2.0.4:** in Lua tests: the outcome list and its checks (Other needs a note), `everAttached`, auto-close for every case in the table above (with no notification of any kind sent), the off-duty clean-up and duty blips, announcement priority, and the client's GPS clean-up (a waypoint moved elsewhere stays, auto-close says nothing). In browser tests: the outcome picker, the badges, the announcement form and preview, and the urgent banner on open. On a live server: the database migrations, a test call closed with an outcome, and test calls auto-closed with a short timeout (outcomes, saved rows, no notification sent).

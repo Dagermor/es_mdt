@@ -83,3 +83,70 @@ end, false)
 TriggerEvent('chat:addSuggestion', '/mdtscale', 'MDT, Departments and DOJ display size', {
     { name = 'percent', help = 'for example 120, or reset' },
 })
+
+-- ---------------------------------------------------------------- 2.0.7: alert sound volume / mute (each player's own)
+-- Saved in KVP like the size. The Aa popover shows it; html/shell.js plays the tones (WebAudio) at this volume.
+local KVP_VOL, KVP_MUTE = 'es_mdt:alert_volume', 'es_mdt:alert_mute'
+local function sndCfg()
+    local C = (ESPART('mdt') or {}).Config or {}
+    local D = type(C.Dispatch) == 'table' and C.Dispatch or {}
+    return type(D.sounds) == 'table' and D.sounds or {}
+end
+local function volState()
+    local def = math.floor(math.min(100, math.max(0, tonumber(sndCfg().defaultVolume) or 70)))
+    local v = GetResourceKvpInt(KVP_VOL)            -- 0 when never set: stored as volume + 1
+    local vol = v > 0 and math.min(100, v - 1) or def
+    return { volume = vol, muted = GetResourceKvpInt(KVP_MUTE) == 1, def = def, engine = sndCfg().engine == 'game' and 'game' or 'nui' }
+end
+local function pushVol()
+    local s = volState()
+    s.__shell = 'volume'
+    SendNUIMessage(s)
+    return s
+end
+RegisterNUICallback('esui_volume_get', function(_, cb) cb(volState()) end)
+-- { volume = 0-100 } and / or { muted = true|false }, or { reset = true }
+RegisterNUICallback('esui_volume', function(d, cb)
+    d = type(d) == 'table' and d or {}
+    if d.reset then DeleteResourceKvp(KVP_VOL) DeleteResourceKvp(KVP_MUTE)
+    else
+        local v = tonumber(d.volume)
+        if v then SetResourceKvpInt(KVP_VOL, math.floor(math.min(100, math.max(0, v))) + 1) end
+        if d.muted ~= nil then SetResourceKvpInt(KVP_MUTE, d.muted == true and 1 or 0) end
+    end
+    cb(volState())
+end)
+CreateThread(function() Wait(1600) pushVol() end)
+
+local GAME_SOUND = {   -- the 'game' engine (volume cannot be set there; mute still works)
+    routine  = { 'Event_Message_Purple', 'GTAO_FM_Events_Soundset', 1, 400 },
+    priority = { 'Event_Message_Purple', 'GTAO_FM_Events_Soundset', 2, 400 },
+    critical = { 'Beep_Red', 'DLC_HEIST_HACKING_SNAKE_SOUNDS', 4, 220 },
+    soft     = { 'Text_Arrive_Tone', 'Phone_SoundSet_Default', 1, 250 },
+    ok       = { 'Menu_Accept', 'Phone_SoundSet_Default', 1, 250 },
+}
+--- EsAlertSound('routine' | 'priority' | 'critical' | 'soft' | 'ok' | 'announce' | 'urgent') -> played (false when muted / volume 0)
+function EsAlertSound(tier)
+    local s = volState()
+    if s.muted or s.volume <= 0 then return false end
+    if s.engine == 'game' then
+        local g = GAME_SOUND[tier] or (tier == 'urgent' and GAME_SOUND.critical) or GAME_SOUND.soft
+        CreateThread(function() for _ = 1, g[3] do PlaySoundFrontend(-1, g[1], g[2], true) Wait(g[4]) end end)
+        return true
+    end
+    SendNUIMessage({ __shell = 'tone', tier = tier })
+    return true
+end
+
+-- /mdtvolume 50   /mdtvolume mute   /mdtvolume unmute
+RegisterCommand('mdtvolume', function(_, args)
+    local a = (args[1] or ''):lower():gsub('%%', '')
+    if a == 'mute' or a == 'off' then SetResourceKvpInt(KVP_MUTE, 1)
+    elseif a == 'unmute' or a == 'on' then SetResourceKvpInt(KVP_MUTE, 0)
+    elseif tonumber(a) then SetResourceKvpInt(KVP_VOL, math.floor(math.min(100, math.max(0, tonumber(a)))) + 1) SetResourceKvpInt(KVP_MUTE, 0)
+    elseif a ~= '' then return notify('Use /mdtvolume <0-100>, mute or unmute', 'error') end
+    local s = pushVol()
+    notify(s.muted and 'MDT alert sounds: muted' or ('MDT alert sounds: %d%%'):format(s.volume), 'success')
+    if not s.muted then EsAlertSound('priority') end
+end, false)
+TriggerEvent('chat:addSuggestion', '/mdtvolume', 'Dispatch alert volume (0-100), or mute / unmute', { { name = 'volume', help = '0-100, mute or unmute' } })

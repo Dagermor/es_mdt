@@ -5,7 +5,7 @@
 (function () {
   'use strict';
   const M = window.MDT; if (!M) return;
-  const { S, $, $$, esc, call, toast, said, busy, ago, dateTime, modal, can, HOOK } = M;
+  const { S, $, $$, esc, call, post, toast, said, busy, ago, dateTime, modal, can, HOOK } = M;
 
   const KIND = {
     casing: ['Casing', '⁍'], bullet: ['Bullet', '•'], blood: ['Blood', '🩸'], fingerprint: ['Fingerprint', '🖐'],
@@ -123,11 +123,15 @@
     const photos = items.filter((e) => e.kind === 'photo' || String(e.ref).startsWith('photo:'));
     $$('[data-wevph]', box).forEach((el) => el.onclick = () => openPhotos(photos, photos.findIndex((p) => p.ref === el.dataset.wevph), k.id));
     if ($('#wev-add', box)) $('#wev-add', box).onclick = () => addModal(k, reload);
-    if ($('#wev-locker', box)) $('#wev-locker', box).onclick = (ev) => busy(ev.currentTarget, async () => {
-      const r = await call('wevLocker', { caseId: k.id });
-      if (r.ok) toast(`Locker for ${k.number} opened`, 'ok');
-      else toast(r.why || 'Go to an evidence locker first, then open it from here', 'err');
-    });
+    // 2.0.7: the stash cannot open over the MDT (whip_core refuses an inventory while another screen is up), so the
+    // game closes the MDT first and then asks for the locker (mdt/client/main.lua wevLockerOpen). One press, one request.
+    if ($('#wev-locker', box)) $('#wev-locker', box).onclick = (ev) => {
+      const b = ev.currentTarget; if (b.disabled) return;
+      b.disabled = true;
+      post('wevLockerOpen', { caseId: k.id, number: k.number }).then((r) => {
+        if (!r || r.ok === false) { b.disabled = false; toast((r && r.why) || 'The locker could not be opened', 'err'); }
+      });
+    };
   }
 
   // ---------------------------------------------------------------- "Add evidence": pick what you carry

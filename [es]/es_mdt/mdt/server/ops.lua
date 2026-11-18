@@ -90,9 +90,12 @@ end
 MDT.repushDutyBlips = repushDutyBlips
 
 local KINDS = { ['911'] = true, ['311'] = true, panic = true, alert = true, officer = true,
-    medical = true, shots = true, theft = true, backup = true }   -- 2.0.6: the last four
+    medical = true, shots = true, theft = true, backup = true,   -- 2.0.6: the last four
+    robbery = true, drugs = true, explosion = true, fight = true, suspicious = true, down = true, speeding = true }   -- 2.0.7
 local KIND_TITLE = { ['911'] = '911 call', ['311'] = '311 call', panic = 'Officer down', officer = 'Officer call', alert = 'Alert',
-    medical = 'Medical call', shots = 'Shots fired', theft = 'Vehicle theft', backup = 'Backup requested' }
+    medical = 'Medical call', shots = 'Shots fired', theft = 'Vehicle theft', backup = 'Backup requested',
+    robbery = 'Robbery', drugs = 'Drug activity', explosion = 'Explosion', fight = 'Fight', suspicious = 'Suspicious activity',
+    down = 'Person down', speeding = 'Reckless driver' }
 
 -- ---------------------------------------------------------------- 2.0.6: routing (Config.Dispatch.routing)
 -- A call goes to GROUPS of departments ('law', 'ems'), by its kind. A group is a list of department TYPES. Saved on the call
@@ -100,7 +103,10 @@ local KIND_TITLE = { ['911'] = '911 call', ['311'] = '311 call', panic = 'Office
 local ROUTE = DSP.routing or {}
 local DEF_GROUPS = { law = { 'police', 'sheriff', 'state' }, ems = { 'ems' } }
 local DEF_ROUTES = { ['911'] = { 'law', 'ems' }, ['311'] = { 'law' }, medical = { 'ems' }, panic = { 'law', 'ems' },
-    backup = { 'law' }, shots = { 'law' }, theft = { 'law' }, officer = { 'law' }, alert = { 'law' } }
+    backup = { 'law' }, shots = { 'law' }, theft = { 'law' }, officer = { 'law' }, alert = { 'law' },
+    -- 2.0.7: presets name their own groups; these are for a kind with no preset. 'down' goes to EMS (law when there is none).
+    robbery = { 'law' }, drugs = { 'law' }, explosion = { 'law', 'ems' }, fight = { 'law' }, suspicious = { 'law' },
+    down = { 'ems' }, speeding = { 'law' } }
 local function groupsCfg() return type(ROUTE.groups) == 'table' and next(ROUTE.groups) and ROUTE.groups or DEF_GROUPS end
 --- the group a department type is in ('law', 'ems', ...), or nil (DOJ: no group, no calls)
 local function groupOfType(t)
@@ -192,40 +198,284 @@ local function labelOf(d)
     return v ~= '' and v or nil
 end
 
+-- ---------------------------------------------------------------- 2.0.7: presets, critical tier, merging, search circle
+local CRIT = DSP.critical or {}
+local MRG = DSP.merge or {}
+local WIT = DSP.witness or {}
+local NO_MERGE = { panic = true, backup = true, officer = true }   -- never folded into another call
+
+--- a preset from Config.Dispatch.presets (name -> its table), or nil
+local function presetOf(name)
+    local P = type(DSP.presets) == 'table' and DSP.presets or {}
+    if type(name) ~= 'string' or type(P[name]) ~= 'table' then return nil end
+    return P[name]
+end
+MDT.presetOf = presetOf
+
+--- plain, short text from anything a script or a game sent: no control characters, no markup, one line
+local function clean(v, n)
+    if type(v) == 'number' then v = tostring(v) end
+    if type(v) ~= 'string' then return nil end
+    v = v:gsub('[%c<>`]', ' '):gsub('%s+', ' '):gsub('^ ', ''):gsub(' $', '')
+    v = v:sub(1, n or 40)
+    return v ~= '' and v or nil
+end
+MDT.cleanText = clean
+
+-- weapon classes and their threat grade (1 low .. 5 extreme), from the weapon's name or hash; never the exact weapon
+local WCLASS = {
+    { key = 'melee', label = 'Melee weapon', grade = 1, list = { 'WEAPON_KNIFE', 'WEAPON_BAT', 'WEAPON_CROWBAR', 'WEAPON_GOLFCLUB', 'WEAPON_HAMMER',
+        'WEAPON_HATCHET', 'WEAPON_KNUCKLE', 'WEAPON_MACHETE', 'WEAPON_SWITCHBLADE', 'WEAPON_NIGHTSTICK', 'WEAPON_WRENCH', 'WEAPON_BATTLEAXE',
+        'WEAPON_POOLCUE', 'WEAPON_DAGGER', 'WEAPON_BOTTLE', 'WEAPON_FLASHLIGHT', 'WEAPON_STONE_HATCHET' } },
+    { key = 'handgun', label = 'Handgun', grade = 2, list = { 'WEAPON_PISTOL', 'WEAPON_PISTOL_MK2', 'WEAPON_COMBATPISTOL', 'WEAPON_APPISTOL',
+        'WEAPON_PISTOL50', 'WEAPON_SNSPISTOL', 'WEAPON_SNSPISTOL_MK2', 'WEAPON_HEAVYPISTOL', 'WEAPON_VINTAGEPISTOL', 'WEAPON_MARKSMANPISTOL',
+        'WEAPON_REVOLVER', 'WEAPON_REVOLVER_MK2', 'WEAPON_DOUBLEACTION', 'WEAPON_CERAMICPISTOL', 'WEAPON_NAVYREVOLVER', 'WEAPON_GADGETPISTOL',
+        'WEAPON_PISTOLXM3' } },
+    { key = 'smg', label = 'SMG', grade = 3, list = { 'WEAPON_MICROSMG', 'WEAPON_SMG', 'WEAPON_SMG_MK2', 'WEAPON_ASSAULTSMG', 'WEAPON_COMBATPDW',
+        'WEAPON_MACHINEPISTOL', 'WEAPON_MINISMG', 'WEAPON_TECPISTOL' } },
+    { key = 'shotgun', label = 'Shotgun', grade = 3, list = { 'WEAPON_PUMPSHOTGUN', 'WEAPON_PUMPSHOTGUN_MK2', 'WEAPON_SAWNOFFSHOTGUN',
+        'WEAPON_ASSAULTSHOTGUN', 'WEAPON_BULLPUPSHOTGUN', 'WEAPON_MUSKET', 'WEAPON_HEAVYSHOTGUN', 'WEAPON_DBSHOTGUN', 'WEAPON_AUTOSHOTGUN',
+        'WEAPON_COMBATSHOTGUN' } },
+    { key = 'rifle', label = 'Rifle', grade = 4, list = { 'WEAPON_ASSAULTRIFLE', 'WEAPON_ASSAULTRIFLE_MK2', 'WEAPON_CARBINERIFLE',
+        'WEAPON_CARBINERIFLE_MK2', 'WEAPON_ADVANCEDRIFLE', 'WEAPON_SPECIALCARBINE', 'WEAPON_SPECIALCARBINE_MK2', 'WEAPON_BULLPUPRIFLE',
+        'WEAPON_BULLPUPRIFLE_MK2', 'WEAPON_COMPACTRIFLE', 'WEAPON_MILITARYRIFLE', 'WEAPON_HEAVYRIFLE', 'WEAPON_TACTICALRIFLE', 'WEAPON_BATTLERIFLE' } },
+    { key = 'mg', label = 'Machine gun', grade = 5, list = { 'WEAPON_MG', 'WEAPON_COMBATMG', 'WEAPON_COMBATMG_MK2', 'WEAPON_GUSENBERG' } },
+    { key = 'sniper', label = 'Sniper rifle', grade = 5, list = { 'WEAPON_SNIPERRIFLE', 'WEAPON_HEAVYSNIPER', 'WEAPON_HEAVYSNIPER_MK2',
+        'WEAPON_MARKSMANRIFLE', 'WEAPON_MARKSMANRIFLE_MK2', 'WEAPON_PRECISIONRIFLE' } },
+    { key = 'explosive', label = 'Explosives', grade = 5, list = { 'WEAPON_RPG', 'WEAPON_GRENADELAUNCHER', 'WEAPON_MINIGUN', 'WEAPON_HOMINGLAUNCHER',
+        'WEAPON_COMPACTLAUNCHER', 'WEAPON_RAILGUN', 'WEAPON_GRENADE', 'WEAPON_STICKYBOMB', 'WEAPON_PIPEBOMB', 'WEAPON_PROXMINE', 'WEAPON_MOLOTOV' } },
+}
+local GRADE = { 'Low', 'Medium', 'High', 'Very high', 'Extreme' }
+local WBY = nil   -- [name or hash] = class
+local function u32(h) h = math.tointeger(tonumber(h)) return h and (h & 0xFFFFFFFF) or nil end
+local function weaponClass(w)
+    if not WBY then
+        WBY = {}
+        for _, c in ipairs(WCLASS) do
+            WBY[c.key] = c
+            for _, n in ipairs(c.list) do
+                WBY[n] = c
+                local ok, h = pcall(GetHashKey, n)
+                if ok and h then WBY[u32(h)] = c end
+            end
+        end
+    end
+    if type(w) == 'string' then
+        local k = w:upper()
+        if WBY[k] then return WBY[k] end
+        if WBY['WEAPON_' .. k] then return WBY['WEAPON_' .. k] end
+        return WBY[w:lower()]
+    end
+    if type(w) == 'number' then return WBY[u32(w)] end
+    return nil
+end
+MDT.weaponClass = weaponClass
+
+-- GTA vehicle paint index -> a plain colour name (what a witness would say)
+local PAINT = { { 0, 2, 'Black' }, { 3, 9, 'Silver' }, { 10, 11, 'Grey' }, { 12, 12, 'Black' }, { 13, 14, 'Grey' }, { 15, 16, 'Black' },
+    { 17, 26, 'Silver' }, { 27, 35, 'Red' }, { 36, 38, 'Orange' }, { 39, 40, 'Red' }, { 41, 41, 'Orange' }, { 42, 42, 'Yellow' }, { 43, 48, 'Red' },
+    { 49, 60, 'Green' }, { 61, 87, 'Blue' }, { 88, 89, 'Yellow' }, { 90, 90, 'Bronze' }, { 91, 91, 'Yellow' }, { 92, 92, 'Green' },
+    { 93, 93, 'Beige' }, { 94, 110, 'Brown' }, { 111, 113, 'White' }, { 114, 116, 'Brown' }, { 117, 120, 'Chrome' }, { 121, 122, 'White' },
+    { 123, 124, 'Orange' }, { 125, 128, 'Green' }, { 129, 134, 'White' }, { 135, 137, 'Pink' }, { 138, 138, 'Orange' }, { 139, 139, 'Green' },
+    { 140, 141, 'Blue' }, { 142, 142, 'Purple' }, { 143, 143, 'Red' }, { 144, 144, 'Grey' }, { 145, 145, 'Purple' }, { 146, 146, 'Blue' },
+    { 147, 147, 'Black' }, { 148, 149, 'Purple' }, { 150, 150, 'Red' }, { 151, 155, 'Green' }, { 156, 157, 'Grey' }, { 158, 160, 'Gold' } }
+local function paintName(i)
+    i = math.tointeger(tonumber(i))
+    if not i then return nil end
+    for _, r in ipairs(PAINT) do if i >= r[1] and i <= r[2] then return r[3] end end
+    return nil
+end
+MDT.paintName = paintName
+
+--- 2.0.7: suspect details for a call, all sanitized: { plate, vehicle, color, weapon, grade, desc, dir }.
+--- data = what a script or the game said (plate, vehicle|model, color|colour, weapon (name / hash / class), suspect|desc,
+--- direction); src = a player id the server reads itself (their car's plate and paint, the weapon in their hand).
+local function detailsOf(data, src)
+    data = type(data) == 'table' and data or {}
+    local out = {}
+    local plate = clean(data.plate, 12)
+    if plate then out.plate = plate:upper():gsub('[^A-Z0-9 ]', '') end
+    out.vehicle = clean(data.vehicle or data.model, 30)
+    out.color = clean(data.color or data.colour, 24)
+    local wc = data.weapon ~= nil and weaponClass(data.weapon) or nil
+    if not wc and data.weapon ~= nil and type(data.weapon) == 'string' then
+        local w = clean(data.weapon, 24)
+        if w then out.weapon, out.grade = w, 2 end
+    end
+    out.desc = clean(data.suspect or data.desc, 120)
+    out.dir = clean(data.direction or data.heading, 16)
+    if src then pcall(function()   -- what the server reads itself; a native that fails just leaves it out
+        local ped = GetPlayerPed(src)
+        if ped and ped ~= 0 then
+            local veh = GetVehiclePedIsIn(ped, false)
+            if veh and veh ~= 0 then
+                if not out.plate then
+                    local ok, p = pcall(GetVehicleNumberPlateText, veh)
+                    p = ok and clean(p, 12) or nil
+                    if p then out.plate = p:upper():gsub('[^A-Z0-9 ]', '') end
+                end
+                if not out.color then
+                    local ok, c1 = pcall(GetVehicleColours, veh)
+                    out.color = ok and paintName(c1) or nil
+                end
+            end
+            if not wc and data.weapon == nil and data.readWeapon ~= false then
+                local ok, h = pcall(GetSelectedPedWeapon, ped)
+                if ok and h then wc = weaponClass(h) end
+            end
+        end
+    end) end
+    if wc then out.weapon, out.grade = wc.label, wc.grade end
+    if out.grade then out.gradeLabel = GRADE[out.grade] end
+    if out.plate == '' then out.plate = nil end
+    return next(out) and out or nil
+end
+MDT.detailsOf = detailsOf
+
+--- the search circle's centre: inside `r` of the true spot, never on it (0.2r - 0.85r away), so the spot is always in the circle
+local function circleCentre(x, y, r)
+    local a = math.random() * math.pi * 2
+    local lo, hi = 0.2, math.min(0.85, math.max(0.2, tonumber(WIT.maxOffset) or 0.75))
+    local d = r * (lo + math.random() * (hi - lo))
+    return x + math.cos(a) * d, y + math.sin(a) * d
+end
+MDT.circleCentre = circleCentre
+
+--- the merge window for a kind: radius (m), seconds; nil = this kind never merges
+local function mergeWindow(kind, d)
+    if MRG.enabled == false or NO_MERGE[kind] then return nil end
+    if type(MRG.kinds) == 'table' and MRG.kinds[kind] == false then return nil end
+    local r = tonumber(d.mergeRadius) or tonumber(MRG.radius) or 150
+    local secs = tonumber(d.mergeSeconds) or tonumber(MRG.seconds) or 180
+    if r <= 0 or secs <= 0 then return nil end
+    return r, math.floor(secs)
+end
+--- an active call this report belongs to: same kind (and preset; an 'alert' also needs the same title), close by, fresh
+local function findMerge(kind, preset, title, x, y, r, secs)
+    local rows = MySQL.query.await([[SELECT `id`,`x`,`y`,`fx`,`fy`,`radius`,`reports`,`priority`,`audience`,`critical`,`title`
+        FROM `es_mdt_calls` WHERE `status` = 'active' AND `kind` = ? AND `x` IS NOT NULL
+        AND COALESCE(`lastReportAt`, `createdAt`) >= NOW() - INTERVAL ? SECOND AND (`preset` <=> ?) ORDER BY `id` DESC LIMIT 20]], { kind, secs, preset }) or {}
+    for _, row in ipairs(rows) do
+        if (kind ~= 'alert' or row.title == title) and dist2({ x = x, y = y }, row) <= r then return row end
+    end
+    return nil
+end
+local MergeNoted = {}   -- [callId] = os.time() of the last "another report" note (one every 30 s at most)
+--- fold a report into an active call: count it, maybe raise its priority, shrink its search circle, tell its units
+local function mergeInto(row, rep)
+    local cid = row.id
+    local reports = (tonumber(row.reports) or 1) + 1
+    local pri = math.min(tonumber(row.priority) or 3, rep.priority or 3)
+    local fx, fy, rad = row.fx, row.fy, tonumber(row.radius)
+    if rad and fx and fy then
+        -- each new report narrows it down: radius x shrink (never under minRadius), the centre pulled toward the true spot
+        -- by the same factor, so the true spot stays inside
+        local minR = tonumber(WIT.minRadius) or 40
+        local nr = math.max(minR, math.floor(rad * (tonumber(WIT.shrink) or 0.75) + 0.5))
+        if nr < rad then
+            local k = nr / rad
+            fx, fy, rad = row.x + (fx - row.x) * k, row.y + (fy - row.y) * k, nr
+        end
+    end
+    MySQL.update.await([[UPDATE `es_mdt_calls` SET `reports` = `reports` + 1, `lastReportAt` = NOW(), `priority` = LEAST(`priority`, ?),
+        `fx` = ?, `fy` = ?, `radius` = ? WHERE `id` = ?]], { pri, fx, fy, rad, cid })
+    if (MergeNoted[cid] or 0) < now() - 30 then
+        MergeNoted[cid] = now()
+        local note = rep.note or ('Another report (x%d)%s'):format(reports, rep.message and rep.message ~= '' and (': ' .. rep.message) or '')
+        if rep.callerName and rep.callerName ~= '' and not rep.note then note = note .. (' · ' .. rep.callerName) end
+        MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { cid, rep.callerCharId, MDT.str(note, 500) })
+    end
+    local list = routedDuty(row.audience)
+    local px, py = fx or row.x, fy or row.y
+    local b = DutyBlips['call:' .. cid]
+    if b then
+        b.spec.coords = vector3(px, py, b.spec.coords and b.spec.coords.z or 0.0)
+        if rad then b.spec.radius = rad + 0.0 end
+        if pri == 1 then b.spec.flash = true end
+        pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. cid, b.spec) end)
+    end
+    local payload = { id = cid, reports = reports, priority = pri, radius = rad, x = px, y = py }
+    for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:callMerged', u.source, payload) end
+    MDT.refresh('calls')
+    return cid, true
+end
+
 local function addCall(d)
     if type(d) ~= 'table' then return false, 'A call is a table' end
     local str, int = MDT.str, MDT.int
-    local kind = KINDS[d.kind] and d.kind or 'alert'
+    -- 2.0.7: a preset (Config.Dispatch.presets) fills what the call does not say
+    local P = presetOf(d.preset)
+    local pname = P and d.preset or nil
+    P = P or {}
+    local kind = KINDS[d.kind] and d.kind or (KINDS[P.kind] and P.kind) or 'alert'
     local x, y, z = xyzOf(d.coords or d.pos or d.position)
-    local pri = int(d.priority or d.prio or (kind == 'panic' and 1 or kind == '311' and 3 or 2), 1, 3)
+    local pri = int(d.priority or d.prio or P.priority or (kind == 'panic' and 1 or kind == '311' and 3 or 2), 1, 3)
     local title = str(d.title, 120)
+    if title == '' then title = str(P.title, 120) end
     if title == '' then title = KIND_TITLE[kind] or 'Call' end
     local message = d.message or d.desc or d.description
+    if (message == nil or message == '') and type(P.message) == 'string' then message = P.message end
     local street = d.street or d.location
     local callerName = d.callerName or d.name or d.caller
     local callerPhone = d.callerPhone or d.phone
     local callerCharId = tonumber(d.callerCharId or d.charId)
     local via = labelOf(d)
+    -- 2.0.7: the critical tier (above P1): panic, and presets / calls that ask for it. Escalation never makes a call critical.
+    local critical = d.critical == true or (d.critical == nil and P.critical == true) or (kind == 'panic' and CRIT.panic ~= false)
+    if CRIT.enabled == false then critical = false end
+    local details = type(d.details) == 'table' and d.details or nil
+    local dj = details and next(details) and json.encode(details) or nil
+    if dj and #dj > 500 then dj, details = nil, nil end
     -- 2.0.6: who it goes to (d.groups = 'ems' / { 'law', 'ems' } overrides the kind's route; d.audience is es_mdt's own)
     local aud
-    if type(d.audience) == 'string' and d.audience ~= '' then aud = str(d.audience, 40) else aud = audienceFor(kind, d.groups) end
+    if type(d.audience) == 'string' and d.audience ~= '' then aud = str(d.audience, 40) else aud = audienceFor(kind, d.groups or P.groups) end
+    -- 2.0.7: a repeat report (same kind / preset, close, recent) goes onto the call already open
+    -- (a plain 'alert' with no preset only merges when it asks to: es_jail's and other scripts' alerts stay one call each)
+    if x and d.merge ~= false and (kind ~= 'alert' or pname or d.merge == true) then
+        local r, secs = mergeWindow(kind, d)
+        if r then
+            local row = findMerge(kind, pname, title, x, y, r, secs)
+            if row then
+                if via then print(('[es_mdt] report merged into call #%d (%s) by %s'):format(row.id, kind, via)) end
+                return mergeInto(row, { priority = pri, message = str(message, 160), callerName = str(callerName, 80),
+                    callerCharId = callerCharId, note = type(d.mergeNote) == 'string' and d.mergeNote or nil })
+            end
+        end
+    end
+    -- 2.0.7: a witness report gets a search circle: clients only ever see its centre (fx, fy) and radius; x, y stay here
+    local witness = d.witness
+    if witness == nil then witness = P.witness end
+    local fx, fy, rad
+    if witness and x and WIT.enabled ~= false then
+        rad = int(d.radius or P.radius or WIT.radius or 120, 20, 1000)
+        fx, fy = circleCentre(x, y, rad)
+    end
     local parentId = tonumber(d.parentId)
-    local cid = MySQL.insert.await([[INSERT INTO `es_mdt_calls` (`kind`,`priority`,`title`,`message`,`callerCharId`,`callerName`,`callerPhone`,`street`,`x`,`y`,`z`,`deptId`,`sourceLabel`,`audience`,`parentId`)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(message, 500), callerCharId, str(callerName, 80),
-        str(callerPhone, 20), str(street, 120), x, y, z, tonumber(d.deptId), via, aud, parentId })
+    local cid = MySQL.insert.await([[INSERT INTO `es_mdt_calls` (`kind`,`priority`,`title`,`message`,`callerCharId`,`callerName`,`callerPhone`,`street`,`x`,`y`,`z`,`deptId`,`sourceLabel`,`audience`,`parentId`,
+        `preset`,`critical`,`fx`,`fy`,`radius`,`details`)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(message, 500), callerCharId, str(callerName, 80),
+        str(callerPhone, 20), str(street, 120), x, y, z, tonumber(d.deptId), via, aud, parentId, pname, critical and 1 or 0, fx, fy, rad, dj })
     if not cid then return false, 'The call could not be saved' end
     CallAud[cid] = aud or false
     -- 2.0.3: the source is for admins only (this console and the sourceLabel column); it never goes to a client or the MDT
-    if via then print(('[es_mdt] call #%d (%s, P%d) filed by %s'):format(cid, kind, pri, via)) end
+    if via then print(('[es_mdt] call #%d (%s, P%d%s) filed by %s'):format(cid, kind, pri, critical and ', critical' or '', via)) end
     local list = routedDuty(aud)
+    local px, py = fx or x, fy or y
+    local pz = (not fx) and z or nil   -- a circle call sends no height either
     local payload = { id = cid, kind = kind, priority = pri, title = title, message = str(message, 200), street = str(street, 120),
-        x = x, y = y, z = z, callerName = str(callerName, 80), callerPhone = str(callerPhone, 20), parentId = parentId, units = {} }
+        x = px, y = py, z = pz, callerName = str(callerName, 80), callerPhone = str(callerPhone, 20), parentId = parentId, units = {},
+        critical = critical or nil, preset = pname, icon = type(P.icon) == 'string' and P.icon:sub(1, 8) or nil, reports = 1,
+        radius = rad, details = details }
     for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:call', u.source, payload) end
     if x and y and d.blip ~= false then   -- 2.0.6: kept even with nobody on duty (whoever clocks on gets it)
         local b = DSP.blip or {}
-        showDutyBlip('call:' .. cid, { coords = vector3(x, y, z or 0.0),
-            label = ('#%d %s'):format(cid, title):sub(1, 40), sprite = math.tointeger(tonumber(d.sprite)) or b.sprite or 280,
-            color = math.tointeger(tonumber(d.color)) or b.color or 1, flash = pri == 1 }, int(d.blipTime or b.seconds or 120, 5, 1800), list, aud)
+        local pb = type(P.blip) == 'table' and P.blip or {}
+        local spec = { coords = vector3(px, py, fx and 0.0 or (z or 0.0)),
+            label = ('#%d %s'):format(cid, title):sub(1, 40), sprite = math.tointeger(tonumber(d.sprite)) or math.tointeger(tonumber(pb.sprite)) or b.sprite or 280,
+            color = math.tointeger(tonumber(d.color)) or math.tointeger(tonumber(pb.color)) or b.color or 1, flash = pri == 1 or critical,
+            scale = tonumber(pb.scale) or (critical and 1.15) or nil }
+        if rad then spec.radius = rad + 0.0 end
+        showDutyBlip('call:' .. cid, spec, int(d.blipTime or pb.seconds or b.seconds or 120, 5, 1800), list, aud)
     end
     MDT.refresh('calls')
     return cid
@@ -288,8 +538,28 @@ local function unitsOfCalls(ids)
     return out
 end
 
-local CALL_COLS = [[`id`,`kind`,`priority`,`status`,`title`,`message`,`callerName`,`callerPhone`,`street`,`x`,`y`,`deptId`,`outcome`,`closeNote`,
-    `closedBy`,UNIX_TIMESTAMP(`closedAt`) AS `closedAt`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`,`audience`,`parentId`,`escalations`]]
+-- 2.0.7: what a client may know of where a call is: the search circle's centre when it has one (fx, fy), else the spot.
+-- No height for a circle call. Every query that sends a call's position to a game or page uses this.
+local PUB_XYZ = [[COALESCE(`fx`,`x`) AS `x`, COALESCE(`fy`,`y`) AS `y`, IF(`fx` IS NULL, `z`, NULL) AS `z`, `radius`]]
+MDT.PUB_XYZ = PUB_XYZ
+local CALL_COLS = [[`id`,`kind`,`priority`,`status`,`title`,`message`,`callerName`,`callerPhone`,`street`,]] .. PUB_XYZ .. [[,`deptId`,`outcome`,`closeNote`,
+    `closedBy`,UNIX_TIMESTAMP(`closedAt`) AS `closedAt`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`,`audience`,`parentId`,`escalations`,
+    `preset`,`critical`,`reports`,UNIX_TIMESTAMP(`lastReportAt`) AS `lastReportAt`,`details`,`reportId`,`warrantId`,`caseId`]]
+
+--- 2.0.7: a call row as clients get it: critical a boolean, details a table, the preset's icon
+local function shapeCall(r)
+    r.critical = r.critical == true or r.critical == 1 or nil
+    r.reports = tonumber(r.reports) or 1
+    if type(r.details) == 'string' and r.details ~= '' then
+        local ok, t = pcall(json.decode, r.details)
+        r.details = ok and type(t) == 'table' and t or nil
+    else r.details = nil end
+    local P = r.preset and presetOf(r.preset)
+    r.icon = P and type(P.icon) == 'string' and P.icon:sub(1, 8) or nil
+    r.audience = nil   -- routing is the server's business
+    return r
+end
+MDT.shapeCall = shapeCall
 
 --- 2.0.6: the calls a viewer's MDT lists: their group's (and the 2.0.4 ones), every call for staff, a department in no group
 --- (DOJ) or routing.shared = true
@@ -309,7 +579,7 @@ local function callsList(status, limit, c)
     local rows = MySQL.query.await(('SELECT %s, (SELECT COUNT(*) FROM `es_mdt_call_notes` n WHERE n.`callId` = c.`id`) AS `notes` FROM `es_mdt_calls` c WHERE `status` = ?%s ORDER BY %s LIMIT ?')
         :format(CALL_COLS, where, status == 'active' and '`priority`, `id` DESC' or '`id` DESC'), params) or {}
     local ids = {}
-    for _, r in ipairs(rows) do ids[#ids + 1] = r.id r.notes = tonumber(r.notes) or 0 end
+    for _, r in ipairs(rows) do ids[#ids + 1] = r.id r.notes = tonumber(r.notes) or 0 shapeCall(r) end
     local u = unitsOfCalls(ids)
     for _, r in ipairs(rows) do r.units = u[r.id] or {} end
     return rows
@@ -365,6 +635,13 @@ end
 
 --- 1.3.5: unit status follows the call (En route on attach, On scene on arrival, Available on detach / close)
 local AUTO = DSP.autoStatus or {}
+--- 1.3.5 / 2.0.7: how close counts as "there": the arrive radius, or the whole search circle; nil when arrival is off
+local function arriveRadiusOf(r)
+    if AUTO.arrive == false then return nil end
+    local a = AUTO.arriveRadius or 40
+    local rad = r and tonumber(r.radius)
+    return rad and math.max(a, rad) or a
+end
 local MOVING = { enroute = true, scene = true }
 local function statusOf(charId)
     local t = MDT.Teams[MDT.TeamOf[charId] or 0]
@@ -672,6 +949,7 @@ local function lawOnDuty(source)
     end
     return false
 end
+MDT.lawOnDuty = lawOnDuty
 
 -- ---------------------------------------------------------------- 2.0.6: request backup
 
@@ -729,67 +1007,272 @@ local function quietZone(pos)
     end
     return false
 end
-local function nearbyAlert(kind, pos)
-    local area = ALR.area or {}
-    local radius, secs = tonumber(area.radius) or 150, tonumber(area.seconds) or 120
-    if radius <= 0 or secs <= 0 then return nil end
-    local rows = MySQL.query.await([[SELECT `id`,`x`,`y` FROM `es_mdt_calls` WHERE `status` = 'active' AND `kind` = ? AND `x` IS NOT NULL
-        AND `createdAt` >= NOW() - INTERVAL ? SECOND ORDER BY `id` DESC LIMIT 20]], { kind, math.floor(secs) }) or {}
-    for _, r in ipairs(rows) do if dist2(pos, r) <= radius then return r.id end end
-    return nil
+MDT.quietZone = quietZone
+
+--- 2.0.7: street spam: at most Config.Dispatch.alerts.perMinute NEW automatic calls of one kind a minute (merged reports
+--- do not count; they only add to a call). true = may file.
+local KindRate = {}
+local function kindRateOk(kind)
+    local cap = math.floor(tonumber((ALR[kind] or {}).perMinute) or tonumber(ALR.perMinute) or 6)
+    if cap <= 0 then return true end
+    local t, keep = now(), {}
+    for _, at in ipairs(KindRate[kind] or {}) do if t - at < 60 then keep[#keep + 1] = at end end
+    KindRate[kind] = keep
+    return #keep < cap
 end
-local MoreNoted = {}
+local function kindRateNote(kind) local l = KindRate[kind] or {} l[#l + 1] = now() KindRate[kind] = l end
+
+local AUTO_MSG = {
+    shots = 'Gunshots heard in the area', fight = 'People fighting in the street', explosion = 'A loud explosion was reported',
+    down = 'Someone is lying on the ground and not moving', speeding = 'A vehicle is driving dangerously fast',
+}
 --- -> callId, merged (true when it went onto an existing call) | false, why
+--- 2.0.6 shots / theft; 2.0.7 fight, explosion, down, speeding. A witness call: a search circle (alerts.searchCircle), suspect
+--- details (info.details), merged into an open call of the same kind nearby (alerts.area), at most perMinute new ones a minute.
 local function autoAlert(kind, pos, info)
     info = info or {}
     local cfg = ALR[kind] or {}
     if not pos then return false, 'No position' end
-    if quietZone(pos) then return false, 'Quiet zone' end
-    local near = nearbyAlert(kind, pos)
-    if near then
-        if (MoreNoted[near] or 0) < now() - 30 then
-            MoreNoted[near] = now()
-            local more = kind == 'shots' and 'More shots reported nearby'
-                or ('Another vehicle theft reported nearby%s'):format(info.plate and info.plate ~= '' and (' · plate ' .. info.plate) or '')
-            MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { near, nil, more })
-            MDT.refresh('calls')
-        end
-        return near, true
-    end
+    if (kind == 'shots' or kind == 'explosion') and quietZone(pos) then return false, 'Quiet zone' end
+    local P = presetOf(kind) or {}
+    local area = ALR.area or {}
     local title = MDT.str(cfg.title, 60)
+    if title == '' then title = MDT.str(P.title, 60) end
     if title == '' then title = KIND_TITLE[kind] end
-    local msg
-    if kind == 'shots' then msg = 'Gunshots heard in the area'
-    else
-        local plate, model = info.plate or '', MDT.str(info.model, 40)
-        msg = ('%s seen being stolen%s'):format(model ~= '' and model or 'A vehicle', plate ~= '' and (' · plate ' .. plate) or '')
+    local msg = info.message
+    if not msg then
+        if kind == 'theft' then
+            local plate, model = info.plate or '', MDT.str(info.model, 40)
+            msg = ('%s seen being stolen%s'):format(model ~= '' and model or 'A vehicle', plate ~= '' and (' · plate ' .. plate) or '')
+        else msg = AUTO_MSG[kind] or 'Reported by a witness' end
     end
-    return addCall({ kind = kind, priority = MDT.int(cfg.priority or (kind == 'shots' and 2 or 3), 1, 3), title = title, message = msg,
-        street = info.street, coords = pos, callerName = 'Witness', sourceLabel = info.label,
-        blipTime = tonumber(cfg.blipSeconds) or nil, color = kind == 'theft' and 47 or nil })
+    local more = kind == 'shots' and 'More shots reported nearby'
+        or kind == 'theft' and ('Another vehicle theft reported nearby%s'):format(info.plate and info.plate ~= '' and (' · plate ' .. info.plate) or '')
+        or nil
+    -- only a NEW call counts against the cap; a report near an open one still merges
+    local r, secs = tonumber(area.radius) or 150, tonumber(area.seconds) or 120
+    if r > 0 and secs > 0 then
+        local row = findMerge(kind, presetOf(kind) and kind or nil, title, pos.x, pos.y, r, math.floor(secs))
+        if row then return mergeInto(row, { priority = MDT.int(cfg.priority or P.priority or 2, 1, 3), message = msg, note = more }) end
+    end
+    if not kindRateOk(kind) then return false, 'Too many alerts of this kind right now' end
+    local witness = ALR.searchCircle ~= false and cfg.circle ~= false
+    local id, merged = addCall({ kind = kind, preset = presetOf(kind) and kind or nil,
+        priority = MDT.int(cfg.priority or P.priority or (kind == 'shots' and 2 or kind == 'explosion' and 1 or kind == 'down' and 2 or 3), 1, 3),
+        title = title, message = msg, street = info.street, coords = pos, callerName = 'Witness', sourceLabel = info.label,
+        blipTime = tonumber(cfg.blipSeconds) or nil, color = (kind == 'theft' and not (P.blip and P.blip.color)) and 47 or nil,
+        witness = witness, radius = cfg.radius, details = info.details, merge = false })
+    if id and not merged then kindRateNote(kind) end
+    return id, merged
 end
 MDT.autoAlert = autoAlert
 
---- exports.es_mdt:ShotsFired(coords, opts?) -> callId, merged | false, why   opts = { street }
+--- exports.es_mdt:ShotsFired(coords, opts?) -> callId, merged | false, why   opts = { street, weapon, plate, vehicle, color, suspect }
 exports('ShotsFired', function(coords, opts)
     local x, y, z = xyzOf(coords)
     if not x then return false, 'Give coords (vector3 or { x, y, z })' end
     opts = type(opts) == 'table' and opts or {}
     local ok, a, b = pcall(autoAlert, 'shots', { x = x, y = y, z = z }, { street = type(opts.street) == 'string' and opts.street or nil,
-        label = invoker() or 'export:ShotsFired' })
+        details = detailsOf(opts), label = invoker() or 'export:ShotsFired' })
     if not ok then print(('^3[es_mdt] ShotsFired failed: %s^7'):format(tostring(a))) return false, 'The alert could not be filed' end
     return a, b
 end)
---- exports.es_mdt:VehicleTheft(coords, plate?, model?, opts?) -> callId, merged | false, why   opts = { street }
+--- exports.es_mdt:VehicleTheft(coords, plate?, model?, opts?) -> callId, merged | false, why   opts = { street, color }
 exports('VehicleTheft', function(coords, plate, model, opts)
     local x, y, z = xyzOf(coords)
     if not x then return false, 'Give coords (vector3 or { x, y, z })' end
     opts = type(opts) == 'table' and opts or {}
+    local d = {} for k, v in pairs(opts) do d[k] = v end
+    d.plate, d.vehicle = d.plate or plate, d.vehicle or model
     local ok, a, b = pcall(autoAlert, 'theft', { x = x, y = y, z = z }, { street = type(opts.street) == 'string' and opts.street or nil,
-        plate = plateKey(plate), model = type(model) == 'string' and model or nil, label = invoker() or 'export:VehicleTheft' })
+        plate = plateKey(plate), model = type(model) == 'string' and model or nil, details = detailsOf(d), label = invoker() or 'export:VehicleTheft' })
     if not ok then print(('^3[es_mdt] VehicleTheft failed: %s^7'):format(tostring(a))) return false, 'The alert could not be filed' end
     return a, b
 end)
+
+-- ---------------------------------------------------------------- 2.0.7: ready-made alerts (Config.Dispatch.presets)
+--- One for every preset: exports.es_mdt:Alert('store', { coords = vector3(...), street = '...', player = source, plate = ... })
+--- data: coords (or player: a server id, read on the server), street, message, title, priority, critical, groups, witness,
+--- radius, and suspect details (plate, vehicle, color, weapon, suspect, direction). With player and no plate / weapon,
+--- the server reads their car's plate and paint and the weapon in their hand itself.
+local function presetAlert(name, coords, data, label)
+    data = type(data) == 'table' and data or {}
+    local P = presetOf(name)
+    if not P then return false, ('No preset "%s" in Config.Dispatch.presets'):format(tostring(name)) end
+    if P.enabled == false then return false, ('The "%s" alert is turned off'):format(name) end
+    local src = math.tointeger(tonumber(data.player)) or (type(data.source) == 'number' and math.tointeger(data.source)) or nil
+    if src and not GetPlayerName(src) then src = nil end
+    local x, y, z = xyzOf(coords or data.coords)
+    local pos = x and { x = x, y = y, z = z } or (src and coordsOf(src)) or nil
+    if not pos then return false, 'Give coords, or a player (data.player = their server id)' end
+    local s = function(v, n) return type(v) == 'string' and MDT.str(v, n) or nil end
+    return addCall({ preset = name, coords = pos, street = s(data.street, 120), message = s(data.message, 500), title = s(data.title, 120),
+        priority = data.priority, critical = data.critical, groups = data.groups, witness = data.witness, radius = data.radius,
+        details = detailsOf(data, src), callerName = s(data.callerName, 80) or (P.witness and 'Witness' or 'Alarm'),
+        sourceLabel = label, blip = data.blip })
+end
+MDT.presetAlert = presetAlert
+local function exportAlert(name, coords, data)
+    -- (data) alone works too: StoreRobbery({ coords = ..., street = ... })
+    if type(coords) == 'table' and not xyzOf(coords) and data == nil then coords, data = nil, coords end
+    local ok, a, b = pcall(presetAlert, name, coords, data, invoker() or ('export:' .. tostring(name)))
+    if not ok then print(('^3[es_mdt] %s alert failed: %s^7'):format(tostring(name), tostring(a))) return false, 'The alert could not be filed' end
+    return a, b
+end
+exports('Alert', function(name, data, more)
+    -- Alert('store', data) or Alert('store', coords, data)
+    if xyzOf(data) then return exportAlert(name, data, more) end
+    return exportAlert(name, nil, data)
+end)
+exports('StoreRobbery', function(coords, data) return exportAlert('store', coords, data) end)
+--- BankRobbery(coords, 'fleeca' | 'paleto' | 'pacific', data?)
+exports('BankRobbery', function(coords, bank, data)
+    if type(bank) == 'table' and data == nil then bank, data = nil, bank end
+    if type(coords) == 'table' and not xyzOf(coords) and bank == nil then data = coords coords = nil bank = data.bank end
+    local b = type(bank) == 'string' and bank:lower() or (type(data) == 'table' and type(data.bank) == 'string' and data.bank:lower()) or 'fleeca'
+    if not presetOf('bank_' .. b) then b = 'fleeca' end
+    return exportAlert('bank_' .. b, coords, data)
+end)
+exports('JewelryRobbery', function(coords, data) return exportAlert('jewelry', coords, data) end)
+exports('HouseRobbery', function(coords, data) return exportAlert('house', coords, data) end)
+exports('DrugSale', function(coords, data) return exportAlert('drugsale', coords, data) end)
+exports('Explosion', function(coords, data) return exportAlert('explosion', coords, data) end)
+exports('Fight', function(coords, data) return exportAlert('fight', coords, data) end)
+exports('SuspiciousActivity', function(coords, data) return exportAlert('suspicious', coords, data) end)
+exports('Carjacking', function(coords, data) return exportAlert('carjack', coords, data) end)
+
+-- ---------------------------------------------------------------- 2.0.7: explosions (the game's explosionEvent)
+-- Small / harmless ones never count (steam, water, flames, flares, smoke, extinguisher, bullets ...). On-duty law exempt.
+local DEF_SKIP_EXPL = { 11, 12, 13, 18, 19, 20, 21, 22, 24, 30, 33, 35, 38, 39, 63, 64, 65, 70, 71 }
+local ExplCool = {}   -- [source] = os.time() it may report again
+if not ExplHooked then
+    ExplHooked = true
+    AddEventHandler('explosionEvent', function(sender, ev)
+        if MDT.onExplosion then pcall(MDT.onExplosion, tonumber(sender), ev) end
+    end)
+end
+function MDT.onExplosion(src, ev)
+    local cfg = ALR.explosion or {}
+    if cfg.enabled == false or type(ev) ~= 'table' or not src then return end
+    if ev.isInvisible == true then return end
+    local t = math.tointeger(tonumber(ev.explosionType))
+    for _, k in ipairs(type(cfg.ignoreTypes) == 'table' and cfg.ignoreTypes or DEF_SKIP_EXPL) do if k == t then return end end
+    if ALR.exemptLaw ~= false and MDT.lawOnDuty and MDT.lawOnDuty(src) then return end
+    if (ExplCool[src] or 0) > now() then return end
+    ExplCool[src] = now() + math.max(5, tonumber(cfg.cooldown) or 60)
+    local x, y, z = tonumber(ev.posX), tonumber(ev.posY), tonumber(ev.posZ)
+    if not x or not y then return end
+    -- a vehicle explosion's position can come in local space (0, 0, 0): use the sender's own position then
+    local pos = { x = x, y = y, z = z or 0.0 }
+    if math.abs(x) < 1 and math.abs(y) < 1 then pos = coordsOf(src) end
+    if not pos then return end
+    local chance = tonumber(cfg.chance) or 1
+    if math.random() > chance then return end
+    autoAlert('explosion', pos, { label = 'auto:explosion' })
+end
+
+-- ---------------------------------------------------------------- 2.0.7: links (a call kept with its report / warrant / case)
+local LINK = { report = { col = 'reportId', tbl = 'es_mdt_reports' }, warrant = { col = 'warrantId', tbl = 'es_mdt_warrants' },
+    case = { col = 'caseId', tbl = 'es_mdt_cases' } }
+--- link (refId) or unlink (refId nil / 0) a call to a report, warrant or case. A linked call is never removed by the
+--- retention cleanup. -> true | false, why
+local function linkCall(callId, kind, refId, byCharId)
+    local L = LINK[kind]
+    callId = math.tointeger(tonumber(callId))
+    if not L then return false, 'Link a report, a warrant or a case' end
+    if not callId then return false, 'No such call' end
+    refId = math.tointeger(tonumber(refId))
+    if refId and refId <= 0 then refId = nil end
+    if refId and not MySQL.single.await(('SELECT `id` FROM `%s` WHERE `id` = ?'):format(L.tbl), { refId }) then
+        return false, ('No %s #%d'):format(kind, refId)
+    end
+    local n = MySQL.update.await(('UPDATE `es_mdt_calls` SET `%s` = ? WHERE `id` = ?'):format(L.col), { refId, callId })
+    if (tonumber(n) or 0) == 0 then
+        if not MySQL.single.await('SELECT `id` FROM `es_mdt_calls` WHERE `id` = ?', { callId }) then return false, 'No such call' end
+    end
+    MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)',
+        { callId, byCharId, refId and ('Linked to %s #%d'):format(kind, refId) or ('%s link removed'):format(kind:sub(1, 1):upper() .. kind:sub(2)) })
+    MDT.refresh('calls')
+    return true
+end
+MDT.linkCall = linkCall
+--- exports.es_mdt:LinkCall(callId, 'report' | 'warrant' | 'case', id) -> true | false, why   (id nil = unlink)
+exports('LinkCall', function(callId, kind, refId)
+    local ok, a, b = pcall(linkCall, callId, kind, refId, nil)
+    if not ok then print(('^3[es_mdt] LinkCall failed: %s^7'):format(tostring(a))) return false, 'Could not link the call' end
+    return a, b
+end)
+
+-- ---------------------------------------------------------------- 2.0.7: call retention (Config.Dispatch.keepClosedDays)
+-- CLOSED calls older than keepClosedDays (by closedAt; by createdAt for any closed without a date) are deleted with their
+-- notes and unit rows, in batches with a pause between, at start and every 24 h. Never an active call, never one linked to
+-- a report, warrant or case. 0 = keep everything.
+local Retention = { running = false }
+local function retentionDays()
+    local d = DSP.keepClosedDays
+    if d == nil then d = 90 end
+    d = math.floor(tonumber(d) or 0)
+    return d > 0 and d or 0
+end
+local KEEP_SQL = "`status` = 'closed' AND `reportId` IS NULL AND `warrantId` IS NULL AND `caseId` IS NULL"
+local KEEP_C = "c.`status` = 'closed' AND c.`reportId` IS NULL AND c.`warrantId` IS NULL AND c.`caseId` IS NULL"
+local function retentionSweep(opts)
+    opts = opts or {}
+    local days = tonumber(opts.days) or retentionDays()
+    local total = { calls = 0, notes = 0, units = 0, days = days }
+    if days <= 0 then return total end
+    if Retention.running then total.busy = true return total end
+    Retention.running = true
+    local batch = math.max(10, math.min(2000, math.floor(tonumber(opts.batch) or tonumber(DSP.retentionBatch) or 500)))
+    local pause = math.max(0, math.floor(tonumber(opts.pauseMs) or 250))
+    local ok, err = pcall(function()
+        for _, phase in ipairs({
+            ('SELECT `id` FROM `es_mdt_calls` WHERE %s AND `closedAt` IS NOT NULL AND `closedAt` < NOW() - INTERVAL ? DAY ORDER BY `closedAt` LIMIT ?'):format(KEEP_SQL),
+            ('SELECT `id` FROM `es_mdt_calls` WHERE %s AND `closedAt` IS NULL AND `createdAt` < NOW() - INTERVAL ? DAY ORDER BY `id` LIMIT ?'):format(KEEP_SQL),
+        }) do
+            for _ = 1, 10000 do
+                local rows = MySQL.query.await(phase, { days, batch }) or {}
+                if #rows == 0 then break end
+                local ids = {}
+                for _, r in ipairs(rows) do ids[#ids + 1] = r.id end
+                local m = MDT.marks(#ids)
+                -- the guard again on every delete (a call linked or reopened since the SELECT keeps its row, notes and units)
+                total.notes = total.notes + (tonumber(MySQL.update.await(('DELETE n FROM `es_mdt_call_notes` n JOIN `es_mdt_calls` c ON c.`id` = n.`callId` WHERE n.`callId` IN (%s) AND %s'):format(m, KEEP_C), ids)) or 0)
+                total.units = total.units + (tonumber(MySQL.update.await(('DELETE u FROM `es_mdt_call_units` u JOIN `es_mdt_calls` c ON c.`id` = u.`callId` WHERE u.`callId` IN (%s) AND %s'):format(m, KEEP_C), ids)) or 0)
+                total.calls = total.calls + (tonumber(MySQL.update.await(('DELETE FROM `es_mdt_calls` WHERE `id` IN (%s) AND %s'):format(m, KEEP_SQL), ids)) or 0)
+                for _, id in ipairs(ids) do CallAud[id] = nil MergeNoted[id] = nil end
+                if #rows < batch then break end
+                if pause > 0 then Wait(pause) end
+            end
+        end
+    end)
+    Retention.running = false
+    if not ok then
+        print(('^1[es_mdt] call retention failed: %s^7'):format(tostring(err)))
+        total.error = tostring(err)
+        return total
+    end
+    if opts.quiet ~= true then
+        print(('[es_mdt] call retention (%d days): removed %d closed call(s), %d note(s), %d unit row(s)'):format(days, total.calls, total.notes, total.units))
+    end
+    return total
+end
+MDT.retentionSweep = retentionSweep
+RetentionGen = (RetentionGen or 0) + 1
+if type(CreateThread) == 'function' then
+    local gen = RetentionGen
+    CreateThread(function()
+        Wait(90000)   -- after the schema check has added 2.0.7's columns
+        while gen == RetentionGen do
+            if retentionDays() > 0 then
+                local has = MySQL.single.await([[SELECT 1 AS `x` FROM information_schema.columns WHERE table_schema = DATABASE()
+                    AND table_name = 'es_mdt_calls' AND column_name = 'caseId']])
+                if has then retentionSweep() else print('^3[es_mdt] call retention skipped: es_mdt_calls has no link columns yet (schema check?)^7') end
+            end
+            Wait(24 * 3600 * 1000)
+        end
+    end)
+end
 
 -- ---------------------------------------------------------------- 2.0.6: priority escalation
 --- An active call with NO unit on it for Config.Dispatch.escalate.minutes (since it came in or last went up) goes up one
@@ -800,7 +1283,8 @@ local function escalateSweep()
     local mins = tonumber(ESC.minutes) or 5
     if mins <= 0 then return 0 end
     local top = math.max(1, math.min(3, math.floor(tonumber(ESC.top) or 1)))
-    local rows = MySQL.query.await([[SELECT c.`id`, c.`priority`, c.`kind`, c.`title`, c.`street`, c.`x`, c.`y`, c.`z`, c.`audience`
+    local rows = MySQL.query.await([[SELECT c.`id`, c.`priority`, c.`kind`, c.`title`, c.`street`, COALESCE(c.`fx`, c.`x`) AS `x`, COALESCE(c.`fy`, c.`y`) AS `y`,
+        IF(c.`fx` IS NULL, c.`z`, NULL) AS `z`, c.`radius`, c.`audience`
         FROM `es_mdt_calls` c WHERE c.`status` = 'active' AND c.`kind` <> 'panic' AND c.`priority` > ?
         AND NOT EXISTS (SELECT 1 FROM `es_mdt_call_units` u WHERE u.`callId` = c.`id`)
         AND COALESCE(c.`escalatedAt`, c.`createdAt`) <= NOW() - INTERVAL ? MINUTE]], { top, mins }) or {}
@@ -823,7 +1307,7 @@ local function escalateSweep()
                 pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. r.id, b.spec) end)
             end
             if ESC.realert ~= false then
-                local payload = { id = r.id, priority = to, from = from, title = r.title, street = r.street, x = r.x, y = r.y, z = r.z, kind = r.kind }
+                local payload = { id = r.id, priority = to, from = from, title = r.title, street = r.street, x = r.x, y = r.y, z = r.z, kind = r.kind, radius = r.radius }
                 for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:callEscalated', u.source, payload) end
             end
         end
@@ -852,7 +1336,8 @@ local function mapData()
             end
         end
     end
-    local calls = MySQL.query.await("SELECT `id`,`kind`,`priority`,`title`,`street`,`x`,`y`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt` FROM `es_mdt_calls` WHERE `status` = 'active' AND `x` IS NOT NULL ORDER BY `id` DESC LIMIT 60") or {}
+    local calls = MySQL.query.await("SELECT `id`,`kind`,`priority`,`title`,`street`," .. PUB_XYZ .. ",`critical`,`reports`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt` FROM `es_mdt_calls` WHERE `status` = 'active' AND `x` IS NOT NULL ORDER BY `id` DESC LIMIT 60") or {}
+    for _, r in ipairs(calls) do r.critical = r.critical == true or r.critical == 1 or nil end
     local bolos = MySQL.query.await([[SELECT `id`,`kind`,`charId`,`plate`,`title`,`lastX` AS `x`,`lastY` AS `y`,UNIX_TIMESTAMP(`lastSeenAt`) AS `seenAt` FROM `es_mdt_bolos`
         WHERE `status` = 'active' AND `lastX` IS NOT NULL AND `lastSeenAt` > NOW() - INTERVAL 2 HOUR ORDER BY `lastSeenAt` DESC LIMIT 30]]) or {}
     MapCache = { at = GetGameTimer(), data = { units = units, calls = calls, bolos = bolos, at = t } }
@@ -969,11 +1454,11 @@ function MDT.registerOps()
         -- 2.0.6: 'medical' (Config.Dispatch.medical command) goes to EMS by the routing
         local kind = (d.kind == '311' or d.kind == 'medical') and d.kind or '911'
         local name = MDT.namesOf({ cid })[cid]
-        local callId = addCall({ kind = kind, priority = kind == '311' and 3 or 2,
+        local callId, merged = addCall({ kind = kind, priority = kind == '311' and 3 or 2,
             title = kind == '311' and '311 · non-emergency' or kind == 'medical' and '911 · medical' or '911 · emergency',
             message = msg, street = str(d.street, 120), coords = pos, callerCharId = cid, callerName = name, callerPhone = phoneOf(cid) })
         if not callId then return false, 'Dispatch did not answer, try again' end
-        return { id = callId, units = #routedDuty(audOf(callId)) }
+        return { id = callId, units = #routedDuty(audOf(callId)), merged = merged == true or nil }   -- 2.0.7: added to an open call
     end)
 
     -- 2.0.1: es_mdt:server:externalCall, for CLIENT scripts that want to file a call (server scripts use the exports).
@@ -1078,10 +1563,36 @@ function MDT.registerOps()
         return { calls = rows, outcomes = outcomeList(), now = now() }
     end)
 
+    -- 2.0.7: the quick call board (its hotkey, MDT closed): the active calls this unit sees, the ones it is on, the units
+    cb('board', { rate = 700, burst = 4 }, function(c)
+        if not (c.onDuty or c.staff) then return false, 'The call board is for units on duty' end
+        local rows = callsList('active', math.max(5, math.min(40, tonumber((DSP.board or {}).limit) or 25)), c)
+        local mine = {}
+        for _, r in ipairs(rows) do
+            r.callerPhone, r.closeNote, r.outcome, r.closedBy, r.closedAt = nil, nil, nil, nil, nil
+            for _, u in ipairs(r.units) do if u.charId == c.charId then mine[#mine + 1] = r.id r.mine = true end end
+            r.units = cardUnits(r.units)
+        end
+        return { calls = rows, mine = mine, now = now() }
+    end)
+
+    -- 2.0.7: link a call to a report / warrant / case (kept by the retention cleanup); refId nil = unlink
+    cb('callLink', { write = true, rate = 800, burst = 3 }, function(c, d)
+        local cid = id(d.id)
+        if not cid then return false, 'No such call' end
+        local on = MySQL.single.await('SELECT 1 AS `x` FROM `es_mdt_call_units` WHERE `callId` = ? AND `charId` = ?', { cid, c.charId })
+        if not (on or c.staff or (c.myLevel or 0) >= 60 or MDT.isHighCommand(c)) then return false, 'Attach to the call to link it' end
+        local ok, why = linkCall(cid, type(d.kind) == 'string' and d.kind or '', d.ref, c.charId)
+        if not ok then return false, why end
+        MDT.log(c, 'call_link', { callId = cid, kind = d.kind, ref = tonumber(d.ref) })
+        return true
+    end)
+
     cb('call', { rate = 300, burst = 6 }, function(c, d)
         local cid = id(d.id)
         local r = cid and MySQL.single.await(('SELECT %s FROM `es_mdt_calls` WHERE `id` = ?'):format(CALL_COLS), { cid })
         if not r then return false, 'No such call' end
+        shapeCall(r)
         r.units = unitsOfCalls({ cid })[cid] or {}
         r.notesList = MySQL.query.await('SELECT `id`,`byCharId`,`note`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt` FROM `es_mdt_call_notes` WHERE `callId` = ? ORDER BY `id`', { cid }) or {}
         local ids = {}
@@ -1121,10 +1632,11 @@ function MDT.registerOps()
 
     cb('callAttach', { write = true, rate = 500, burst = 4 }, function(c, d)
         local cid = id(d.id)
-        local r = cid and MySQL.single.await('SELECT `id`,`status`,`x`,`y`,`z` FROM `es_mdt_calls` WHERE `id` = ?', { cid })
+        local r = cid and MySQL.single.await('SELECT `id`,`status`,' .. PUB_XYZ .. ' FROM `es_mdt_calls` WHERE `id` = ?', { cid })
         if not r then return false, 'No such call' end
         if r.status ~= 'active' then return false, 'That call is closed' end
         if not c.onDuty then return false, 'Go on duty to attach' end
+        local arriveR = arriveRadiusOf(r)
         local who = meAndPartner(c)
         for _, x in ipairs(who) do MySQL.insert.await('INSERT IGNORE INTO `es_mdt_call_units` (`callId`,`charId`) VALUES (?,?)', { cid, x }) end
         MySQL.update.await('UPDATE `es_mdt_calls` SET `everAttached` = 1 WHERE `id` = ?', { cid })   -- 2.0.4: kept after a detach
@@ -1137,8 +1649,8 @@ function MDT.registerOps()
         end
         MDT.refresh('calls')
         tellUnits(cid)
-        tellPartner(c, who, 'es_mdt:client:attached', { id = cid, x = r.x, y = r.y, z = r.z, by = c.name, arrive = AUTO.arrive ~= false and (AUTO.arriveRadius or 40) or nil })
-        return { units = #who, x = r.x, y = r.y, z = r.z, arrive = AUTO.arrive ~= false and (AUTO.arriveRadius or 40) or nil }
+        tellPartner(c, who, 'es_mdt:client:attached', { id = cid, x = r.x, y = r.y, z = r.z, by = c.name, arrive = arriveR })
+        return { units = #who, x = r.x, y = r.y, z = r.z, arrive = arriveR, radius = r.radius }
     end)
 
     cb('callDetach', { write = true, rate = 500, burst = 4 }, function(c, d)
@@ -1156,7 +1668,7 @@ function MDT.registerOps()
 
     cb('callRoute', { rate = 500, burst = 4 }, function(c, d)
         local cid = id(d.id)
-        local r = cid and MySQL.single.await('SELECT `x`,`y`,`z` FROM `es_mdt_calls` WHERE `id` = ?', { cid })
+        local r = cid and MySQL.single.await('SELECT ' .. PUB_XYZ .. ' FROM `es_mdt_calls` WHERE `id` = ?', { cid })
         if not r or not r.x then return false, 'That call has no location' end
         WC:SetPlayerWaypoint(c.source, vector3(r.x, r.y, r.z or 0.0))
         return { id = cid, x = r.x, y = r.y }   -- 2.0.4: the client remembers it, to clear it when the call closes
@@ -1166,14 +1678,14 @@ function MDT.registerOps()
     cb('callArrive', { write = true, rate = 2000, burst = 2 }, function(c, d)
         if AUTO.arrive == false then return false, 'Off' end
         local cid = id(d.id)
-        local r = cid and MySQL.single.await('SELECT `id`,`status`,`x`,`y` FROM `es_mdt_calls` WHERE `id` = ?', { cid })
+        local r = cid and MySQL.single.await('SELECT `id`,`status`,' .. PUB_XYZ .. ' FROM `es_mdt_calls` WHERE `id` = ?', { cid })
         if not r or r.status ~= 'active' then return false, 'That call is closed' end
         if not r.x then return false, 'That call has no location' end
         if not c.onDuty then return false, 'Off duty' end
         local on = MySQL.single.await('SELECT 1 AS `x` FROM `es_mdt_call_units` WHERE `callId` = ? AND `charId` = ?', { cid, c.charId })
         if not on then return false, 'You are not on that call' end
         local pos = coordsOf(c.source)
-        local radius = AUTO.arriveRadius or 40
+        local radius = arriveRadiusOf(r)   -- 2.0.7: a search circle: anywhere in it counts
         if not pos or dist2(pos, r) > radius * 1.5 + 10 then return false, 'Not there yet' end
         local who = meAndPartner(c)
         if statusOf(c.charId) == 'scene' then return { already = true } end
@@ -1226,33 +1738,63 @@ function MDT.registerOps()
         return requestBackup(c, id(d.id), d.street)
     end)
 
-    -- 2.0.6: the game saw shots / a theft (the position is the server's, never the report's)
+    -- 2.0.6: the game saw shots / a theft; 2.0.7: a fight, a person down, a speeding car. The position is the server's,
+    -- never the report's; whatever the server can read itself (weapon in hand, the car's plate and paint, speed, being
+    -- down) it reads itself. whileDead: a downed player's game reports them down.
     local AlertCool = {}
-    if not AlertDropHooked then AlertDropHooked = true AddEventHandler('playerDropped', function() if AlertCoolRef then AlertCoolRef['shots:' .. source] = nil AlertCoolRef['theft:' .. source] = nil end end) end
+    local CLIENT_KINDS = { shots = true, theft = true, fight = true, down = true, speeding = true }
+    local DEF_COOL = { shots = 45, theft = 90, fight = 60, down = 180, speeding = 120 }
+    if not AlertDropHooked then
+        AlertDropHooked = true
+        AddEventHandler('playerDropped', function()
+            if AlertCoolRef then for _, k in ipairs({ 'shots', 'theft', 'fight', 'down', 'speeding' }) do AlertCoolRef[k .. ':' .. source] = nil end end
+        end)
+    end
     AlertCoolRef = AlertCool
-    Whip.core:SecureEvent('es_mdt:server:autoAlert', { rateLimit = 3000, burst = 2, sheet = 'light', params = { { 'd', 'any' } } }, function(source, _, d)
+    Whip.core:SecureEvent('es_mdt:server:autoAlert', { rateLimit = 3000, burst = 2, sheet = 'light', whileDead = true, params = { { 'd', 'any' } } }, function(source, _, d)
         if type(d) ~= 'table' then return false, 'Bad report' end
-        local kind = (d.kind == 'shots' or d.kind == 'theft') and d.kind or nil
+        local kind = CLIENT_KINDS[d.kind] and d.kind or nil
         if not kind then return false, 'Bad report' end
         local cfg = ALR[kind] or {}
-        if cfg.enabled == false then return end
+        if cfg.enabled == false or (kind == 'speeding' and cfg.enabled ~= true) then return end   -- speeding: off unless turned on
         if ALR.exemptLaw ~= false and lawOnDuty(source) then return end
+        local dead = WC:IsPlayerDead(source) == true
+        if kind == 'down' then
+            if not dead then return end
+            -- anyone on duty in a department has the panic button / is the help
+            for _, x in ipairs(ED:GetPlayerDepartments(source) or {}) do if x.onDuty then return end end
+        elseif dead then return end   -- the rest come from someone on their feet
         local key = kind .. ':' .. source
         if (AlertCool[key] or 0) > now() then return end
         local pos = coordsOf(source)
         if not pos then return end
-        AlertCool[key] = now() + math.max(5, tonumber(cfg.cooldown) or (kind == 'shots' and 45 or 90))
+        AlertCool[key] = now() + math.max(5, tonumber(cfg.cooldown) or DEF_COOL[kind])
         local chance = tonumber(cfg.chance)
         if chance == nil then chance = 1 end
         if math.random() > chance then return end
-        local plate, model
+        local info = { street = str(d.street, 120), label = 'auto:' .. kind }
         if kind == 'theft' then
-            plate, model = plateKey(d.plate), str(d.model, 40)
+            local plate, model = plateKey(d.plate), str(d.model, 40)
             -- the owner taking their own car is not a theft
             local cid = WC:GetCharId(source)
             if plate ~= '' and cid and MySQL.single.await("SELECT 1 AS `x` FROM `vehicles` WHERE REPLACE(`plate`,' ','') = ? AND `ownerCharId` = ? LIMIT 1", { plate, cid }) then return end
+            info.plate, info.model = plate, model
+            info.details = detailsOf({ plate = plate ~= '' and plate or nil, vehicle = model ~= '' and model or nil, readWeapon = false }, source)
+        elseif kind == 'shots' then
+            info.details = detailsOf({ vehicle = str(d.model, 30) ~= '' and str(d.model, 30) or nil }, source)   -- weapon class, a drive-by's car
+        elseif kind == 'fight' then
+            info.details = detailsOf({}, source)
+        elseif kind == 'speeding' then
+            local ped = GetPlayerPed(source)
+            local veh = ped and ped ~= 0 and GetVehiclePedIsIn(ped, false) or 0
+            if veh == 0 or GetPedInVehicleSeat(veh, -1) ~= ped then return end
+            local v = GetEntityVelocity(veh)
+            local mph = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) * 2.236936
+            if mph < (tonumber(cfg.mph) or 120) * 0.8 then return end
+            info.message = ('A vehicle is driving dangerously fast (about %d mph)'):format(math.floor(mph / 5 + 0.5) * 5)
+            info.details = detailsOf({ vehicle = str(d.model, 30) ~= '' and str(d.model, 30) or nil, readWeapon = false }, source)
         end
-        autoAlert(kind, pos, { street = str(d.street, 120), plate = plate, model = model, label = 'auto:' .. kind })
+        autoAlert(kind, pos, info)
     end)
 
     cb('mapData', { rate = 1000, burst = 4 }, function(c)

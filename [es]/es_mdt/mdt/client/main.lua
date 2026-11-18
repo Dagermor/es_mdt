@@ -126,7 +126,7 @@ for _, n in ipairs({ 'open', 'pickDept', 'dashboard', 'units', 'setStatus', 'peo
     'recommend', 'recs', 'recAct', 'badges', 'unitGps', 'onlinePlayers', 'officer', 'warrantCounts',
     'unitInvite', 'unitCancel', 'unitAnswer', 'unitLeave', 'rideLog', 'rideSkip',
     'weaponTypes', 'weaponOverview', 'weapons', 'weapon', 'weaponRegister', 'weaponAct', 'licenseAct',
-    'calls', 'call', 'callCreate', 'callAttach', 'callDetach', 'callRoute', 'callNote', 'callClose', 'callBackup', 'mapData',
+    'calls', 'call', 'callCreate', 'callAttach', 'callDetach', 'callRoute', 'callNote', 'callClose', 'callBackup', 'mapData', 'callLink', 'board',
     'mugshots', 'mugshot', 'mugshotLink', 'mugshotProfile', 'announcements', 'announceSave', 'announceAct',
     'templates', 'templateSave', 'templateDelete', 'jailStatus', 'sendToJail',
     'evStatus', 'evList', 'evGet', 'evForReport', 'evLink', 'evUnlink', 'evNote', 'evDestroy', 'evRoll', 'evRollPhoto', 'evPhoto', 'evLockers', 'mugshotRoll',
@@ -153,6 +153,26 @@ RegisterNUICallback('call', function(d, cb)
 end)
 
 RegisterNUICallback('close', function(_, cb) close() cb({ ok = true }) end)
+-- 2.0.7: a case's whip_evidence locker from the MDT. whip_core will not open a stash while another screen (the MDT) is up,
+-- so: close the MDT, wait until whip_core sees no screen, then ask the server once. The stash opens on its own; a refusal
+-- (not at a locker, no permission) is a notice, and the MDT stays closed (it never reopens by itself).
+local lockerBusy = false
+RegisterNUICallback('wevLockerOpen', function(d, cb)
+    local caseId = tonumber(type(d) == 'table' and d.caseId)
+    if not caseId then return cb({ ok = false, why = 'No case' }) end
+    if lockerBusy then return cb({ ok = true, busy = true }) end   -- a second press while the first is on its way
+    lockerBusy = true
+    cb({ ok = true })
+    close()
+    CreateThread(function()
+        local t0 = GetGameTimer()
+        Wait(100)   -- the focus and the screen claim let go this frame
+        while wc():IsAnyScreenOpen() and GetGameTimer() - t0 < 1500 do Wait(50) end
+        local r, why = wc():Callback('es_mdt:wevLocker', { caseId = caseId })
+        if r ~= true and type(r) ~= 'table' then notify(why or 'The locker did not open', 'error') end
+        SetTimeout(1500, function() lockerBusy = false end)
+    end)
+end)
 -- 1.10.0: Court (DOJ) in the nav, or the DOJ department picked in the switcher: the court side opens in its place
 RegisterNUICallback('toCourt', function(_, cb)
     cb({ ok = true })

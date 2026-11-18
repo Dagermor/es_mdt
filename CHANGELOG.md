@@ -1,5 +1,16 @@
 # Changelog
 
+## es_mdt 2.0.3 (2026-11-18)
+
+**Dispatch API: test calls, blip cleanup on close, admin-only source logging.**
+
+- **Test calls:** `/mdttestcall [kind] [priority]` files a call titled `TEST · <kind>` near you (from the console: at Legion Square). `/mdttestcall clear` closes and deletes every test call. For the server console and staff only (`es_mdt.departments.manage`). New export `TestCall(kind, priority)`.
+- **Blips go when a call closes:** the map blip is removed for everyone as soon as a call closes, from the Close call button, the new `CloseCall` export, or the automatic expiry. Closing a panic call also removes its PANIC blip and the officer's panic flag. Every close path now goes through one function.
+- **New export `CloseCall(callId, outcome, note)`.**
+- **Source labels, admins only:** `AddCall` takes `sourceLabel` (or `source`, `from`, `resource`, up to 40 characters), defaulting to the calling resource. `NotifyDispatch` takes it as an optional 5th string argument, followed by an optional 6th `extra` table. A 5th table argument is still `extra`, as in 2.0.1. `es_mdt:server:externalCall` calls are labeled `external:client` by the server, and labels sent by the client are ignored. The label is printed in the server console and stored in the new `es_mdt_calls.sourceLabel` column. It is never sent to players or shown in the MDT.
+- **Database:** a new `sourceLabel` column on `es_mdt_calls`, added by migration `002_source_label` on existing servers and created with the table on fresh installs.
+- **Unchanged:** 911/311, panic, officer calls and es_jail's prison break alert. Titles and caller names stay separate.
+
 ## es_mdt 2.0.2 (2026-11-17)
 
 **Display size.** Players can make the MDT, Departments and DOJ pages smaller or larger.

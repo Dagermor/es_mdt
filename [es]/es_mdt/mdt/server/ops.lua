@@ -72,6 +72,18 @@ end
 ---   blip = false, sprite, color, blipTime (seconds) }
 --- 2.0.1: the aliases and coord forms are new; every 2.0.0 call works unchanged. A missing title falls back to the
 --- kind's label, never to the caller's name.
+--- 2.0.3: where a call came from ('es_jail', 'external:client', 'test'), up to 40 characters; nil when none.
+--- Admins only: printed in the server console and kept in `es_mdt_calls`.`sourceLabel`, never sent to a client.
+local function labelOf(d)
+    local v = d.sourceLabel
+    if v == nil then v = d.source end
+    if v == nil then v = d.from end
+    if v == nil then v = d.resource end
+    if type(v) ~= 'string' then return nil end
+    v = MDT.str(v, 40)
+    return v ~= '' and v or nil
+end
+
 local function addCall(d)
     if type(d) ~= 'table' then return false, 'A call is a table' end
     local str, int = MDT.str, MDT.int
@@ -85,10 +97,13 @@ local function addCall(d)
     local callerName = d.callerName or d.name or d.caller
     local callerPhone = d.callerPhone or d.phone
     local callerCharId = tonumber(d.callerCharId or d.charId)
-    local cid = MySQL.insert.await([[INSERT INTO `es_mdt_calls` (`kind`,`priority`,`title`,`message`,`callerCharId`,`callerName`,`callerPhone`,`street`,`x`,`y`,`z`,`deptId`)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(message, 500), callerCharId, str(callerName, 80),
-        str(callerPhone, 20), str(street, 120), x, y, z, tonumber(d.deptId) })
+    local via = labelOf(d)
+    local cid = MySQL.insert.await([[INSERT INTO `es_mdt_calls` (`kind`,`priority`,`title`,`message`,`callerCharId`,`callerName`,`callerPhone`,`street`,`x`,`y`,`z`,`deptId`,`sourceLabel`)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(message, 500), callerCharId, str(callerName, 80),
+        str(callerPhone, 20), str(street, 120), x, y, z, tonumber(d.deptId), via })
     if not cid then return false, 'The call could not be saved' end
+    -- 2.0.3: the source is for admins only (this console and the sourceLabel column); it never goes to a client or the MDT
+    if via then print(('[es_mdt] call #%d (%s, P%d) filed by %s'):format(cid, kind, pri, via)) end
     local list = onDuty()
     local payload = { id = cid, kind = kind, priority = pri, title = title, message = str(message, 200), street = str(street, 120),
         x = x, y = y, z = z, callerName = str(callerName, 80), callerPhone = str(callerPhone, 20) }
@@ -106,18 +121,35 @@ local function addCall(d)
 end
 MDT.addCall = addCall
 
+local SELF = GetCurrentResourceName()
+--- The resource that called an export (nil for es_mdt itself), the label when a call names none
+local function invoker()
+    local r = GetInvokingResource()
+    if not r or r == SELF then return nil end
+    return r
+end
+
 --- exports.es_mdt:AddCall(d) -> callId | false, why   (the table above)
 exports('AddCall', function(data)
+    if type(data) == 'table' and data.sourceLabel == nil and data.source == nil and data.from == nil and data.resource == nil then
+        local by = invoker()
+        if by then local c = {} for k, v in pairs(data) do c[k] = v end c.sourceLabel = by data = c end
+    end
     local ok, a, b = pcall(addCall, data)
     if not ok then print(('^3[es_mdt] AddCall failed: %s^7'):format(tostring(a))) return false, 'The call could not be filed' end
     return a, b
 end)
 
---- exports.es_mdt:NotifyDispatch(title, message, coords?, priority?, extra?) -> callId | false, why
+--- exports.es_mdt:NotifyDispatch(title, message, coords?, priority?, sourceLabel?, extra?) -> callId | false, why
 --- The short form: an 'alert' call. extra = any other AddCall fields (street, kind, callerName, blip, ...).
-exports('NotifyDispatch', function(title, message, coords, priority, extra)
+--- 2.0.1's (title, message, coords, priority, extra) still works: a table 5th argument is extra.
+exports('NotifyDispatch', function(title, message, coords, priority, a5, a6)
+    local label, extra = nil, nil
+    if type(a5) == 'table' then extra = a5 elseif type(a5) == 'string' then label, extra = a5, a6 end
     local d = {}
     if type(extra) == 'table' then for k, v in pairs(extra) do d[k] = v end end
+    if label then d.sourceLabel = label
+    elseif d.sourceLabel == nil and d.source == nil and d.from == nil and d.resource == nil then d.sourceLabel = invoker() end
     d.title, d.message, d.coords = title, message, coords or d.coords
     d.priority = priority or d.priority or 2
     d.kind = d.kind or 'alert'
@@ -176,6 +208,23 @@ end
 local function tellClosed(cid, outcome)
     for _, o in ipairs(onDuty()) do TriggerClientEvent('es_mdt:client:callClosed', o.source, { id = cid, outcome = outcome }) end
 end
+
+--- 2.0.3: a call is closed or gone: its map blip goes for everyone at once (not only when the blip's time runs out),
+--- and a panic call takes its PANIC blip and the officer's panic flag with it.
+local PanicCall = {}   -- [charId] = the call id of their last panic
+local function callGone(cid)
+    cid = tonumber(cid)
+    if not cid then return end
+    pcall(function() WC:HideBlip('call:' .. cid) end)
+    for charId, pc in pairs(PanicCall) do
+        if pc == cid then
+            PanicCall[charId] = nil
+            if MDT.Panic then MDT.Panic[charId] = nil end
+            pcall(function() WC:HideBlip('panic:' .. charId) end)
+            MDT.refresh('units')
+        end
+    end
+end
 --- the partner's game (when online and on duty) follows the attach / detach too
 local function tellPartner(c, who, ev, data)
     if #who < 2 then return end
@@ -224,6 +273,7 @@ local function panic(c, street)
     local callId = addCall({ kind = 'panic', priority = 1, title = ('PANIC · %s'):format(who), street = street, coords = pos,
         message = ('Officer %s (%s) pressed the panic button'):format(who, me.g.short or ''), callerCharId = c.charId,
         callerName = me.u.name, deptId = me.g.id, blip = false })
+    if callId then PanicCall[c.charId] = callId end
     local list = onDuty()
     local b = PAN.blip or {}
     WC:ShowBlip({ people = sourcesOf(list) }, 'panic:' .. c.charId, { coords = vector3(pos.x, pos.y, pos.z),
@@ -250,6 +300,72 @@ local HitSeen = {}      -- ['charId:key'] = os.time() last logged
 MDT.clearPlateCache = function() for k in pairs(PlateCache) do PlateCache[k] = nil end end   -- 1.3.6: new / closed BOLOs show at once
 
 --- What the MDT knows about a plate. { plate, level = 'high'|'low'|nil, hits = { {kind, level, text} }, vehicleId, owner, label, boloId }
+-- ---------------------------------------------------------------- 2.0.3: closing a call, test calls
+
+--- Close a call from any path (MDT button, expiry, CloseCall export, /mdttestcall clear): the row, the units on it,
+--- its blips, every on-duty popup, the MDT lists. -> true | false, why
+local function closeCall(cid, outcome, note, byCharId, onlyIf)
+    cid = tonumber(cid)
+    if not cid then return false, 'No such call' end
+    local str = MDT.str
+    outcome = str(outcome, 40); if outcome == '' then outcome = 'Closed' end
+    local n = MySQL.update.await(("UPDATE `es_mdt_calls` SET `status` = 'closed', `outcome` = ?, `closeNote` = NULLIF(?, ''), `closedBy` = ?, `closedAt` = NOW() WHERE `id` = ? AND `status` = 'active'%s")
+        :format(onlyIf or ''), { outcome, str(note, 500), tonumber(byCharId), cid })
+    if (tonumber(n) or 0) < 1 then return false, 'That call is not active' end
+    local onIt = {}
+    for _, u in ipairs(MySQL.query.await('SELECT `charId` FROM `es_mdt_call_units` WHERE `callId` = ?', { cid }) or {}) do onIt[#onIt + 1] = u.charId end
+    freeUnits(onIt)
+    callGone(cid)
+    MDT.refresh('calls')
+    tellClosed(cid, outcome)
+    return true
+end
+MDT.closeCall = closeCall
+
+--- exports.es_mdt:CloseCall(callId, outcome?, note?) -> true | false, why   (outcome defaults to 'Closed')
+exports('CloseCall', function(cid, outcome, note)
+    local ok, a, b = pcall(closeCall, cid, outcome, note, nil)
+    if not ok then print(('^3[es_mdt] CloseCall failed: %s^7'):format(tostring(a))) return false, 'The call could not be closed' end
+    return a, b
+end)
+
+local TEST_SPOT = { x = 195.17, y = -933.77, z = 30.69, street = 'Legion Square' }
+--- A clearly marked TEST call (label 'test') near the player, or at Legion Square. -> callId | false, why
+local function testCall(kind, priority, source)
+    kind = KINDS[kind] and kind or 'alert'
+    local pos, street = nil, TEST_SPOT.street
+    if source and source > 0 then
+        pos = coordsOf(source)
+        street = 'Near ' .. (GetPlayerName(source) or ('player ' .. source))
+    end
+    pos = pos or { x = TEST_SPOT.x, y = TEST_SPOT.y, z = TEST_SPOT.z }
+    return addCall({ kind = kind, priority = tonumber(priority), title = 'TEST · ' .. (KIND_TITLE[kind] or 'Call'),
+        message = 'Test call: no response needed. Remove with /mdttestcall clear.', street = street, coords = pos,
+        callerName = 'Dispatch test', sourceLabel = 'test' })
+end
+
+--- exports.es_mdt:TestCall(kind?, priority?) -> callId | false, why
+exports('TestCall', function(kind, priority)
+    local ok, a, b = pcall(testCall, kind, priority, nil)
+    if not ok then print(('^3[es_mdt] TestCall failed: %s^7'):format(tostring(a))) return false, 'The test call could not be filed' end
+    return a, b
+end)
+
+--- Close and delete every test call (label 'test'). -> how many
+local function clearTestCalls()
+    local rows = MySQL.query.await("SELECT `id`,`status` FROM `es_mdt_calls` WHERE `sourceLabel` = 'test'") or {}
+    for _, r in ipairs(rows) do
+        if r.status == 'active' then closeCall(r.id, 'Test removed', nil, nil, " AND `sourceLabel` = 'test'") end
+        callGone(r.id)
+    end
+    if #rows > 0 then
+        MySQL.update.await("DELETE FROM `es_mdt_calls` WHERE `sourceLabel` = 'test'")
+        MDT.refresh('calls')
+    end
+    return #rows
+end
+MDT.clearTestCalls = clearTestCalls
+
 local function checkPlate(plate)
     local key = plateKey(plate)
     if #key < 1 then return nil end
@@ -487,11 +603,29 @@ function MDT.registerOps()
                 street = MDT.str(s(data.street or data.location), 120), coords = pos,
                 callerCharId = cid, callerName = cid and MDT.namesOf({ cid })[cid] or nil, callerPhone = phoneOf(cid),
                 blip = data.blip ~= false,
+                sourceLabel = 'external:client',   -- set here; any label in the data is ignored (a client cannot prove its resource)
             })
             if not callId then return false, why end
             print(('[es_mdt] externalCall #%d from %s (%s)'):format(callId, tostring(source), GetPlayerName(source) or '?'))
         end)
     end
+
+    -- 2.0.3: /mdttestcall [kind] [priority] | /mdttestcall clear   (server console, or staff: es_mdt.departments.manage)
+    Whip.command('mdttestcall', { rateLimit = { burst = 2, everyMs = 3000 }, whileDead = true }, function(source, args)
+        local function reply(msg, kind)
+            if source == 0 then print('[es_mdt] ' .. msg) else WC:NotifyPlayer(source, msg, kind or 'inform') end
+        end
+        if source ~= 0 and not (ED:IsStaff(source) == true) then return reply('Staff only (es_mdt.departments.manage)', 'error') end
+        local a1 = (args[1] or ''):lower()
+        if a1 == 'clear' then return reply(('Test calls removed: %d'):format(clearTestCalls()), 'success') end
+        local kind, pri = a1, args[2]
+        if tonumber(a1) and not KINDS[a1] then kind, pri = 'alert', a1 end   -- /mdttestcall 1
+        if kind == '' then kind = 'alert' end
+        if not KINDS[kind] then return reply('Kinds: 911, 311, alert, officer, panic', 'error') end
+        local cid, why = testCall(kind, pri, source)
+        if not cid then return reply(why or 'The test call could not be filed', 'error') end
+        reply(('TEST call #%d filed (%s). /mdttestcall clear removes test calls.'):format(cid, kind), 'success')
+    end)
 
     -- the radar may run here (law department, on duty)
     Whip.core:SecureCallback('es_mdt:radarAllowed', { rateLimit = 2000, burst = 3, sheet = 'light' }, function(source)
@@ -650,15 +784,9 @@ function MDT.registerOps()
         if not (on or c.staff or (c.myLevel or 0) >= 60 or MDT.isHighCommand(c)) then return false, 'Attach to the call to close it' end
         local outcome = str(d.outcome, 40)
         if outcome == '' then return false, 'Pick an outcome' end
-        MySQL.update.await("UPDATE `es_mdt_calls` SET `status` = 'closed', `outcome` = ?, `closeNote` = ?, `closedBy` = ?, `closedAt` = NOW() WHERE `id` = ?",
-            { outcome, str(d.note, 500), c.charId, cid })
-        local onIt = {}
-        for _, u in ipairs(MySQL.query.await('SELECT `charId` FROM `es_mdt_call_units` WHERE `callId` = ?', { cid }) or {}) do onIt[#onIt + 1] = u.charId end
-        freeUnits(onIt)
-        WC:HideBlip('call:' .. cid)
+        local ok, why = closeCall(cid, outcome, d.note, c.charId)
+        if not ok then return false, why end
         MDT.log(c, 'call_close', { callId = cid, outcome = outcome })
-        MDT.refresh('calls')
-        tellClosed(cid, outcome)
         return true
     end)
 
@@ -876,15 +1004,7 @@ function MDT.registerOps()
         while true do
             Wait(5 * 60 * 1000)
             local rows = MySQL.query.await("SELECT `id` FROM `es_mdt_calls` WHERE `status` = 'active' AND `createdAt` < NOW() - INTERVAL ? MINUTE", { DSP.callTTLMin or 120 }) or {}
-            for _, r in ipairs(rows) do
-                MySQL.update.await("UPDATE `es_mdt_calls` SET `status` = 'closed', `outcome` = 'Expired', `closedAt` = NOW() WHERE `id` = ? AND `status` = 'active'", { r.id })
-                WC:HideBlip('call:' .. r.id)
-                local onIt = {}
-                for _, u in ipairs(MySQL.query.await('SELECT `charId` FROM `es_mdt_call_units` WHERE `callId` = ?', { r.id }) or {}) do onIt[#onIt + 1] = u.charId end
-                freeUnits(onIt)
-                tellClosed(r.id, 'Expired')
-            end
-            if #rows > 0 then MDT.refresh('calls') end
+            for _, r in ipairs(rows) do closeCall(r.id, 'Expired', nil, nil) end
             local t = now()
             for k, v in pairs(HitSeen) do if v < t - 600 then HitSeen[k] = nil end end
             for k, v in pairs(PlateCache) do if t - v.at > 600 then PlateCache[k] = nil end end

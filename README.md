@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.2).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.3).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -203,12 +203,12 @@ The details are in [docs/whip_evidence_integration.md](docs/whip_evidence_integr
 `exports.es_mdt:*` (also available under `exports.es_departments:*` and `exports.es_doj:*`):
 
 - **Departments:** `HasPerm(source, perm)`, `GetDepartments()`, `GetDepartment(id)`, `GetPlayerDepartments(source)`, `GetActiveDepartment(source)`, `GetRoster(id)`, `GetOnDuty(id)`, `IsStaff(source)`, `GetLogo(id)`, `GetDutySeconds(charId)`, `HasCert(charId, cert)`, …
-- **MDT:** `AddCall(call)`, `NotifyDispatch(title, message, coords, priority)` (see [Dispatch API](#dispatch-api)), `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, …
+- **MDT:** `AddCall(call)`, `NotifyDispatch(title, message, coords, priority, sourceLabel)`, `CloseCall(id, outcome)`, `TestCall(kind, priority)` (see [Dispatch API](#dispatch-api)), `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, …
 - **DOJ:** `GetCourtMarks(charId)`, `GetRecordSummary(charId)`, `WarrantsNeedJudge()`, …
 
 ## Dispatch API
 
-Any resource can put a call on the MDT dispatch board. Units on duty get the popup, a blip, and the call in the Dispatch tab, the same as a 911 call. Both exports are **server side**. Each returns the call id, or `false, why`.
+Any resource can put a call on the MDT dispatch board. Units on duty get the popup, a blip, and the call in the Dispatch tab, the same as a 911 call. The exports are **server side**. Each returns the call id, or `false, why`.
 
 ### `exports.es_mdt:AddCall(call)`
 
@@ -222,6 +222,7 @@ local callId = exports.es_mdt:AddCall({
     coords   = GetEntityCoords(ped),    -- see the formats below; optional
     callerName = 'Bank system', callerPhone = '555-0100', callerCharId = nil,   -- optional
     blip = true, sprite = 280, color = 1, blipTime = 120,                        -- optional blip settings
+    sourceLabel = 'bank_alarm',         -- optional, admins only (see below). Default: your resource's name
 })
 ```
 
@@ -240,12 +241,15 @@ local callId = exports.es_mdt:AddCall({
 | `sprite`, `color` | | Blip sprite and color. Default: `Config.Dispatch.blip`. |
 | `blipTime` | | Seconds the blip stays, 5 to 1800. Default: `Config.Dispatch.blip.seconds`. |
 | `deptId` | | Optional department id stored with the call. |
+| `sourceLabel` | `source`, `from`, `resource` | A text label, up to 40 characters. With none, the name of the resource that called the export. **Admins only**: see below. |
 
 Strings are trimmed, control characters are removed (new lines and tabs are kept), and the lengths above are applied.
 
+**Where a call came from is for admins only.** Officers never see which script filed a call: the source label is not sent to players, and it is not on the call card or in the MDT. Server admins see it in the server console (`[es_mdt] call #42 (alert, P1) filed by bank_alarm`) and in the `sourceLabel` column of `es_mdt_calls`. The 911/311 phone calls, the panic button and es_mdt's own calls have no label.
+
 **Coordinate formats.** All of these work: `vector3(x, y, z)`, `vector4(x, y, z, h)` (the heading is ignored), `{ x = 1.0, y = 2.0, z = 3.0 }` and `{ 1.0, 2.0, 3.0 }`. `z` is optional. Coordinates that are not numbers, or that are outside the map (more than 20000 from the centre), are dropped.
 
-### `exports.es_mdt:NotifyDispatch(title, message, coords, priority)`
+### `exports.es_mdt:NotifyDispatch(title, message, coords, priority, sourceLabel, extra)`
 
 The short form: an `alert` call.
 
@@ -253,7 +257,25 @@ The short form: an `alert` call.
 exports.es_mdt:NotifyDispatch('Store robbery', '24/7 on Innocence Blvd', vector3(25.7, -1347.3, 29.5), 1)
 ```
 
-`coords` and `priority` are optional (priority defaults to 2). An optional fifth argument is a table of any other `AddCall` fields, for example `{ street = 'Innocence Blvd', kind = '911' }`.
+`coords` and `priority` are optional (priority defaults to 2). The fifth argument is optional:
+
+- a **string** is the admin-only source label, and an optional sixth argument is a table of any other `AddCall` fields: `NotifyDispatch('Store robbery', '…', coords, 1, 'my_robbery', { street = 'Innocence Blvd' })`
+- a **table** is those other fields, as in 2.0.1: `NotifyDispatch('Store robbery', '…', coords, 1, { street = 'Innocence Blvd', kind = '911' })`
+
+### `exports.es_mdt:CloseCall(callId, outcome, note)`
+
+Closes an active call, the same as the MDT's Close call button: the units on it are freed, its map blip goes for everyone at once, and every on-duty unit's call card shows it closed. `outcome` defaults to `Closed`. Returns `true`, or `false, why`.
+
+**Blips.** A call's map blip is removed as soon as the call closes, however it closes: the Close call button, `CloseCall`, or the automatic close after `Config.Dispatch.callTTLMin`. Closing a panic call also removes the PANIC blip. Otherwise the blip goes after its `blipTime`.
+
+### Test calls: `/mdttestcall`
+
+| Command | What |
+|---|---|
+| `/mdttestcall [kind] [priority]` | A test call, titled `TEST · <kind>`, near you (from the server console: at Legion Square). `kind` is `911`, `311`, `alert` (default), `officer` or `panic` (a panic test only files the call; it does not press anyone's panic button). |
+| `/mdttestcall clear` | Closes and deletes every test call. |
+
+For the server console and staff only (WHIP permission `es_mdt.departments.manage`, the `es_departments.admin` ace, or WHIP developer mode). Test calls are labeled `test` (admins only). `exports.es_mdt:TestCall(kind, priority)` does the same from a server script.
 
 ### From client scripts: the `es_mdt:server:externalCall` net event
 
@@ -270,6 +292,7 @@ This event is guarded, because any player can send any net event:
 - **No panics:** `kind = 'panic'` is refused (the panic button files panics). The allowed kinds are in `Config.Dispatch.external.kinds`.
 - **The caller is the sender:** the caller's name, phone and character come from the server, never from the data. `sprite`, `color`, `blipTime` and `deptId` are ignored.
 - **Clamped:** only `kind`, `priority`, `title`, `message`, `street`, `coords` and `blip` are read, with the limits above. With no valid coords, the sender's own position is used.
+- **Source:** labeled `external:client` on the server (admins only, see above). Any label in the data is ignored.
 - A refused call shows the player the reason. Every accepted call is printed in the server console.
 
 ```lua
@@ -293,6 +316,7 @@ For calls from members of the public (a store clerk, a bank alarm), use the serv
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.0.3:** source labels (defaults, the `NotifyDispatch` forms, never sent to players), `/mdttestcall` and `TestCall`, and closing calls with their blips, in Lua tests; and on a live server, a test call from the console stored with its label, then closed and removed.
 - **Tested for 2.0.2:** the display size in browser tests at 70%, 100% and 150% on 1920×1080 and 2560×1440: the pages fit and stay centred, and clicks, the search list, dialogs and the photo viewer line up; the slider, quick sizes, Reset, Esc and a saved size on reload; and `/mdtscale`.
 - **Tested for 2.0.1:** the dispatch exports on a live server (calls filed through `NotifyDispatch` and the old `AddCall` form).
 - **Tested for 2.0.0:** Lua syntax; every file loads in order with each part's globals kept apart and the old export names working; and browser tests of the one-page UI (every part opens, messages and clicks reach the right part, no JS errors).

@@ -319,10 +319,16 @@ local DEFS = {
         `closeNote` VARCHAR(500) NULL,
         `closedBy` INT UNSIGNED NULL,
         `closedAt` DATETIME NULL,
+        `sourceLabel` VARCHAR(40) NULL,
         `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
         KEY `idx_es_call_status` (`status`, `id`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]], {
+        -- 2.0.3: where a call came from (in the CREATE above too: a new table records this as done without running it)
+        { id = '002_source_label', statements = {
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `sourceLabel` VARCHAR(40) NULL AFTER `closedAt`', unless = { column = { 'es_mdt_calls', 'sourceLabel' } } },
+        } },
+    } },
     { 'es_mdt_call_units', [[CREATE TABLE IF NOT EXISTS `es_mdt_call_units` (
         `callId` INT UNSIGNED NOT NULL,
         `charId` INT UNSIGNED NOT NULL,

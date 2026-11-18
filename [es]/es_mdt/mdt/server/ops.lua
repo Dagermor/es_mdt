@@ -8,6 +8,9 @@ MDT = MDT or {}
 
 local DSP = Config.Dispatch or {}
 local PAN = Config.Panic or {}
+local BKP = DSP.backup or {}     -- 2.0.6
+local ESC = DSP.escalate or {}   -- 2.0.6
+local ALR = DSP.alerts or {}     -- 2.0.6
 local MUG = Config.Mugshots or {}
 local RAD = Config.Radar or {}
 local JAIL = Config.Jail or {}
@@ -23,7 +26,7 @@ local function onDuty()
     for cid, e in pairs(idx) do
         if e.u.source then
             list[#list + 1] = { source = e.u.source, charId = cid, callsign = e.u.callsign, name = e.u.name,
-                deptId = e.g.id, deptShort = e.g.short, color1 = e.g.color1 }
+                deptId = e.g.id, deptShort = e.g.short, deptType = e.g.type, color1 = e.g.color1 }
         end
     end
     return list, idx
@@ -54,10 +57,11 @@ local function plateKey(p) return (type(p) == 'string' and p or ''):upper():gsub
 --- them, someone coming on gets the ones still up). [id] = { spec, gen }
 local DutyBlips = {}
 local blipGen = 0
-local function showDutyBlip(id, spec, secs, list)
+local routedDuty   -- 2.0.6: below (who a call's audience reaches)
+local function showDutyBlip(id, spec, secs, list, aud)
     blipGen = blipGen + 1
     local gen = blipGen
-    DutyBlips[id] = { spec = spec, gen = gen }
+    DutyBlips[id] = { spec = spec, gen = gen, aud = aud }
     WC:ShowBlip({ people = sourcesOf(list or onDuty()) }, id, spec)
     if secs then
         SetTimeout(secs * 1000, function()
@@ -73,8 +77,10 @@ end
 --- every duty blip again, to who is on duty now (whip_core takes it off anyone no longer in the list)
 local function repushDutyBlips()
     if next(DutyBlips) == nil then return end
-    local people = sourcesOf(onDuty())
+    local all = onDuty()
     for id, b in pairs(DutyBlips) do
+        -- 2.0.6: each blip to the groups its call went to
+        local people = sourcesOf(b.aud and routedDuty(b.aud) or all)
         pcall(function()
             -- nobody on duty: down for now (kept here, so it comes back to whoever clocks on while it is still live)
             if #people == 0 then WC:HideBlip(id) else WC:ShowBlip({ people = people }, id, b.spec) end
@@ -83,8 +89,77 @@ local function repushDutyBlips()
 end
 MDT.repushDutyBlips = repushDutyBlips
 
-local KINDS = { ['911'] = true, ['311'] = true, panic = true, alert = true, officer = true }
-local KIND_TITLE = { ['911'] = '911 call', ['311'] = '311 call', panic = 'Panic', officer = 'Officer call', alert = 'Alert' }
+local KINDS = { ['911'] = true, ['311'] = true, panic = true, alert = true, officer = true,
+    medical = true, shots = true, theft = true, backup = true }   -- 2.0.6: the last four
+local KIND_TITLE = { ['911'] = '911 call', ['311'] = '311 call', panic = 'Officer down', officer = 'Officer call', alert = 'Alert',
+    medical = 'Medical call', shots = 'Shots fired', theft = 'Vehicle theft', backup = 'Backup requested' }
+
+-- ---------------------------------------------------------------- 2.0.6: routing (Config.Dispatch.routing)
+-- A call goes to GROUPS of departments ('law', 'ems'), by its kind. A group is a list of department TYPES. Saved on the call
+-- as `audience` ('law,ems'); NULL (calls from before 2.0.6) = every unit on duty, as before.
+local ROUTE = DSP.routing or {}
+local DEF_GROUPS = { law = { 'police', 'sheriff', 'state' }, ems = { 'ems' } }
+local DEF_ROUTES = { ['911'] = { 'law', 'ems' }, ['311'] = { 'law' }, medical = { 'ems' }, panic = { 'law', 'ems' },
+    backup = { 'law' }, shots = { 'law' }, theft = { 'law' }, officer = { 'law' }, alert = { 'law' } }
+local function groupsCfg() return type(ROUTE.groups) == 'table' and next(ROUTE.groups) and ROUTE.groups or DEF_GROUPS end
+--- the group a department type is in ('law', 'ems', ...), or nil (DOJ: no group, no calls)
+local function groupOfType(t)
+    if not t then return nil end
+    for g, types in pairs(groupsCfg()) do
+        if type(types) == 'table' then for _, x in ipairs(types) do if x == t then return g end end end
+    end
+    return nil
+end
+MDT.groupOfType = groupOfType
+local function asList(v) if type(v) == 'string' then return { v } end return type(v) == 'table' and v or nil end
+--- 'law,ems': the groups a call of this kind goes to (want = a group or list of groups that overrides the kind's), only
+--- groups with at least one department on this server. None (no EMS department yet): Config.Dispatch.routing.fallback
+--- ('law'); fallback = false: nil = every unit on duty.
+local function audienceFor(kind, want)
+    local list = asList(want) or (type(ROUTE.kinds) == 'table' and asList(ROUTE.kinds[kind])) or DEF_ROUTES[kind] or { 'law' }
+    local have = {}
+    for _, d in ipairs(ED:GetDepartments() or {}) do if d.type then have[d.type] = true end end
+    local G, out, seen = groupsCfg(), {}, {}
+    for _, g in ipairs(list) do
+        if type(g) == 'string' and not seen[g] and type(G[g]) == 'table' then
+            for _, t in ipairs(G[g]) do if have[t] then out[#out + 1] = g seen[g] = true break end end
+        end
+    end
+    if #out == 0 then
+        local fb = ROUTE.fallback
+        if fb == nil then fb = 'law' end
+        if type(fb) ~= 'string' or fb == '' or type(G[fb]) ~= 'table' then return nil end
+        out[1] = fb
+    end
+    return table.concat(out, ','):sub(1, 40)
+end
+MDT.audienceFor = audienceFor
+local function inAudience(aud, deptType)
+    if aud == nil or aud == '' then return true end
+    local g = groupOfType(deptType)
+    if not g then return false end
+    for x in aud:gmatch('[^,]+') do if x == g then return true end end
+    return false
+end
+--- the on-duty units a call's audience reaches
+routedDuty = function(aud)
+    local list, idx = onDuty()
+    if aud == nil or aud == '' then return list, idx end
+    local out = {}
+    for _, u in ipairs(list) do if inAudience(aud, u.deptType) then out[#out + 1] = u end end
+    return out, idx
+end
+MDT.routedDuty = routedDuty
+local CallAud = {}   -- [callId] = audience | false (everyone); filled when filed, read from the row after a restart
+local function audOf(cid)
+    local a = CallAud[cid]
+    if a == nil then
+        local r = MySQL.single.await('SELECT `audience` FROM `es_mdt_calls` WHERE `id` = ?', { cid })
+        a = r and r.audience or false
+        CallAud[cid] = a
+    end
+    return a or nil
+end
 
 --- 2.0.1: x, y, z from vector3 / vector4 / { x, y, z } / { [1], [2], [3] }; nil when there are none (or they are not numbers)
 local function xyzOf(c)
@@ -131,21 +206,26 @@ local function addCall(d)
     local callerPhone = d.callerPhone or d.phone
     local callerCharId = tonumber(d.callerCharId or d.charId)
     local via = labelOf(d)
-    local cid = MySQL.insert.await([[INSERT INTO `es_mdt_calls` (`kind`,`priority`,`title`,`message`,`callerCharId`,`callerName`,`callerPhone`,`street`,`x`,`y`,`z`,`deptId`,`sourceLabel`)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(message, 500), callerCharId, str(callerName, 80),
-        str(callerPhone, 20), str(street, 120), x, y, z, tonumber(d.deptId), via })
+    -- 2.0.6: who it goes to (d.groups = 'ems' / { 'law', 'ems' } overrides the kind's route; d.audience is es_mdt's own)
+    local aud
+    if type(d.audience) == 'string' and d.audience ~= '' then aud = str(d.audience, 40) else aud = audienceFor(kind, d.groups) end
+    local parentId = tonumber(d.parentId)
+    local cid = MySQL.insert.await([[INSERT INTO `es_mdt_calls` (`kind`,`priority`,`title`,`message`,`callerCharId`,`callerName`,`callerPhone`,`street`,`x`,`y`,`z`,`deptId`,`sourceLabel`,`audience`,`parentId`)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)]], { kind, pri, title, str(message, 500), callerCharId, str(callerName, 80),
+        str(callerPhone, 20), str(street, 120), x, y, z, tonumber(d.deptId), via, aud, parentId })
     if not cid then return false, 'The call could not be saved' end
+    CallAud[cid] = aud or false
     -- 2.0.3: the source is for admins only (this console and the sourceLabel column); it never goes to a client or the MDT
     if via then print(('[es_mdt] call #%d (%s, P%d) filed by %s'):format(cid, kind, pri, via)) end
-    local list = onDuty()
+    local list = routedDuty(aud)
     local payload = { id = cid, kind = kind, priority = pri, title = title, message = str(message, 200), street = str(street, 120),
-        x = x, y = y, z = z, callerName = str(callerName, 80), callerPhone = str(callerPhone, 20) }
+        x = x, y = y, z = z, callerName = str(callerName, 80), callerPhone = str(callerPhone, 20), parentId = parentId, units = {} }
     for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:call', u.source, payload) end
-    if x and y and d.blip ~= false and #list > 0 then
+    if x and y and d.blip ~= false then   -- 2.0.6: kept even with nobody on duty (whoever clocks on gets it)
         local b = DSP.blip or {}
         showDutyBlip('call:' .. cid, { coords = vector3(x, y, z or 0.0),
             label = ('#%d %s'):format(cid, title):sub(1, 40), sprite = math.tointeger(tonumber(d.sprite)) or b.sprite or 280,
-            color = math.tointeger(tonumber(d.color)) or b.color or 1, flash = pri == 1 }, int(d.blipTime or b.seconds or 120, 5, 1800), list)
+            color = math.tointeger(tonumber(d.color)) or b.color or 1, flash = pri == 1 }, int(d.blipTime or b.seconds or 120, 5, 1800), list, aud)
     end
     MDT.refresh('calls')
     return cid
@@ -209,11 +289,25 @@ local function unitsOfCalls(ids)
 end
 
 local CALL_COLS = [[`id`,`kind`,`priority`,`status`,`title`,`message`,`callerName`,`callerPhone`,`street`,`x`,`y`,`deptId`,`outcome`,`closeNote`,
-    `closedBy`,UNIX_TIMESTAMP(`closedAt`) AS `closedAt`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`]]
+    `closedBy`,UNIX_TIMESTAMP(`closedAt`) AS `closedAt`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`,`audience`,`parentId`,`escalations`]]
 
-local function callsList(status, limit)
-    local rows = MySQL.query.await(('SELECT %s, (SELECT COUNT(*) FROM `es_mdt_call_notes` n WHERE n.`callId` = c.`id`) AS `notes` FROM `es_mdt_calls` c WHERE `status` = ? ORDER BY %s LIMIT ?')
-        :format(CALL_COLS, status == 'active' and '`priority`, `id` DESC' or '`id` DESC'), { status, limit }) or {}
+--- 2.0.6: the calls a viewer's MDT lists: their group's (and the 2.0.4 ones), every call for staff, a department in no group
+--- (DOJ) or routing.shared = true
+local function viewerFilter(c)
+    if not c or c.staff or ROUTE.shared == true then return '', {} end
+    local g = groupOfType(c.dept and c.dept.type)
+    if not g then return '', {} end
+    return ' AND (`audience` IS NULL OR FIND_IN_SET(?, `audience`) > 0)', { g }
+end
+MDT.viewerFilter = viewerFilter
+
+local function callsList(status, limit, c)
+    local where, args = viewerFilter(c)
+    local params = { status }
+    for _, a in ipairs(args) do params[#params + 1] = a end
+    params[#params + 1] = limit
+    local rows = MySQL.query.await(('SELECT %s, (SELECT COUNT(*) FROM `es_mdt_call_notes` n WHERE n.`callId` = c.`id`) AS `notes` FROM `es_mdt_calls` c WHERE `status` = ?%s ORDER BY %s LIMIT ?')
+        :format(CALL_COLS, where, status == 'active' and '`priority`, `id` DESC' or '`id` DESC'), params) or {}
     local ids = {}
     for _, r in ipairs(rows) do ids[#ids + 1] = r.id r.notes = tonumber(r.notes) or 0 end
     local u = unitsOfCalls(ids)
@@ -230,14 +324,19 @@ local function meAndPartner(c)
 end
 
 --- 1.3.2: tell every on-duty unit's popup who is on a call now / that it closed
+--- 2.0.6: the card's unit list is { cs = callsign, name, st = status, dept } per unit (it was callsign text), to the call's audience
+local function cardUnits(u)
+    local out = {}
+    for _, x in ipairs(u or {}) do out[#out + 1] = { cs = x.callsign, name = x.name, st = x.status, dept = x.deptShort } end
+    return out
+end
+MDT.cardUnits = cardUnits
 local function tellUnits(cid)
-    local u = unitsOfCalls({ cid })[cid] or {}
-    local signs = {}
-    for _, x in ipairs(u) do signs[#signs + 1] = (x.callsign or x.name) .. (x.status == 'scene' and ' ✓' or x.status == 'enroute' and ' →' or '') end
-    for _, o in ipairs(onDuty()) do TriggerClientEvent('es_mdt:client:callUnits', o.source, { id = cid, units = signs }) end
+    local units = cardUnits(unitsOfCalls({ cid })[cid])
+    for _, o in ipairs(routedDuty(audOf(cid))) do TriggerClientEvent('es_mdt:client:callUnits', o.source, { id = cid, units = units }) end
 end
 local function tellClosed(cid, outcome)
-    for _, o in ipairs(onDuty()) do TriggerClientEvent('es_mdt:client:callClosed', o.source, { id = cid, outcome = outcome }) end
+    for _, o in ipairs(routedDuty(audOf(cid))) do TriggerClientEvent('es_mdt:client:callClosed', o.source, { id = cid, outcome = outcome }) end
 end
 
 --- 2.0.3: a call is closed or gone: its map blip goes for everyone at once (not only when the blip's time runs out),
@@ -300,15 +399,20 @@ local function panic(c, street)
     if not pos then return false, 'Your position could not be read' end
     local secs = PAN.seconds or 90
     MDT.Panic[c.charId] = now() + secs
+    -- 2.0.6: an 'Officer down' P1 (Config.Panic.title), to the groups Config.Dispatch.routing gives 'panic' (law + EMS).
+    -- No health / dead / ragdoll check anywhere: a downed or dead officer can press it (the callback is whileDead), and
+    -- the position is the body's.
     local who = ('%s %s'):format(me.u.callsign or '', me.u.name or ''):gsub('^%s+', '')
-    local callId = addCall({ kind = 'panic', priority = 1, title = ('PANIC · %s'):format(who), street = street, coords = pos,
+    local aud = audienceFor('panic')
+    local callId = addCall({ kind = 'panic', priority = 1, title = ('%s · %s'):format(MDT.str(PAN.title, 40) ~= '' and MDT.str(PAN.title, 40) or 'OFFICER DOWN', who),
+        street = street, coords = pos, audience = aud,
         message = ('Officer %s (%s) pressed the panic button'):format(who, me.g.short or ''), callerCharId = c.charId,
         callerName = me.u.name, deptId = me.g.id, blip = false })
     if callId then PanicCall[c.charId] = callId end
-    local list = onDuty()
+    local list = routedDuty(aud)
     local b = PAN.blip or {}
     showDutyBlip('panic:' .. c.charId, { coords = vector3(pos.x, pos.y, pos.z),
-        label = ('PANIC %s'):format(me.u.callsign or ''):sub(1, 40), sprite = b.sprite or 161, color = b.color or 1, flash = true, scale = 1.2 }, nil, list)
+        label = ('PANIC %s'):format(me.u.callsign or ''):sub(1, 40), sprite = b.sprite or 161, color = b.color or 1, flash = true, scale = 1.2 }, nil, list, aud)
     local payload = { charId = c.charId, callsign = me.u.callsign, name = me.u.name, deptShort = me.g.short, street = MDT.str(street, 120),
         x = pos.x, y = pos.y, callId = callId, seconds = secs }
     for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:panic', u.source, payload) end
@@ -569,6 +673,166 @@ local function lawOnDuty(source)
     return false
 end
 
+-- ---------------------------------------------------------------- 2.0.6: request backup
+
+local BackupCool = {}
+--- An officer on duty asks for backup: a 'backup' call at THEIR position (not the call's), linked to the call they are on
+--- (callId; they must be attached) or on its own (callId nil). P1 when the call is a panic or P1, else Config.Dispatch.backup.priority.
+--- It goes where the call went (or by the 'backup' route); a note on the call says so. -> { id, priority, units } | false, why
+local function requestBackup(c, callId, street)
+    if BKP.enabled == false then return false, 'Backup requests are off' end
+    local _, idx = MDT.dutyNow()
+    local me = idx[c.charId]
+    if not me then return false, 'Go on duty to request backup' end
+    if (BackupCool[c.charId] or 0) > now() then return false, ('Backup was just requested, wait %d s'):format(BackupCool[c.charId] - now()) end
+    local r
+    if callId then
+        r = MySQL.single.await('SELECT `id`,`kind`,`priority`,`status`,`title`,`street`,`audience` FROM `es_mdt_calls` WHERE `id` = ?', { callId })
+        if not r then return false, 'No such call' end
+        if r.status ~= 'active' then return false, 'That call is closed' end
+        local on = MySQL.single.await('SELECT 1 AS `x` FROM `es_mdt_call_units` WHERE `callId` = ? AND `charId` = ?', { callId, c.charId })
+        if not on then return false, 'Attach to the call to request backup on it' end
+    end
+    local pos = coordsOf(c.source)
+    if not pos then return false, 'Your position could not be read' end
+    local urgent = r and (r.kind == 'panic' or tonumber(r.priority) == 1)
+    local pri = MDT.int(urgent and (BKP.urgentPriority or 1) or (BKP.priority or 2), 1, 3)
+    BackupCool[c.charId] = now() + math.max(5, tonumber(BKP.cooldown) or 45)
+    local who = ('%s %s'):format(me.u.callsign or '', me.u.name or ''):gsub('^%s+', '')
+    street = MDT.str(street, 120)
+    if street == '' and r then street = r.street or '' end
+    local title = r and ('Backup · #%d %s'):format(r.id, r.title or '') or ('Backup · %s'):format(who)
+    local newId, why = addCall({ kind = 'backup', priority = pri, title = MDT.str(title, 120), street = street, coords = pos,
+        message = ('%s (%s) requests backup%s'):format(who, me.g.short or '', r and (' on call #' .. r.id) or ''),
+        callerCharId = c.charId, callerName = me.u.name, deptId = me.g.id, parentId = r and r.id or nil,
+        audience = r and r.audience or nil })   -- none: the 'backup' route
+    if not newId then BackupCool[c.charId] = nil return false, why end
+    if r then
+        MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)',
+            { r.id, c.charId, ('Backup requested (P%d) · call #%d'):format(pri, newId) })
+    end
+    MDT.log(c, 'call_backup', { callId = r and r.id or nil, backupId = newId, priority = pri })
+    MDT.refresh('calls')
+    return { id = newId, priority = pri, units = #routedDuty(audOf(newId)) }
+end
+MDT.requestBackup = requestBackup
+
+-- ---------------------------------------------------------------- 2.0.6: shots fired / vehicle theft
+-- From the game (es_mdt:server:autoAlert: Config.Dispatch.alerts, chance, cooldowns, on-duty law exempt) or from other
+-- scripts (exports ShotsFired / VehicleTheft: always filed). One call per area: a second report near an active one of the
+-- same kind, while it is fresh, adds a note to it (at most every 30 s) instead of a new call.
+local DEF_QUIET = { { x = 13.5, y = -1097.4, r = 20.0 }, { x = 821.5, y = -2163.6, r = 20.0 } }   -- the Ammu-Nation ranges
+local function quietZone(pos)
+    for _, z in ipairs(type(ALR.quietZones) == 'table' and ALR.quietZones or DEF_QUIET) do
+        local zx, zy = tonumber(z.x or z[1]), tonumber(z.y or z[2])
+        if zx and zy and dist2(pos, { x = zx, y = zy }) <= (tonumber(z.r or z.radius) or 20) then return true end
+    end
+    return false
+end
+local function nearbyAlert(kind, pos)
+    local area = ALR.area or {}
+    local radius, secs = tonumber(area.radius) or 150, tonumber(area.seconds) or 120
+    if radius <= 0 or secs <= 0 then return nil end
+    local rows = MySQL.query.await([[SELECT `id`,`x`,`y` FROM `es_mdt_calls` WHERE `status` = 'active' AND `kind` = ? AND `x` IS NOT NULL
+        AND `createdAt` >= NOW() - INTERVAL ? SECOND ORDER BY `id` DESC LIMIT 20]], { kind, math.floor(secs) }) or {}
+    for _, r in ipairs(rows) do if dist2(pos, r) <= radius then return r.id end end
+    return nil
+end
+local MoreNoted = {}
+--- -> callId, merged (true when it went onto an existing call) | false, why
+local function autoAlert(kind, pos, info)
+    info = info or {}
+    local cfg = ALR[kind] or {}
+    if not pos then return false, 'No position' end
+    if quietZone(pos) then return false, 'Quiet zone' end
+    local near = nearbyAlert(kind, pos)
+    if near then
+        if (MoreNoted[near] or 0) < now() - 30 then
+            MoreNoted[near] = now()
+            local more = kind == 'shots' and 'More shots reported nearby'
+                or ('Another vehicle theft reported nearby%s'):format(info.plate and info.plate ~= '' and (' · plate ' .. info.plate) or '')
+            MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { near, nil, more })
+            MDT.refresh('calls')
+        end
+        return near, true
+    end
+    local title = MDT.str(cfg.title, 60)
+    if title == '' then title = KIND_TITLE[kind] end
+    local msg
+    if kind == 'shots' then msg = 'Gunshots heard in the area'
+    else
+        local plate, model = info.plate or '', MDT.str(info.model, 40)
+        msg = ('%s seen being stolen%s'):format(model ~= '' and model or 'A vehicle', plate ~= '' and (' · plate ' .. plate) or '')
+    end
+    return addCall({ kind = kind, priority = MDT.int(cfg.priority or (kind == 'shots' and 2 or 3), 1, 3), title = title, message = msg,
+        street = info.street, coords = pos, callerName = 'Witness', sourceLabel = info.label,
+        blipTime = tonumber(cfg.blipSeconds) or nil, color = kind == 'theft' and 47 or nil })
+end
+MDT.autoAlert = autoAlert
+
+--- exports.es_mdt:ShotsFired(coords, opts?) -> callId, merged | false, why   opts = { street }
+exports('ShotsFired', function(coords, opts)
+    local x, y, z = xyzOf(coords)
+    if not x then return false, 'Give coords (vector3 or { x, y, z })' end
+    opts = type(opts) == 'table' and opts or {}
+    local ok, a, b = pcall(autoAlert, 'shots', { x = x, y = y, z = z }, { street = type(opts.street) == 'string' and opts.street or nil,
+        label = invoker() or 'export:ShotsFired' })
+    if not ok then print(('^3[es_mdt] ShotsFired failed: %s^7'):format(tostring(a))) return false, 'The alert could not be filed' end
+    return a, b
+end)
+--- exports.es_mdt:VehicleTheft(coords, plate?, model?, opts?) -> callId, merged | false, why   opts = { street }
+exports('VehicleTheft', function(coords, plate, model, opts)
+    local x, y, z = xyzOf(coords)
+    if not x then return false, 'Give coords (vector3 or { x, y, z })' end
+    opts = type(opts) == 'table' and opts or {}
+    local ok, a, b = pcall(autoAlert, 'theft', { x = x, y = y, z = z }, { street = type(opts.street) == 'string' and opts.street or nil,
+        plate = plateKey(plate), model = type(model) == 'string' and model or nil, label = invoker() or 'export:VehicleTheft' })
+    if not ok then print(('^3[es_mdt] VehicleTheft failed: %s^7'):format(tostring(a))) return false, 'The alert could not be filed' end
+    return a, b
+end)
+
+-- ---------------------------------------------------------------- 2.0.6: priority escalation
+--- An active call with NO unit on it for Config.Dispatch.escalate.minutes (since it came in or last went up) goes up one
+--- priority (P3 -> P2 -> P1, never past escalate.top, never a panic). The MDT lists update quietly; with realert = true the
+--- units it was routed to get a soft re-alert (es_mdt:client:callEscalated). -> how many went up
+local function escalateSweep()
+    if ESC.enabled == false then return 0 end
+    local mins = tonumber(ESC.minutes) or 5
+    if mins <= 0 then return 0 end
+    local top = math.max(1, math.min(3, math.floor(tonumber(ESC.top) or 1)))
+    local rows = MySQL.query.await([[SELECT c.`id`, c.`priority`, c.`kind`, c.`title`, c.`street`, c.`x`, c.`y`, c.`z`, c.`audience`
+        FROM `es_mdt_calls` c WHERE c.`status` = 'active' AND c.`kind` <> 'panic' AND c.`priority` > ?
+        AND NOT EXISTS (SELECT 1 FROM `es_mdt_call_units` u WHERE u.`callId` = c.`id`)
+        AND COALESCE(c.`escalatedAt`, c.`createdAt`) <= NOW() - INTERVAL ? MINUTE]], { top, mins }) or {}
+    local n = 0
+    for _, r in ipairs(rows) do
+        local from = tonumber(r.priority) or 3
+        local to = math.max(top, from - 1)
+        local done = MySQL.update.await([[UPDATE `es_mdt_calls` SET `priority` = ?, `escalations` = `escalations` + 1, `escalatedAt` = NOW()
+            WHERE `id` = ? AND `status` = 'active' AND `priority` = ?]] .. NO_UNITS, { to, r.id, from })
+        if (tonumber(done) or 0) > 0 then
+            n = n + 1
+            CallAud[r.id] = r.audience or false
+            MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)',
+                { r.id, nil, ('Escalated P%d → P%d: no unit after %d min'):format(from, to, mins) })
+            print(('[es_mdt] call #%d escalated P%d -> P%d (no unit)'):format(r.id, from, to))
+            local list = routedDuty(r.audience)
+            local b = DutyBlips['call:' .. r.id]
+            if b and to == 1 and not b.spec.flash then
+                b.spec.flash = true
+                pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. r.id, b.spec) end)
+            end
+            if ESC.realert ~= false then
+                local payload = { id = r.id, priority = to, from = from, title = r.title, street = r.street, x = r.x, y = r.y, z = r.z, kind = r.kind }
+                for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:callEscalated', u.source, payload) end
+            end
+        end
+    end
+    if n > 0 then MDT.refresh('calls') end
+    return n
+end
+MDT.escalateSweep = escalateSweep
+
 -- ---------------------------------------------------------------- map
 
 local MapCache = { at = 0 }
@@ -682,7 +946,7 @@ end
 
 MDT.dashboardExtra = function(c, out)
     out.announcements = announcementsFor(c, 6)
-    out.calls = callsList('active', 6)
+    out.calls = callsList('active', 6, c)
     out.canAnnounce = c.perms.announce == true or c.staff
 end
 
@@ -702,12 +966,14 @@ function MDT.registerOps()
         if #msg < 3 then return false, 'Say what is happening' end
         Dial[cid] = now() + (DSP.cooldownSec or 30)
         local pos = coordsOf(source)
-        local kind = d.kind == '311' and '311' or '911'
+        -- 2.0.6: 'medical' (Config.Dispatch.medical command) goes to EMS by the routing
+        local kind = (d.kind == '311' or d.kind == 'medical') and d.kind or '911'
         local name = MDT.namesOf({ cid })[cid]
-        local callId = addCall({ kind = kind, priority = kind == '311' and 3 or 2, title = kind == '311' and '311 · non-emergency' or '911 · emergency',
+        local callId = addCall({ kind = kind, priority = kind == '311' and 3 or 2,
+            title = kind == '311' and '311 · non-emergency' or kind == 'medical' and '911 · medical' or '911 · emergency',
             message = msg, street = str(d.street, 120), coords = pos, callerCharId = cid, callerName = name, callerPhone = phoneOf(cid) })
         if not callId then return false, 'Dispatch did not answer, try again' end
-        return { id = callId, units = #onDuty() }
+        return { id = callId, units = #routedDuty(audOf(callId)) }
     end)
 
     -- 2.0.1: es_mdt:server:externalCall, for CLIENT scripts that want to file a call (server scripts use the exports).
@@ -804,7 +1070,7 @@ function MDT.registerOps()
     -- dispatch board
     cb('calls', { rate = 300, burst = 6 }, function(c, d)
         local status = d.status == 'closed' and 'closed' or 'active'
-        local rows = callsList(status, status == 'closed' and 50 or 100)
+        local rows = callsList(status, status == 'closed' and 50 or 100, c)
         local names = {}
         for _, r in ipairs(rows) do if r.closedBy then names[#names + 1] = r.closedBy end end
         names = MDT.namesOf(names)
@@ -827,6 +1093,13 @@ function MDT.registerOps()
         r.attached = false
         for _, u in ipairs(r.units) do if u.charId == c.charId then r.attached = true end end
         r.canClose = r.status == 'active' and (r.attached or c.staff or (c.myLevel or 0) >= 60 or MDT.isHighCommand(c))
+        -- 2.0.6: backup (attached officers), the linked calls
+        r.canBackup = r.status == 'active' and r.attached and c.onDuty and BKP.enabled ~= false
+        if r.parentId then
+            local p = MySQL.single.await('SELECT `id`,`title`,`status` FROM `es_mdt_calls` WHERE `id` = ?', { r.parentId })
+            r.parent = p
+        end
+        r.backups = MySQL.query.await("SELECT `id`,`priority`,`status`,`street`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt` FROM `es_mdt_calls` WHERE `parentId` = ? AND `kind` = 'backup' ORDER BY `id`", { cid }) or {}
         r.now = now()
         return r
     end)
@@ -947,6 +1220,40 @@ function MDT.registerOps()
     end)
 
     cb('panic', { rate = 1000, burst = 2, whileDead = true }, function(c, d) return panic(c, d.street) end)   -- a downed officer can still press it
+
+    -- 2.0.6: request backup (the MDT call, the /backup command; a downed officer can still ask)
+    cb('callBackup', { write = true, rate = 2000, burst = 2, whileDead = true }, function(c, d)
+        return requestBackup(c, id(d.id), d.street)
+    end)
+
+    -- 2.0.6: the game saw shots / a theft (the position is the server's, never the report's)
+    local AlertCool = {}
+    if not AlertDropHooked then AlertDropHooked = true AddEventHandler('playerDropped', function() if AlertCoolRef then AlertCoolRef['shots:' .. source] = nil AlertCoolRef['theft:' .. source] = nil end end) end
+    AlertCoolRef = AlertCool
+    Whip.core:SecureEvent('es_mdt:server:autoAlert', { rateLimit = 3000, burst = 2, sheet = 'light', params = { { 'd', 'any' } } }, function(source, _, d)
+        if type(d) ~= 'table' then return false, 'Bad report' end
+        local kind = (d.kind == 'shots' or d.kind == 'theft') and d.kind or nil
+        if not kind then return false, 'Bad report' end
+        local cfg = ALR[kind] or {}
+        if cfg.enabled == false then return end
+        if ALR.exemptLaw ~= false and lawOnDuty(source) then return end
+        local key = kind .. ':' .. source
+        if (AlertCool[key] or 0) > now() then return end
+        local pos = coordsOf(source)
+        if not pos then return end
+        AlertCool[key] = now() + math.max(5, tonumber(cfg.cooldown) or (kind == 'shots' and 45 or 90))
+        local chance = tonumber(cfg.chance)
+        if chance == nil then chance = 1 end
+        if math.random() > chance then return end
+        local plate, model
+        if kind == 'theft' then
+            plate, model = plateKey(d.plate), str(d.model, 40)
+            -- the owner taking their own car is not a theft
+            local cid = WC:GetCharId(source)
+            if plate ~= '' and cid and MySQL.single.await("SELECT 1 AS `x` FROM `vehicles` WHERE REPLACE(`plate`,' ','') = ? AND `ownerCharId` = ? LIMIT 1", { plate, cid }) then return end
+        end
+        autoAlert(kind, pos, { street = str(d.street, 120), plate = plate, model = model, label = 'auto:' .. kind })
+    end)
 
     cb('mapData', { rate = 1000, burst = 4 }, function(c)
         if not (c.onDuty or c.staff) then return false, 'The live map is for officers on duty' end
@@ -1167,6 +1474,8 @@ function MDT.registerOps()
             Wait(every * 1000)
             local ok, err = pcall(autoCloseSweep)
             if not ok then print(('^3[es_mdt] auto-close sweep failed: %s^7'):format(tostring(err))) end
+            ok, err = pcall(escalateSweep)   -- 2.0.6: after the auto-close (a call closing now is not re-alerted)
+            if not ok then print(('^3[es_mdt] escalation sweep failed: %s^7'):format(tostring(err))) end
             local t = now()
             if t - lastClean >= 300 then
                 lastClean = t

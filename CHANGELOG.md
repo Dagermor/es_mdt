@@ -1,5 +1,34 @@
 # Changelog
 
+## es_mdt 2.0.6 (2026-11-18)
+
+**Dispatch: routing, a live unit list, officer-down panic key, request backup, escalation, and shots-fired and vehicle-theft alerts.** See [Dispatch: routing, panic, backup and alerts](README.md#dispatch-routing-panic-backup-and-alerts).
+
+Already in 2.0.5 and kept: `/911` and `/311` with street and position added automatically and a per-player cooldown; `/panic` for on-duty officers with a cooldown, which the server already accepted from downed players; the units on a call; close outcomes, silent auto-close, blip and GPS cleanup, and admin-only source labels.
+
+- **Routing (`Config.Dispatch.routing`):**
+  - Calls go to groups of department types: `law` (police, sheriff, state) and `ems`. 911 goes to law and EMS; 311, shots, theft and officer calls go to law; medical calls go to EMS; officer down goes to law and EMS.
+  - Only those groups' on-duty units get the card, sound and blip, and see the call in the Dispatch tab. A group with no department on the server is skipped, so with no EMS department 911 and medical calls go to law. `fallback` covers calls that reach no group.
+  - `shared = true` lets every group see every call in its Dispatch tab.
+  - DOJ gets no calls. Staff see everything. Calls from before 2.0.6 are still shown to everyone.
+- **Medical line:** `Config.Dispatch.medical = 'ems'` adds `/ems <what happened>`, routed to EMS. It's off by default. Other scripts can file `AddCall({ kind = 'medical' })`.
+- **Chat suggestions** for `/911`, `/311`, `/panic`, `/backup` (and `/ems`) in whip_chat or stock chat (`chatSuggestions`).
+- **Live unit list:** the call card and the MDT show each unit on a call as callsign, name and status, and update as units attach or leave.
+- **Panic / officer down:**
+  - It now has a key by default, **END**, on a new key mapping (`mdt_panic_key`, rebindable under GTA Settings → Key Bindings → FiveM). F9 was not used because whip_core binds it for the Systems and Director editors. Players who bound a key to the old `/panic` mapping keep it.
+  - It works while the officer is downed, injured or dead: there's no health, ragdoll or death check on the client or the server, and the server callback is `whileDead`.
+  - It's still on duty only, with a cooldown (`Config.Panic.cooldown`, 15 s).
+  - It files a P1 **OFFICER DOWN · <callsign> <name>** call at the officer's position for law and EMS (`Config.Panic.title`).
+- **Request backup:** an attached officer can press **Request backup** on the call in the MDT, or use `/backup` (bindable, unbound by default). It files a backup call at their position, linked to their call and sent where that call went. It's P1 when the call is a panic or P1, otherwise `priority` (P2), with a cooldown (45 s). It also works while downed.
+- **Escalation:** a call nobody attached to goes up one priority every `escalate.minutes` (5), stopping at `top` (P1). A panic is never escalated. The MDT updates quietly, and `realert = true` gives the units one soft tone and the card again.
+- **Shots-fired and vehicle-theft alerts (`Config.Dispatch.alerts`):**
+  - Each has its own toggle, chance (how often a witness calls it in), cooldown and priority.
+  - On-duty law never sets them off. Suppressed weapons and harmless weapons (stun gun, extinguisher and so on) don't count, and Ammu-Nation ranges are quiet zones.
+  - A second report near an active call adds a note to it, not a new call.
+  - New exports for other scripts: `exports.es_mdt:ShotsFired(coords, opts)` and `VehicleTheft(coords, plate, model, opts)`.
+- **Database:** `es_mdt_calls.audience`, `parentId`, `escalations`, `escalatedAt`. They're added by migration `004_dispatch206` on existing servers and created with the table on fresh installs. The 2.0.5 schema self-check covers them too.
+- **Unchanged:** close outcomes, silent auto-close (it never re-alerts, and runs before escalation), blip and GPS cleanup, admin-only source labels, `AddCall` / `NotifyDispatch` / `CloseCall` / `TestCall`, and es_jail's alerts.
+
 ## es_mdt 2.0.5 (2026-11-18)
 
 **Database fix and a startup schema self-check.** Fixes `Unknown column 'kind'` (MDT dashboard, warrants) and `Unknown column 'origin'` (issuing a weapon license) on servers that installed 2.0.x on an empty database.

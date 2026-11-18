@@ -332,6 +332,10 @@ local DEFS = {
         `closedAt` DATETIME NULL,
         `sourceLabel` VARCHAR(40) NULL,
         `everAttached` TINYINT(1) NOT NULL DEFAULT 0,
+        `audience` VARCHAR(40) NULL,
+        `parentId` INT UNSIGNED NULL,
+        `escalations` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+        `escalatedAt` DATETIME NULL,
         `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
         KEY `idx_es_call_status` (`status`, `id`)
@@ -346,6 +350,14 @@ local DEFS = {
             { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `everAttached` TINYINT(1) NOT NULL DEFAULT 0 AFTER `sourceLabel`', unless = { column = { 'es_mdt_calls', 'everAttached' } } },
             'UPDATE `es_mdt_calls` c SET c.`everAttached` = 1 WHERE EXISTS (SELECT 1 FROM `es_mdt_call_units` u WHERE u.`callId` = c.`id`)',
             "UPDATE `es_mdt_calls` SET `outcome` = 'Closed' WHERE `status` = 'closed' AND (`outcome` IS NULL OR `outcome` = '')",
+        } },
+        -- 2.0.6: who a call goes to (groups 'law,ems'; NULL = everyone, the 2.0.4 calls), the call a backup request is for,
+        -- priority escalation of unanswered calls
+        { id = '004_dispatch206', statements = {
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `audience` VARCHAR(40) NULL AFTER `everAttached`', unless = { column = { 'es_mdt_calls', 'audience' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `parentId` INT UNSIGNED NULL AFTER `audience`', unless = { column = { 'es_mdt_calls', 'parentId' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `escalations` TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER `parentId`', unless = { column = { 'es_mdt_calls', 'escalations' } } },
+            { sql = 'ALTER TABLE `es_mdt_calls` ADD COLUMN `escalatedAt` DATETIME NULL AFTER `escalations`', unless = { column = { 'es_mdt_calls', 'escalatedAt' } } },
         } },
     } },
     { 'es_mdt_call_units', [[CREATE TABLE IF NOT EXISTS `es_mdt_call_units` (

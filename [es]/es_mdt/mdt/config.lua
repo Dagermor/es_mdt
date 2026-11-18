@@ -150,9 +150,54 @@ Config.PenalSeed = {
 
 -- 911 / 311: any player can call. The caller's position comes from the server; the street name from their game.
 Config.Dispatch = {
-    emergency    = '911',   -- /911 <what happened>
+    emergency    = '911',   -- /911 <what happened>  (street and position are added by themselves)
     nonEmergency = '311',   -- /311 <what happened>
-    cooldownSec  = 30,      -- one call per player this often
+    medical      = '',      -- 2.0.6: a medical-only line, e.g. 'ems' for /ems <what happened> (goes to EMS); '' = off
+    cooldownSec  = 30,      -- one call per player this often (911, 311 and the medical line together)
+    chatSuggestions = true, -- 2.0.6: /911, /311, /panic, /backup show in the chat's suggestions
+    -- 2.0.6: who gets which call. A GROUP is a list of department types (Departments > type); a call goes to the groups
+    -- its kind names: their on-duty units get the card, sound and blip, and see it in the MDT's Dispatch tab.
+    -- A group with no department on this server is skipped (no EMS / Fire department yet: 911 goes to law only). If no
+    -- group is left the call goes to `fallback` (false = to every unit on duty). DOJ is in no group: it gets no calls.
+    routing = {
+        groups = {
+            law = { 'police', 'sheriff', 'state' },
+            ems = { 'ems' },
+        },
+        kinds = {
+            ['911']  = { 'law', 'ems' },   -- emergencies: both
+            ['311']  = { 'law' },
+            medical  = { 'ems' },          -- the medical line, and AddCall({ kind = 'medical' })
+            panic    = { 'law', 'ems' },   -- officer down
+            backup   = { 'law' },          -- a backup request goes where its call went; this is for one on no call
+            shots    = { 'law' },
+            theft    = { 'law' },
+            officer  = { 'law' },          -- calls an officer logs in the MDT
+            alert    = { 'law' },          -- AddCall / NotifyDispatch without a kind (es_jail's break-outs too)
+        },
+        fallback = 'law',
+        shared   = false,   -- true: every group SEES every call in its Dispatch tab (cards, sounds and blips still follow `kinds`)
+    },
+    -- 2.0.6: a call nobody attached to goes up one priority after this long (P3 -> P2 -> P1), again after as long, never
+    -- past `top`, never a panic. The MDT updates quietly; realert = true gives the units it went to one soft tone and its card again.
+    escalate = { enabled = true, minutes = 5, top = 1, realert = true },
+    -- 2.0.6: "Request backup" (the call in the MDT, or /backup): a backup call at the officer's position, linked to their call.
+    -- P1 when the call is a panic or P1, else `priority`. key = default key ('' = unbound; players can rebind it).
+    backup = { enabled = true, command = 'backup', key = '', priority = 2, urgentPriority = 1, cooldown = 45 },
+    -- 2.0.6: automatic alerts from the game. On-duty law never sets them off. chance = how often a witness calls it in
+    -- (0.0 - 1.0); cooldown = seconds per player; a second report near an active one adds a note to it (area) instead
+    -- of a new call. Other scripts: exports.es_mdt:ShotsFired(coords) / VehicleTheft(coords, plate, model) always file.
+    alerts = {
+        shots = { enabled = true, chance = 0.7, cooldown = 45, priority = 2, ignoreSuppressed = true },
+        theft = { enabled = true, chance = 0.5, cooldown = 90, priority = 3 },   -- locked / hot-wired / jacked cars, not your own
+        area  = { radius = 150, seconds = 120 },   -- one call per this many metres, this often
+        exemptLaw = true,
+        quietZones = {   -- no shots alerts here (the Ammu-Nation ranges); { x, y, r = metres }
+            { x = 13.5, y = -1097.4, r = 20.0 },
+            { x = 821.5, y = -2163.6, r = 20.0 },
+        },
+        -- ignoreWeapons = { 'WEAPON_STUNGUN', ... },   -- weapons that never count (default: stun gun, extinguisher, cans, flares, balls)
+    },
     -- 2.0.4: auto-close. An active call is closed by itself, silently (no popup, sound or toast; the blip and GPS go and the
     -- call stays in the call history), once it is this old:
     autoCloseMinutes  = 15,     -- minutes after the call came in (0 = never)
@@ -220,7 +265,11 @@ Config.UI = {
 -- Panic button: any on-duty officer. Key (players can rebind it in GTA Settings > Key Bindings > FiveM).
 Config.Panic = {
     command  = 'panic',     -- /panic (also the MDT's red button)
-    key      = '',          -- default key; '' = unbound until the player picks one
+    -- 2.0.6: a key by default. It works while the officer is down or dead (no health / death check; key mappings still fire
+    -- under the death screen). END was picked because nothing else on the server uses it (F9 is whip_core's editor key).
+    key      = 'END',       -- '' = unbound until the player picks one
+    keyCommand = 'mdt_panic_key',   -- the key mapping's id (a new one, so the default reaches players who had the old unbound one)
+    title    = 'OFFICER DOWN',      -- the P1 call's title: 'OFFICER DOWN · 1-A-12 Jane Doe'
     seconds  = 90,          -- blip flashes and the unit card stays red this long
     cooldown = 15,
     blip     = { sprite = 161, color = 1 },

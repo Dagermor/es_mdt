@@ -126,7 +126,7 @@ for _, n in ipairs({ 'open', 'pickDept', 'dashboard', 'units', 'setStatus', 'peo
     'recommend', 'recs', 'recAct', 'badges', 'unitGps', 'onlinePlayers', 'officer', 'warrantCounts',
     'unitInvite', 'unitCancel', 'unitAnswer', 'unitLeave', 'rideLog', 'rideSkip',
     'weaponTypes', 'weaponOverview', 'weapons', 'weapon', 'weaponRegister', 'weaponAct', 'licenseAct',
-    'calls', 'call', 'callCreate', 'callAttach', 'callDetach', 'callRoute', 'callNote', 'callClose', 'mapData',
+    'calls', 'call', 'callCreate', 'callAttach', 'callDetach', 'callRoute', 'callNote', 'callClose', 'callBackup', 'mapData',
     'mugshots', 'mugshot', 'mugshotLink', 'mugshotProfile', 'announcements', 'announceSave', 'announceAct',
     'templates', 'templateSave', 'templateDelete', 'jailStatus', 'sendToJail',
     'evStatus', 'evList', 'evGet', 'evForReport', 'evLink', 'evUnlink', 'evNote', 'evDestroy', 'evRoll', 'evRollPhoto', 'evPhoto', 'evLockers', 'mugshotRoll',

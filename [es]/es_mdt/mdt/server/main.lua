@@ -355,7 +355,7 @@ end
 local function dutyNow()
     local groups, ids, idx = {}, {}, {}
     for _, d in ipairs(ED:GetDepartments() or {}) do
-        local g = { id = d.id, jobId = d.jobId, short = d.short, name = d.name, color1 = d.color1, logoVer = d.logoVer, units = {} }
+        local g = { id = d.id, jobId = d.jobId, short = d.short, name = d.name, type = d.type, color1 = d.color1, logoVer = d.logoVer, units = {} }
         for _, u in ipairs(ED:GetOnDuty(d.id) or {}) do
             if u.source and not idx[u.charId] and WC:IsPlayerClockedOn({ charId = u.charId }, d.jobId) == true then
                 local st = Units[u.charId] or {}

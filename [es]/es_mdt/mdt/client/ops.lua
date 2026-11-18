@@ -3,6 +3,7 @@ local _ENV = ESAPP('mdt'); -- es_mdt 1.3.0 client: /911 and /311, the panic butt
 local DSP = Config.Dispatch or {}
 local PAN = Config.Panic or {}
 local myPanicAt = 0   -- my own panic: no card for it on my screen
+local myBackupAt = -60000   -- 2.0.6: my own backup request: no card for it either
 
 local function wc() return exports.whip_core end
 local function notify(text, kind, ms) wc():Notify(text, kind or 'inform', ms) end
@@ -22,9 +23,13 @@ end
 
 -- ---------------------------------------------------------------- 911 / 311 (anyone)
 
+local function cmdOf(kind)
+    if kind == '311' then return DSP.nonEmergency or '311' elseif kind == 'medical' then return DSP.medical end
+    return DSP.emergency or '911'
+end
 local function dial(kind, args)
     local msg = table.concat(args or {}, ' ')
-    if #msg < 3 then return notify(('Type what is happening: /%s <message>'):format(kind == '311' and DSP.nonEmergency or DSP.emergency), 'error') end
+    if #msg < 3 then return notify(('Type what is happening: /%s <message>'):format(cmdOf(kind)), 'error') end
     CreateThread(function()
         local r, why = wc():Callback('es_mdt:dial', { kind = kind, message = msg, street = streetHere() })
         if type(r) ~= 'table' then return notify(why or 'Dispatch did not answer', 'error') end
@@ -34,19 +39,32 @@ local function dial(kind, args)
 end
 RegisterCommand(DSP.emergency or '911', function(_, args) dial('911', args) end, false)
 RegisterCommand(DSP.nonEmergency or '311', function(_, args) dial('311', args) end, false)
+-- 2.0.6: an optional medical-only line (Config.Dispatch.medical = 'ems' gives /ems; '' = off)
+local MED = type(DSP.medical) == 'string' and DSP.medical ~= '' and DSP.medical or nil
+if MED then RegisterCommand(MED, function(_, args) dial('medical', args) end, false) end
 
 -- ---------------------------------------------------------------- panic
 
+-- 2.0.6: NO health, ragdoll, dead or downed check here (nor on the server: its callback is whileDead). A key mapping runs
+-- through FiveM's command system, so the death screen's DisableControlAction lock does not stop it.
+local panicSent = 0
 local function pressPanic()
+    if GetGameTimer() - panicSent < 1500 then return end   -- two bindings on one key: one press
+    panicSent = GetGameTimer()
     myPanicAt = GetGameTimer()
     CreateThread(function()
         local r, why = wc():Callback('es_mdt:panic', { street = streetHere() })
         if type(r) ~= 'table' then return notify(why or 'Panic did not go through', 'error') end
-        notify('PANIC sent. Every unit on duty has your location.', 'error', 6000)
+        notify('OFFICER DOWN sent. Units on duty have your location.', 'error', 6000)
     end)
 end
 RegisterCommand(PAN.command or 'panic', pressPanic, false)
-RegisterKeyMapping(PAN.command or 'panic', 'Police: panic button', 'keyboard', PAN.key or '')
+-- the old mapping stays for players who bound a key to it before 2.0.6
+RegisterKeyMapping(PAN.command or 'panic', 'Police: panic button (old binding)', 'keyboard', '')
+-- 2.0.6: a new mapping id, so the default key (Config.Panic.key, END) reaches players who already had the old unbound one
+local PANIC_KEY_CMD = PAN.keyCommand or 'mdt_panic_key'
+RegisterCommand(PANIC_KEY_CMD, pressPanic, false)
+RegisterKeyMapping(PANIC_KEY_CMD, 'Police: PANIC · officer down', 'keyboard', PAN.key or 'END')
 RegisterNUICallback('panicBtn', function(_, cb) pressPanic() cb({ ok = true }) end)
 
 -- ---------------------------------------------------------------- alerts
@@ -106,7 +124,8 @@ local function render(restart)
     local f = flash and flash.id == c.id and flash or nil
     SendNUIMessage({ action = 'cpop', show = true, restart = restart, seq = seq,
         call = { id = c.id, kind = c.kind, priority = c.priority, title = c.title, message = c.message, street = c.street,
-            callerName = c.callerName, units = c.units, closed = c.closed, outcome = c.outcome, mine = myCall == c.id },
+            callerName = c.callerName, units = c.units, closed = c.closed, outcome = c.outcome, mine = myCall == c.id,
+            escalated = c.escalated, parentId = c.parentId },
         dist = dist, age = ageOf(c), left = math.max(0, hideAt - GetGameTimer()),
         more = math.max(0, #Queue - 1), state = f and f.state or nil, note = f and f.text or nil,
         keys = { attend = keyOf(CMD.attend, POP.attendKey), dismiss = keyOf(CMD.dismiss, POP.dismissKey), recall = '/' .. CMD.recall, detach = '/' .. CMD.detach } })
@@ -333,8 +352,8 @@ MDTC.onCallRouted = function(id, r) if type(r) == 'table' then noteRoute(r.id or
 
 RegisterNetEvent('es_mdt:client:call', function(c)
     if type(c) ~= 'table' then return end
-    local mine = c.kind == 'panic' and GetGameTimer() - myPanicAt < 8000
-    if c.kind ~= 'panic' and POP.sound ~= false then
+    local mine = (c.kind == 'panic' and GetGameTimer() - myPanicAt < 8000) or (c.kind == 'backup' and GetGameTimer() - myBackupAt < 8000)
+    if c.kind ~= 'panic' and not mine and POP.sound ~= false then
         sound('Event_Message_Purple', 'GTAO_FM_Events_Soundset', c.priority == 1 and 2 or 1, 400)
     end
     if not MDTC.isOpen() then
@@ -445,6 +464,124 @@ RegisterNetEvent('es_mdt:client:announce', function(a)
     end
     SendNUIMessage({ action = 'announce', announce = a })
 end)
+
+-- ---------------------------------------------------------------- 2.0.6: request backup
+-- /backup: a backup call at my position, linked to the call I am on (or on its own when I am on none)
+local BKP = DSP.backup or {}
+local function askBackup(id)
+    myBackupAt = GetGameTimer()
+    CreateThread(function()
+        local r, why = wc():Callback('es_mdt:callBackup', { id = id, street = streetHere() })
+        if type(r) ~= 'table' then return notify(why or 'Backup request did not go through', 'error') end
+        notify(('Backup requested (P%d, call #%d)%s'):format(r.priority or 2, r.id, (r.units or 0) > 0 and '' or ' · no other units on duty'), 'success', 6000)
+    end)
+end
+MDTC.askBackup = askBackup
+if BKP.enabled ~= false then
+    local BCMD = BKP.command or 'backup'
+    RegisterCommand(BCMD, function() askBackup(myCall) end, false)
+    RegisterKeyMapping(BCMD, 'Police: request backup', 'keyboard', BKP.key or '')
+end
+
+-- 2.0.6: an unanswered call went up a priority: a soft re-alert (one quiet tone and its card again, never over the MDT)
+RegisterNetEvent('es_mdt:client:callEscalated', function(d)
+    if type(d) ~= 'table' or not tonumber(d.id) then return end
+    local id = tonumber(d.id)
+    local c = find(id)
+    if c then
+        if c.closed then return end
+        c.priority = d.priority
+        c.escalated = d.from
+    elseif POP_ON then
+        c = { id = id, kind = d.kind, priority = d.priority, title = d.title, street = d.street, x = d.x, y = d.y, z = d.z, message = '', escalated = d.from }
+    end
+    SendNUIMessage({ action = 'callEscalated', call = { id = id, priority = d.priority, from = d.from, title = d.title, street = d.street } })
+    if MDTC.isOpen() then return end
+    if POP.sound ~= false then PlaySoundFrontend(-1, 'Text_Arrive_Tone', 'Phone_SoundSet_Default', true) end
+    if not POP_ON then
+        return notify(('Call #%d now P%d · no unit yet%s'):format(id, d.priority or 2, d.street and d.street ~= '' and (' · ' .. d.street) or ''), 'inform', 7000)
+    end
+    if shown == id then render(false) return end
+    if not find(id) then push(c) return end
+    unqueue(id)
+    table.insert(Queue, 1, id)
+    if not shown then show(id) end
+end)
+
+-- ---------------------------------------------------------------- 2.0.6: shots fired / vehicle theft (Config.Dispatch.alerts)
+-- The game only says "it happened, here"; the server decides (on-duty law exempt, chance, cooldowns, one call per area)
+-- and reads the position itself.
+local ALR = DSP.alerts or {}
+local SHOTS, THEFT = ALR.shots or {}, ALR.theft or {}
+if SHOTS.enabled ~= false then
+    local skip = {}
+    for _, w in ipairs(ALR.ignoreWeapons or { 'WEAPON_STUNGUN', 'WEAPON_STUNGUN_MP', 'WEAPON_FIREEXTINGUISHER', 'WEAPON_PETROLCAN', 'WEAPON_HAZARDCAN',
+        'WEAPON_FERTILIZERCAN', 'WEAPON_SNOWBALL', 'WEAPON_BALL', 'WEAPON_FLARE', 'WEAPON_FLAREGUN', 'WEAPON_RAYPISTOL' }) do skip[GetHashKey(w)] = true end
+    local gap = math.max(5, tonumber(SHOTS.cooldown) or 45) * 1000
+    CreateThread(function()
+        local last = -gap
+        while true do
+            local ped = PlayerPedId()
+            if IsPedArmed(ped, 4) then   -- 4 = guns: the per-frame check only while one is in hand
+                Wait(0)
+                if IsPedShooting(ped) and GetGameTimer() - last >= gap then
+                    local _, w = GetCurrentPedWeapon(ped, true)
+                    if not skip[w] and not (SHOTS.ignoreSuppressed ~= false and IsPedCurrentWeaponSilenced(ped)) then
+                        last = GetGameTimer()
+                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'shots', street = streetHere() })
+                    end
+                end
+            else
+                Wait(500)
+            end
+        end
+    end)
+end
+if THEFT.enabled ~= false then
+    local LOCKED = { [2] = true, [3] = true, [7] = true, [10] = true }
+    local gap = math.max(5, tonumber(THEFT.cooldown) or 90) * 1000
+    CreateThread(function()
+        local last, flagged = -gap, nil
+        while true do
+            Wait(400)
+            local ped = PlayerPedId()
+            local trying = GetVehiclePedIsTryingToEnter(ped)
+            if trying ~= 0 and DoesEntityExist(trying) and GetSeatPedIsTryingToEnter(ped) == -1 then
+                local drv = GetPedInVehicleSeat(trying, -1)
+                if IsPedJacking(ped) or LOCKED[GetVehicleDoorLockStatus(trying)] or IsVehicleNeedsToBeHotwired(trying)
+                    or (drv ~= 0 and drv ~= ped) then flagged = trying end
+            end
+            local v = GetVehiclePedIsIn(ped, false)
+            if flagged then
+                if v == flagged and GetPedInVehicleSeat(v, -1) == ped then
+                    flagged = nil
+                    if GetGameTimer() - last >= gap then
+                        last = GetGameTimer()
+                        local model = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(v)))
+                        if model == 'NULL' then model = GetDisplayNameFromVehicleModel(GetEntityModel(v)) end
+                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'theft', street = streetHere(),
+                            plate = GetVehicleNumberPlateText(v), model = model })
+                    end
+                elseif trying == 0 and v ~= flagged then
+                    flagged = nil   -- gave up
+                end
+            end
+        end
+    end)
+end
+
+-- 2.0.6: chat suggestions (whip_chat / stock chat)
+if DSP.chatSuggestions ~= false then
+    CreateThread(function()
+        Wait(2000)
+        local msg = { { name = 'message', help = 'What is happening (your street and location are added)' } }
+        TriggerEvent('chat:addSuggestion', '/' .. (DSP.emergency or '911'), 'Emergency call: police and EMS get your location', msg)
+        TriggerEvent('chat:addSuggestion', '/' .. (DSP.nonEmergency or '311'), 'Non-emergency call to the police', msg)
+        if MED then TriggerEvent('chat:addSuggestion', '/' .. MED, 'Medical emergency: EMS get your location', msg) end
+        TriggerEvent('chat:addSuggestion', '/' .. (PAN.command or 'panic'), 'Officers on duty: PANIC · officer down at your location')
+        if BKP.enabled ~= false then TriggerEvent('chat:addSuggestion', '/' .. (BKP.command or 'backup'), 'Officers on duty: request backup at your location') end
+    end)
+end
 
 -- ---------------------------------------------------------------- mugshot camera
 -- A scripted camera in front of the suspect's face, then WHIP RequestScreenshot (game only, no MDT) on the server.

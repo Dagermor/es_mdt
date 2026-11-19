@@ -1,5 +1,10 @@
 # Changelog
 
+## es_mdt 2.1.1 (2026-11-19)
+
+- **Fix: the new ticket and impound permissions were skipped on some existing ranks.** whip_core refuses a rank update while that rank holds a permission from a resource that starts later (for example whip_evidence's `evidence_*`), and the one-time grant was remembered anyway. Grants now count as done only when every rank took them, and failed ranks are retried for about 90 seconds after start. A follow-up grant (`mdt211_tickets_impound_retry`, adds missing permissions only) repairs servers that ran 2.1.0.
+- Tested: new Lua test grant211 (9 checks); all 26 test files pass.
+
 ## es_mdt 2.1.0 (2026-11-19)
 
 **Roadside tickets, every fine as an invoice, contests before the DOJ, impound with holds, and texts to owners.** Full guide: [docs/tickets_impound.md](docs/tickets_impound.md).

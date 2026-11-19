@@ -44,3 +44,5 @@ D.PermissionGrants = type(D.PermissionGrants) == 'table' and D.PermissionGrants 
 local g = { id = 'mdt210_tickets_impound', perms = {} }
 for _, p in ipairs(NEW) do g.perms[p.key] = p.level end
 D.PermissionGrants[#D.PermissionGrants + 1] = g
+-- 2.1.1: re-run once for servers where 2.1.0's grant was skipped on ranks holding not-yet-started permissions (adds missing only)
+D.PermissionGrants[#D.PermissionGrants + 1] = { id = 'mdt211_tickets_impound_retry', perms = g.perms }

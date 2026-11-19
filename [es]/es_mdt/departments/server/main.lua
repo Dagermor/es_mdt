@@ -993,10 +993,14 @@ local function addRanks()
     end
 end
 
+--- 2.1.1: a grant is remembered only once every rank took it. whip_core refuses a rank update while that rank holds a
+--- permission from a resource that has not started yet (e.g. whip_evidence's), so failed ranks are retried after start.
 local function grantPermissions()
+    local pending = 0
     for _, g in ipairs(Config.PermissionGrants or {}) do
         local kvp = 'es_departments:grant:' .. g.id
         if GetResourceKvpString(kvp) ~= '1' then
+            local okAll = true
             for _, d in ipairs(sortedDepts()) do
                 local known = permMap(d.type)
                 for _, role in ipairs(WC:GetJobRoles(d.jobId) or {}) do
@@ -1007,13 +1011,25 @@ local function grantPermissions()
                     end
                     if changed then
                         local ok, why = WC:UpdateJobRole(d.jobId, role.roleId, { permissions = perms })
-                        if not ok then print(('^3[es_departments] grant %s to %s/%s: %s^7'):format(g.id, d.short, role.name, tostring(why))) end
+                        if not ok then okAll = false print(('^3[es_departments] grant %s to %s/%s: %s (will retry)^7'):format(g.id, d.short, role.name, tostring(why))) end
                     end
                 end
             end
-            SetResourceKvp(kvp, '1')
+            if okAll then SetResourceKvp(kvp, '1') else pending = pending + 1 end
         end
     end
+    return pending
+end
+
+local function grantRetry()
+    CreateThread(function()
+        for try = 1, 6 do
+            Wait(15000)
+            local ok, left = pcall(grantPermissions)
+            if ok and left == 0 then print('[es_departments] permission grants finished') return end
+            if try == 6 then print('^3[es_departments] some permission grants could not be applied; tick them in /departments > Ranks^7') end
+        end
+    end)
 end
 
 --- 1.9.0: Config.PermissionMirrors, once each: a rank holding the source permission gets the target one too
@@ -1062,7 +1078,9 @@ Whip.register(function()
     register()
     local c = { byJob = byJob, resolve = resolve, rosterOf = rosterOf, fillOnline = fillOnline, summary = summary,
         sortedDepts = sortedDepts, isStaff = isStaff, namesOf = namesOf }
-    grantPermissions()
+    local okG, left = pcall(grantPermissions)
+    if not okG then print('^3[es_departments] permission grants: ' .. tostring(left) .. '^7') end
+    if not okG or (left or 0) > 0 then grantRetry() end
     local okM, mwhy = pcall(mirrorPermissions)
     if not okM then print('^3[es_departments] permission mirrors: ' .. tostring(mwhy) .. '^7') end
     local okR, rwhy = pcall(addRanks)

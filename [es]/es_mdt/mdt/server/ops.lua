@@ -74,6 +74,19 @@ local function hideDutyBlip(id)
     DutyBlips[id] = nil
     pcall(function() WC:HideBlip(id) end)
 end
+--- 2.0.14: a witness call's search circle on the GTA maps (minimap and pause map) for as long as the call is active. It is
+--- its own whip_core area blip (the circle alone), next to the call's dot, which still goes after `blip.seconds`. Like the
+--- dot, it goes only to the on-duty units the call is routed to (repushDutyBlips keeps that up), in the Live map's colour.
+--- `Config.Dispatch.blip.areas = false` turns it off.
+local AREA_COLOR = { 1, 17, 3 }   -- P1 red, P2 orange, P3 blue
+local function areaColor(pri) return AREA_COLOR[math.max(1, math.min(3, math.tointeger(tonumber(pri)) or 2))] end
+local function showCallArea(cid, x, y, rad, pri, aud, list)
+    rad = tonumber(rad)
+    if not (cid and tonumber(x) and tonumber(y) and rad) or (DSP.blip and DSP.blip.areas == false) then return end
+    showDutyBlip('area:' .. cid, { coords = vector3(x + 0.0, y + 0.0, 0.0), radius = math.max(1.0, math.min(5000.0, rad + 0.0)),
+        sprite = 0, color = areaColor(pri) }, nil, list or routedDuty(aud), aud)
+end
+local function hideCallArea(cid) if DutyBlips['area:' .. cid] then hideDutyBlip('area:' .. cid) end end
 --- every duty blip again, to who is on duty now (whip_core takes it off anyone no longer in the list)
 local function repushDutyBlips()
     if next(DutyBlips) == nil then return end
@@ -393,10 +406,11 @@ local function mergeInto(row, rep)
     local b = DutyBlips['call:' .. cid]
     if b then
         b.spec.coords = vector3(px, py, b.spec.coords and b.spec.coords.z or 0.0)
-        if rad then b.spec.radius = rad + 0.0 end
+        if rad and b.spec.radius then b.spec.radius = rad + 0.0 end   -- 2.0.14: only a dot that carries its circle (areas off)
         if pri == 1 then b.spec.flash = true end
         pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. cid, b.spec) end)
     end
+    if rad and fx then showCallArea(cid, px, py, rad, pri, row.audience, list) end   -- 2.0.14: the circle moves and shrinks too
     local payload = { id = cid, reports = reports, priority = pri, radius = rad, x = px, y = py }
     for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:callMerged', u.source, payload) end
     MDT.refresh('calls')
@@ -477,8 +491,9 @@ local function addCall(d)
             label = ('#%d %s'):format(cid, title):sub(1, 40), sprite = math.tointeger(tonumber(d.sprite)) or math.tointeger(tonumber(pb.sprite)) or b.sprite or 280,
             color = math.tointeger(tonumber(d.color)) or math.tointeger(tonumber(pb.color)) or b.color or 1, flash = pri == 1 or critical,
             scale = tonumber(pb.scale) or (critical and 1.15) or nil }
-        if rad then spec.radius = rad + 0.0 end
+        if rad and DSP.blip and DSP.blip.areas == false then spec.radius = rad + 0.0 end   -- 2.0.14: else the circle is its own blip (below)
         showDutyBlip('call:' .. cid, spec, int(d.blipTime or pb.seconds or b.seconds or 120, 5, 1800), list, aud)
+        if rad then showCallArea(cid, px, py, rad, pri, aud, list) end   -- 2.0.14: stays until the call closes
     end
     MDT.refresh('calls')
     return cid
@@ -623,6 +638,7 @@ local function callGone(cid)
     if not cid then return end
     if Follow[cid] then stopFollow(cid) end
     hideDutyBlip('call:' .. cid)
+    hideCallArea(cid)   -- 2.0.14
     for charId, pc in pairs(PanicCall) do
         if pc == cid then
             PanicCall[charId] = nil
@@ -1110,7 +1126,8 @@ local function followTick()
                     MySQL.update.await("UPDATE `es_mdt_calls` SET `x` = ?, `y` = ?, `z` = ? WHERE `id` = ? AND `status` = 'active'", { pos.x, pos.y, pos.z, cid })
                     local v = vector3(pos.x, pos.y, pos.z)
                     local ids = { 'call:' .. cid }
-                    if f.kind == 'panic' then ids[2] = 'panic:' .. f.charId end
+                    if f.kind == 'panic' then ids[#ids + 1] = 'panic:' .. f.charId end
+                    if DutyBlips['area:' .. cid] then ids[#ids + 1] = 'area:' .. cid end   -- 2.0.14
                     for _, bid in ipairs(ids) do
                         local b = DutyBlips[bid]
                         if b then
@@ -1474,6 +1491,11 @@ local function escalateSweep()
             if b and to == 1 and not b.spec.flash then
                 b.spec.flash = true
                 pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. r.id, b.spec) end)
+            end
+            local ab = DutyBlips['area:' .. r.id]   -- 2.0.14: the circle takes the new priority's colour
+            if ab and ab.spec.color ~= areaColor(to) then
+                ab.spec.color = areaColor(to)
+                pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'area:' .. r.id, ab.spec) end)
             end
             if ESC.realert ~= false then
                 local payload = { id = r.id, priority = to, from = from, title = r.title, street = r.street, x = r.x, y = r.y, z = r.z, kind = r.kind, radius = r.radius }
@@ -2266,6 +2288,18 @@ function MDT.registerOps()
         if res.provider and not res.ok then return false, res.why or 'The jail did not take them' end
         MDT.log(c, 'jail', { reportId = rid, charId = cid, months = months, provider = res.provider })
         return { installed = res.provider ~= nil, jailed = res.ok, recorded = true, provider = res.provider, months = months }
+    end)
+
+    -- 2.0.14: after a restart, the search circles of the calls still active come back (once)
+    CreateThread(function()
+        Wait(2000)
+        local ok, rows = pcall(MySQL.query.await, [[SELECT `id`,`fx`,`fy`,`radius`,`priority`,`audience` FROM `es_mdt_calls`
+            WHERE `status` = 'active' AND `radius` IS NOT NULL AND `fx` IS NOT NULL AND `fy` IS NOT NULL]])
+        if not ok or type(rows) ~= 'table' then return end
+        for _, r in ipairs(rows) do
+            CallAud[r.id] = r.audience or false
+            pcall(showCallArea, r.id, tonumber(r.fx), tonumber(r.fy), r.radius, r.priority, r.audience)
+        end
     end)
 
     -- old calls close themselves

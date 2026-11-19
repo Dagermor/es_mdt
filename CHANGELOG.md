@@ -1,5 +1,14 @@
 # Changelog
 
+## es_mdt 2.0.14 (2026-11-19)
+
+**Fix: a witness call's search circle now shows on the GTA minimap and pause map for as long as the call is active**, not only on the MDT's Live map.
+
+- **What was wrong:** the circle was part of the call's map blip, and that blip comes down after `Config.Dispatch.blip.seconds` (120 s). A shots-fired call's 120 m circle was gone from the minimap and pause map after 2 minutes, while the Live map kept showing it until the call closed.
+- **Now:** the circle is its own map blip (circle only, no icon), in the call's priority colour: P1 red, P2 orange, P3 blue. Only the on-duty units the call is routed to see it, and it follows clock-on and clock-off like the call blip. It moves and shrinks when repeat reports narrow the area, and takes the new colour when the call escalates. It goes when the call is closed or auto-closed, and comes back for active calls after a restart or `ensure es_mdt`. The call's dot and name still go after `blip.seconds`, as before.
+- `Config.Dispatch.blip.areas = false` goes back to the old behaviour (the circle leaves with the dot).
+- Performance: nothing new runs on the client. It is one blip per circle call, sent only when the call is filed or changes.
+
 ## es_mdt 2.0.13 (2026-11-18)
 
 **Controller support everywhere in es_mdt.** On a gamepad, officers can open the MDT, panic, respond, call backup and use the call board and radar remote. Every es_mdt screen also works with the pad: the MDT, Live map, call board, radar remote, permit application, Departments and DOJ. See [Controller](README.md#controller).

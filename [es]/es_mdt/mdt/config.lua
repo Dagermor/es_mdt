@@ -312,7 +312,7 @@ Config.Dispatch = {
                                 -- A PANIC call with a unit attached is never auto-closed, whatever these say.
     sweepSeconds = 60,          -- how often the server looks for calls to auto-close
     -- Outcome: 'Auto-closed – no response' when no unit ever attached, 'Auto-closed (timeout)' when one did (even if it left).
-    blip         = { sprite = 280, color = 1, seconds = 120 },   -- new-call blip for on-duty officers
+    blip         = { sprite = 280, color = 1, seconds = 120, areas = true },   -- new-call blip for on-duty officers (2.0.14 areas: a witness call's search circle stays on the GTA map until the call closes)
     -- 2.0.4: what an officer picks when closing a call. color = the badge (hex); note = 'required' makes the note mandatory.
     outcomes     = {
         { label = 'Resolved',         color = '#22c55e', icon = '✔' },

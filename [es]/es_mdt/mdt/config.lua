@@ -205,7 +205,11 @@ Config.Dispatch = {
         explosion = { enabled = true, chance = 1.0, cooldown = 60, priority = 1 },   -- grenades, car bombs, rockets ... (not steam, flames, flares, smoke)
         -- ignoreTypes = { 11, 12, 13, ... },   -- GTA explosion types that never count (default: the harmless ones)
         down  = { enabled = true, chance = 1.0, cooldown = 180, priority = 2, delay = 20 },   -- a civilian down this many seconds -> EMS
-        speeding = { enabled = false, chance = 0.5, cooldown = 120, priority = 3, mph = 120, seconds = 4 },   -- off by default
+        -- 2.0.8: speeding is set up in /whip > Settings > MDT too. units 'mph' | 'kmh'; limit: faster than this is speeding;
+        -- highwayLimit: the same on a highway (a street named ...Fwy / Hwy / Route ...; 0 = limit everywhere); seconds over it
+        -- before a witness calls it in. The alert says e.g. "112 mph in a 80 zone".
+        speeding = { enabled = false, units = 'mph', limit = 80, highwayLimit = 110, seconds = 4, cooldown = 120, chance = 0.5, priority = 3,
+                     highwayWords = { 'Fwy', 'Freeway', 'Hwy', 'Highway', 'Route', 'Interstate' } },   -- off by default
         area  = { radius = 150, seconds = 120 },   -- one call per this many metres, this often (repeat reports merge into it)
         perMinute = 6,           -- at most this many NEW automatic calls of one kind a minute, server-wide
         searchCircle = true,     -- witness calls show a search area, not the exact spot
@@ -224,16 +228,17 @@ Config.Dispatch = {
     --   blip      { sprite, color, scale, seconds }                   groups    who gets it ({ 'law' }, { 'law', 'ems' }); nil = the kind's route
     --   witness   true: a search circle (radius metres), not the exact spot      message   the default text
     --   enabled   false: the export answers "turned off"
+    --   place     2.0.8: 'store' | 'bank' | 'jewelry': the call is titled with the place's name (see `places` below)
     presets = {
-        store        = { kind = 'robbery', priority = 2, title = 'Store robbery', icon = '🏪', message = 'The store alarm was triggered',
+        store        = { kind = 'robbery', priority = 2, title = 'Store robbery', icon = '🏪', place = 'store', message = 'Store robbery: the alarm was triggered',
                          blip = { sprite = 52, color = 1, scale = 1.0 } },
-        bank_fleeca  = { kind = 'robbery', priority = 1, title = 'Fleeca bank robbery', icon = '🏦', message = 'The bank alarm was triggered',
+        bank_fleeca  = { kind = 'robbery', priority = 1, title = 'Fleeca bank robbery', icon = '🏦', place = 'bank', message = 'Bank robbery: the alarm was triggered',
                          blip = { sprite = 108, color = 1, scale = 1.1 } },
-        bank_paleto  = { kind = 'robbery', priority = 1, critical = true, title = 'Paleto Bay bank robbery', icon = '🏦',
-                         message = 'The Blaine County Savings alarm was triggered', blip = { sprite = 108, color = 1, scale = 1.2 } },
-        bank_pacific = { kind = 'robbery', priority = 1, critical = true, title = 'Pacific Standard robbery', icon = '🏦',
-                         message = 'The Pacific Standard vault alarm was triggered', blip = { sprite = 108, color = 1, scale = 1.25 } },
-        jewelry      = { kind = 'robbery', priority = 1, title = 'Vangelico jewelry robbery', icon = '💎', message = 'The Vangelico alarm was triggered',
+        bank_paleto  = { kind = 'robbery', priority = 1, critical = true, title = 'Paleto Bay bank robbery', icon = '🏦', place = 'bank',
+                         message = 'Bank robbery: the Blaine County Savings alarm was triggered', blip = { sprite = 108, color = 1, scale = 1.2 } },
+        bank_pacific = { kind = 'robbery', priority = 1, critical = true, title = 'Pacific Standard robbery', icon = '🏦', place = 'bank',
+                         message = 'Bank robbery: the Pacific Standard vault alarm was triggered', blip = { sprite = 108, color = 1, scale = 1.25 } },
+        jewelry      = { kind = 'robbery', priority = 1, title = 'Vangelico jewelry robbery', icon = '💎', place = 'jewelry', message = 'Jewelry robbery: the Vangelico alarm was triggered',
                          blip = { sprite = 617, color = 1, scale = 1.1 } },
         house        = { kind = 'robbery', priority = 2, title = 'House burglary', icon = '🏠', message = 'A neighbour reports a break-in',
                          witness = true, radius = 80, blip = { sprite = 40, color = 1 } },
@@ -253,6 +258,16 @@ Config.Dispatch = {
         down         = { kind = 'down', title = 'Person down', icon = '🚑', witness = true, radius = 60, blip = { sprite = 153, color = 1 } },
         speeding     = { kind = 'speeding', title = 'Reckless driver', icon = '💨', witness = true, radius = 150, blip = { sprite = 225, color = 5 } },
     },
+    -- 2.0.8: named places. A robbery preset (place = ...) is titled with the place's name, e.g. "24/7 Supermarket, Innocence Blvd":
+    --   1. the caller's own name: data.storeName (or data.label)
+    --   2. a store id or number: data.store / data.storeId / data.id, a built-in place id ('247_innocence', 'ltd_grove',
+    --      'fleeca_legion', 'vangelico' ... see mdt/server/places.lua) or a key of `ids` below
+    --   3. the nearest place of that kind within `radius` metres (banks and Vangelico reach a bit further)
+    --   4. else "Store, <street>" ("Bank, ...", "Jewelry store, ...")
+    -- ids: your robbery script's store numbers / ids -> a place id or a name, e.g. { [1] = '247_innocence', [2] = 'Corner shop, Grove St' }
+    -- extra: your own places, or a built-in one renamed by its id: { id = 'myshop', kind = 'store', name = 'Digital Den, Mirror Park',
+    --        coords = vector3(1137.0, -470.0, 66.7), radius = 30 }   (kind: 'store' | 'bank' | 'jewelry'; also in /whip > Settings > MDT)
+    places = { radius = 40, ids = {}, extra = {} },
     -- 2.0.7: the CRITICAL tier, above P1: a pulsing card, a flashing blip and its own alarm that repeats every `repeatSeconds`
     -- (at most `maxRepeats` times) until the unit acknowledges it (Respond / Hide on the card, the call board) or a unit
     -- responds (stopOnUnit). Panic is critical (panic = false turns that off); presets set `critical = true`. Escalation

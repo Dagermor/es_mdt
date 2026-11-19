@@ -1,5 +1,29 @@
 # Changelog
 
+## es_mdt 2.0.8 (2026-11-18)
+
+**Change the MDT live from WHIP's admin panel, set your own MDT size and alert sound from the pause menu, robbery calls named by the store, and speeding alerts the admin sets up.** See [Changing settings live](README.md#changing-settings-live).
+
+- **Admin panel: `/whip` → Settings → MDT.**
+  - About 100 settings in seven groups: Calls, Alerts on screen, Repeat reports and search areas, Automatic alerts, Records, fines and jail, Display size, and Commands and keys (restart).
+  - Changes apply as soon as you press Apply, with no restart. This covers dispatch (cooldowns, routing, auto-close, the hard cap, retention, the critical alarm, sounds, merging, search circles, every automatic alert), the panic cooldown, the display size range and default, the jail provider, record minutes per month, off-duty read only, the fine cap, unpaid-fine warrants, warrant BOLOs, the map refresh, urgent-announcement hours and the whip_evidence bridge.
+  - Sub-options are hidden until their switch is on.
+  - Commands, keys, the 911/311/medical command names, chat suggestions and DevTools are under **Commands and keys (restart)** and take effect after a restart.
+  - `config.lua` is still the defaults. A value saved in the panel overrides it, and **Reset** goes back to it.
+  - Under the hood, values that used to be read once at start (detectors, the backup and call-board switches, the popup timer, the alarm repeat, the sweep interval) are now read each time.
+- **Pause menu: Settings → Server Settings → MDT** (each player, saved on their PC):
+  - **MDT display size** (the same setting as the **Aa** button and `/mdtscale`), **Dispatch alert volume** and **Mute dispatch alerts**.
+  - **Reset this tab** goes back to the server's defaults.
+  - The help text says where keys are rebound: GTA Settings → Key Bindings → FiveM.
+- **Robbery calls name the store:**
+  - `StoreRobbery`, `BankRobbery` and `JewelryRobbery` are titled with the nearest known place, e.g. **"24/7 Supermarket, Innocence Blvd"**, **"Fleeca Bank, Legion Square"**, **"Pacific Standard Bank, Vinewood Blvd"** or **"Vangelico Jewelry, Rockford Hills"**. This shows on the card, in the MDT and on the call board.
+  - There are about 60 built-in places: 24/7, LTD, Rob's Liquor, Ammu-Nation, clothing stores, barbers, every Fleeca, Paleto, Pacific Standard and Vangelico.
+  - Name lookup order: `data.storeName` / `label` from your script, then the script's store id mapped in `Config.Dispatch.places.ids`, then the nearest place within `places.radius` (40 m). If none match, the title is "Store, <street>".
+  - Add or rename places in `Config.Dispatch.places.extra` or in the panel. Only reports at the same store merge now.
+- **Speeding alerts set up by the admin** (`Config.Dispatch.alerts.speeding`, or the panel):
+  - Settings: on/off, **units (mph or km/h)**, **limit** (80), **highway limit** (110, on roads named Fwy, Freeway, Hwy, Highway, Route or Interstate; 0 means one limit everywhere), **seconds over the limit** (4), cooldown, chance and priority.
+  - The alert reads e.g. **"112 mph in a 80 zone"**. The server still checks the speed itself.
+
 ## es_mdt 2.0.7 (2026-11-18)
 
 **Dispatch: ready-made alerts, a critical tier, merged repeat reports, search circles, suspect details, more automatic alerts, a quick call board, and call retention. Also fixes the evidence locker and the panic message.** See [Dispatch: alerts, critical calls and the call board](README.md#dispatch-alerts-critical-calls-and-the-call-board).

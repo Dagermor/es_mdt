@@ -103,9 +103,8 @@ local function startAlarm(id)
     Alarm[id] = { left = math.max(0, math.floor(tonumber(CRIT.maxRepeats) or 8)) }
 end
 CreateThread(function()
-    local gap = math.max(2, tonumber(CRIT.repeatSeconds) or 4) * 1000
     while true do
-        Wait(gap)
+        Wait(math.max(2, tonumber(CRIT.repeatSeconds) or 4) * 1000)   -- 2.0.8: read each round (live settings)
         for id, a in pairs(Alarm) do
             if a.left <= 0 then Alarm[id] = nil
             else a.left = a.left - 1 tone('critical') end
@@ -117,7 +116,7 @@ end)
 -- A compact card (top right) for every new call while the MDT is closed: attend with one key (attaches your unit,
 -- sets GPS), hide it, bring it back with /calls, leave with /detach. Closing a call clears its GPS.
 local POP = DSP.popup or {}
-local POP_ON = POP.enabled ~= false
+local function popOn() return POP.enabled ~= false end   -- 2.0.8: read live
 local Recent = {}   -- newest first: { id, kind, priority, title, message, street, x, y, z, callerName, at, units, closed, outcome }
 local Queue = {}    -- ids still to show, newest first
 local shown, hideAt, holdUntil, seq = nil, 0, 0, 0
@@ -176,7 +175,7 @@ end
 
 --- show one call (the newest queued one when id is nil)
 local function show(id, ms)
-    if not POP_ON or MDTC.isOpen() then return end
+    if not popOn() or MDTC.isOpen() then return end
     id = id or Queue[1]
     local c = id and find(id)
     if not c then return hide() end
@@ -399,13 +398,13 @@ RegisterNetEvent('es_mdt:client:call', function(c)
         if c.critical then startAlarm(tonumber(c.id)) end
     end
     if not MDTC.isOpen() then
-        if POP_ON then
+        if popOn() then
             if not mine then push(c) end
         elseif c.kind ~= 'panic' then
             notify(('%s #%d · %s%s'):format(c.kind == '311' and '311' or c.kind == '911' and '911' or 'Call', c.id,
                 c.message ~= '' and c.message or c.title, c.street ~= '' and (' · ' .. c.street) or ''), c.priority == 1 and 'error' or 'inform', 9000)
         end
-    elseif POP_ON and not mine then
+    elseif popOn() and not mine then
         -- keep it for /calls after the MDT closes, but do not pop it now
         c.at = GetGameTimer() c.units = {}
         table.insert(Recent, 1, c)
@@ -502,7 +501,7 @@ RegisterNetEvent('es_mdt:client:panic', function(p)
     lastPanic = p
     -- 2.0.7: the sound is the panic CALL's (es_mdt:client:call, critical tier, repeating until acknowledged)
     -- the call card shows it (attend = route + attach); without cards, the old notice
-    if not POP_ON or MDTC.isOpen() then
+    if not popOn() or MDTC.isOpen() then
         notify(('PANIC · %s %s (%s) · %s · /panicgps for a route'):format(p.callsign or '', p.name or '', p.deptShort or '', p.street or ''), 'error', 15000)
     end
     SendNUIMessage({ action = 'panic', panic = p })
@@ -538,9 +537,13 @@ local function askBackup(id)
     end)
 end
 MDTC.askBackup = askBackup
-if BKP.enabled ~= false then
+-- 2.0.8: always registered (the name and key are read at start); backup.enabled is read when it is used, so it changes live
+do
     local BCMD = BKP.command or 'backup'
-    RegisterCommand(BCMD, function() askBackup(myCall) end, false)
+    RegisterCommand(BCMD, function()
+        if BKP.enabled == false then return notify('Backup requests are turned off', 'error') end
+        askBackup(myCall)
+    end, false)
     RegisterKeyMapping(BCMD, 'Police: request backup', 'keyboard', BKP.key or '')
 end
 
@@ -553,13 +556,13 @@ RegisterNetEvent('es_mdt:client:callEscalated', function(d)
         if c.closed then return end
         c.priority = d.priority
         c.escalated = d.from
-    elseif POP_ON then
+    elseif popOn() then
         c = { id = id, kind = d.kind, priority = d.priority, title = d.title, street = d.street, x = d.x, y = d.y, z = d.z, message = '', escalated = d.from, radius = d.radius }
     end
     SendNUIMessage({ action = 'callEscalated', call = { id = id, priority = d.priority, from = d.from, title = d.title, street = d.street } })
     if MDTC.isOpen() then return end
     if POP.sound ~= false then tone('soft') end
-    if not POP_ON then
+    if not popOn() then
         return notify(('Call #%d now P%d · no unit yet%s'):format(id, d.priority or 2, d.street and d.street ~= '' and (' · ' .. d.street) or ''), 'inform', 7000)
     end
     if shown == id then render(false) return end
@@ -573,63 +576,78 @@ end)
 -- The game only says "it happened, here"; the server decides (on-duty law exempt, chance, cooldowns, one call per area)
 -- and reads the position itself.
 local ALR = DSP.alerts or {}
-local SHOTS, THEFT = ALR.shots or {}, ALR.theft or {}
-if SHOTS.enabled ~= false then
-    local skip = {}
-    for _, w in ipairs(ALR.ignoreWeapons or { 'WEAPON_STUNGUN', 'WEAPON_STUNGUN_MP', 'WEAPON_FIREEXTINGUISHER', 'WEAPON_PETROLCAN', 'WEAPON_HAZARDCAN',
-        'WEAPON_FERTILIZERCAN', 'WEAPON_SNOWBALL', 'WEAPON_BALL', 'WEAPON_FLARE', 'WEAPON_FLAREGUN', 'WEAPON_RAYPISTOL' }) do skip[GetHashKey(w)] = true end
-    local gap = math.max(5, tonumber(SHOTS.cooldown) or 45) * 1000
+-- 2.0.8: every detector runs from the start and reads Config each time, so /whip > Settings > MDT turns them on and off
+-- live (whip_core refills these tables in place). Off, a detector only sleeps.
+local function alertCfg(k) local t = ALR[k] return type(t) == 'table' and t or {} end
+local function vehModel(v)
+    local model = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(v)))
+    if model == 'NULL' then model = GetDisplayNameFromVehicleModel(GetEntityModel(v)) end
+    return model
+end
+do
+    local skip
+    local function skipList()
+        local key = ALR.ignoreWeapons
+        if skip and skip.src == key then return skip.set end
+        local set = {}
+        for _, w in ipairs(type(key) == 'table' and key or { 'WEAPON_STUNGUN', 'WEAPON_STUNGUN_MP', 'WEAPON_FIREEXTINGUISHER', 'WEAPON_PETROLCAN', 'WEAPON_HAZARDCAN',
+            'WEAPON_FERTILIZERCAN', 'WEAPON_SNOWBALL', 'WEAPON_BALL', 'WEAPON_FLARE', 'WEAPON_FLAREGUN', 'WEAPON_RAYPISTOL' }) do set[GetHashKey(w)] = true end
+        skip = { src = key, set = set }
+        return set
+    end
     CreateThread(function()
-        local last = -gap
+        local last = -1e9
         while true do
+            local SHOTS = alertCfg('shots')
             local ped = PlayerPedId()
-            if IsPedArmed(ped, 4) then   -- 4 = guns: the per-frame check only while one is in hand
+            if SHOTS.enabled ~= false and IsPedArmed(ped, 4) then   -- 4 = guns: the per-frame check only while one is in hand
                 Wait(0)
+                local gap = math.max(5, tonumber(SHOTS.cooldown) or 45) * 1000
                 if IsPedShooting(ped) and GetGameTimer() - last >= gap then
                     local _, w = GetCurrentPedWeapon(ped, true)
-                    if not skip[w] and not (SHOTS.ignoreSuppressed ~= false and IsPedCurrentWeaponSilenced(ped)) then
+                    if not skipList()[w] and not (SHOTS.ignoreSuppressed ~= false and IsPedCurrentWeaponSilenced(ped)) then
                         last = GetGameTimer()
-                        local veh, model = GetVehiclePedIsIn(ped, false), nil
-                        if veh ~= 0 then
-                            model = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(veh)))
-                            if model == 'NULL' then model = GetDisplayNameFromVehicleModel(GetEntityModel(veh)) end
-                        end
-                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'shots', street = streetHere(), model = model })
+                        local veh = GetVehiclePedIsIn(ped, false)
+                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'shots', street = streetHere(), model = veh ~= 0 and vehModel(veh) or nil })
                     end
                 end
             else
-                Wait(500)
+                Wait(SHOTS.enabled ~= false and 500 or 2000)
             end
         end
     end)
 end
-if THEFT.enabled ~= false then
+do
     local LOCKED = { [2] = true, [3] = true, [7] = true, [10] = true }
-    local gap = math.max(5, tonumber(THEFT.cooldown) or 90) * 1000
     CreateThread(function()
-        local last, flagged = -gap, nil
+        local last, flagged = -1e9, nil
         while true do
-            Wait(400)
-            local ped = PlayerPedId()
-            local trying = GetVehiclePedIsTryingToEnter(ped)
-            if trying ~= 0 and DoesEntityExist(trying) and GetSeatPedIsTryingToEnter(ped) == -1 then
-                local drv = GetPedInVehicleSeat(trying, -1)
-                if IsPedJacking(ped) or LOCKED[GetVehicleDoorLockStatus(trying)] or IsVehicleNeedsToBeHotwired(trying)
-                    or (drv ~= 0 and drv ~= ped) then flagged = trying end
-            end
-            local v = GetVehiclePedIsIn(ped, false)
-            if flagged then
-                if v == flagged and GetPedInVehicleSeat(v, -1) == ped then
-                    flagged = nil
-                    if GetGameTimer() - last >= gap then
-                        last = GetGameTimer()
-                        local model = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(v)))
-                        if model == 'NULL' then model = GetDisplayNameFromVehicleModel(GetEntityModel(v)) end
-                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'theft', street = streetHere(),
-                            plate = GetVehicleNumberPlateText(v), model = model })
+            local THEFT = alertCfg('theft')
+            if THEFT.enabled == false then
+                flagged = nil
+                Wait(2000)
+            else
+                Wait(400)
+                local gap = math.max(5, tonumber(THEFT.cooldown) or 90) * 1000
+                local ped = PlayerPedId()
+                local trying = GetVehiclePedIsTryingToEnter(ped)
+                if trying ~= 0 and DoesEntityExist(trying) and GetSeatPedIsTryingToEnter(ped) == -1 then
+                    local drv = GetPedInVehicleSeat(trying, -1)
+                    if IsPedJacking(ped) or LOCKED[GetVehicleDoorLockStatus(trying)] or IsVehicleNeedsToBeHotwired(trying)
+                        or (drv ~= 0 and drv ~= ped) then flagged = trying end
+                end
+                local v = GetVehiclePedIsIn(ped, false)
+                if flagged then
+                    if v == flagged and GetPedInVehicleSeat(v, -1) == ped then
+                        flagged = nil
+                        if GetGameTimer() - last >= gap then
+                            last = GetGameTimer()
+                            TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'theft', street = streetHere(),
+                                plate = GetVehicleNumberPlateText(v), model = vehModel(v) })
+                        end
+                    elseif trying == 0 and v ~= flagged then
+                        flagged = nil   -- gave up
                     end
-                elseif trying == 0 and v ~= flagged then
-                    flagged = nil   -- gave up
                 end
             end
         end
@@ -638,7 +656,6 @@ end
 
 -- 2.0.7: fights (a melee hit with someone watching), a person down, speeding (off by default). The server decides
 -- (on-duty units exempt, chance, cooldowns, per-kind rate, merging) and reads position, weapon, plate and speed itself.
-local FIGHT, DOWN, SPEED = ALR.fight or {}, ALR.down or {}, ALR.speeding or {}
 local function witnesses(range, need)
     local me = PlayerPedId()
     local p = GetEntityCoords(me)
@@ -651,11 +668,14 @@ local function witnesses(range, need)
     end
     return false
 end
-if FIGHT.enabled ~= false then
-    local gap = math.max(5, tonumber(FIGHT.cooldown) or 60) * 1000
-    local last = -gap
+do
+    local last = -1e9
     AddEventHandler('gameEventTriggered', function(name, args)
-        if name ~= 'CEventNetworkEntityDamage' or GetGameTimer() - last < gap then return end
+        if name ~= 'CEventNetworkEntityDamage' then return end
+        local FIGHT = alertCfg('fight')
+        if FIGHT.enabled == false then return end
+        local gap = math.max(5, tonumber(FIGHT.cooldown) or 60) * 1000
+        if GetGameTimer() - last < gap then return end
         local victim, attacker, weapon = args[1], args[2], args[7]
         local me = PlayerPedId()
         if attacker ~= me or victim == me or not victim or not DoesEntityExist(victim) or not IsEntityAPed(victim) then return end
@@ -666,12 +686,14 @@ if FIGHT.enabled ~= false then
         TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'fight', street = streetHere() })
     end)
 end
-if DOWN.enabled ~= false then
-    -- down for `delay` seconds (a quick revive sends nothing); the server checks whip's own death state again
-    CreateThread(function()
-        local since, sent = nil, false
-        while true do
-            Wait(2000)
+-- down for `delay` seconds (a quick revive sends nothing); the server checks whip's own death state again
+CreateThread(function()
+    local since, sent = nil, false
+    while true do
+        Wait(2000)
+        local DOWN = alertCfg('down')
+        if DOWN.enabled == false then since, sent = nil, false
+        else
             local dead = false
             local okd, v = pcall(function() return wc():IsPlayerDead() end)
             if okd then dead = v == true else dead = IsEntityDead(PlayerPedId()) end
@@ -683,31 +705,43 @@ if DOWN.enabled ~= false then
                 end
             else since, sent = nil, false end
         end
-    end)
-end
-if SPEED.enabled == true then
-    CreateThread(function()
-        local over, gap, last = nil, math.max(10, tonumber(SPEED.cooldown) or 120) * 1000, -1e9
-        local limit = (tonumber(SPEED.mph) or 120) / 2.236936   -- m/s
-        while true do
+    end
+end)
+-- 2.0.8: speeding over the admin's limit (city / highway, mph or km/h: mdt/shared/speed.lua) for `seconds`. Off by default.
+CreateThread(function()
+    local over, last, peak = nil, -1e9, 0
+    while true do
+        local SPEED = alertCfg('speeding')
+        if SPEED.enabled ~= true then
+            over = nil
+            Wait(3000)
+        else
             local ped = PlayerPedId()
             local v = GetVehiclePedIsIn(ped, false)
-            if v ~= 0 and GetPedInVehicleSeat(v, -1) == ped and GetVehicleClass(v) ~= 18 and GetEntitySpeed(v) >= limit then
-                over = over or GetGameTimer()
-                if GetGameTimer() - over >= math.max(1, tonumber(SPEED.seconds) or 4) * 1000 and GetGameTimer() - last >= gap then
-                    last = GetGameTimer()
-                    local model = GetLabelText(GetDisplayNameFromVehicleModel(GetEntityModel(v)))
-                    if model == 'NULL' then model = GetDisplayNameFromVehicleModel(GetEntityModel(v)) end
-                    TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'speeding', street = streetHere(), model = model })
+            if v ~= 0 and GetPedInVehicleSeat(v, -1) == ped and GetVehicleClass(v) ~= 18 then
+                local street = streetHere()
+                local _, _, limitMs = EsSpeedLimit(street, SPEED)
+                local ms = GetEntitySpeed(v)
+                if ms > limitMs then
+                    if not over then over, peak = GetGameTimer(), 0 end
+                    if ms > peak then peak = ms end
+                    local gap = math.max(10, tonumber(SPEED.cooldown) or 120) * 1000
+                    if GetGameTimer() - over >= math.max(1, tonumber(SPEED.seconds) or 4) * 1000 and GetGameTimer() - last >= gap then
+                        last = GetGameTimer()
+                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'speeding', street = street, model = vehModel(v), speed = peak })
+                    end
+                    Wait(500)
+                else
+                    over = nil
+                    Wait(1000)
                 end
-                Wait(500)
             else
                 over = nil
                 Wait(v ~= 0 and 1000 or 2500)
             end
         end
-    end)
-end
+    end
+end)
 
 -- ---------------------------------------------------------------- 2.0.7: the quick call board
 -- A compact overlay of the active calls (hotkey, Config.Dispatch.board.key, O by default; players can rebind it): respond
@@ -763,10 +797,9 @@ local function boardOpen()
     SendNUIMessage({ action = 'board', show = true, loading = true, key = boardKey() })
     boardLoad()
 end
-if BRD.enabled ~= false then
-    RegisterCommand(boardKeyCmd, boardOpen, false)
-    RegisterKeyMapping(boardKeyCmd, 'Police: call board (active calls)', 'keyboard', BRD.key or 'O')
-end
+-- 2.0.8: always registered; board.enabled is read on each press (boardOpen), so it changes live
+RegisterCommand(boardKeyCmd, boardOpen, false)
+RegisterKeyMapping(boardKeyCmd, 'Police: call board (active calls)', 'keyboard', BRD.key or 'O')
 AddEventHandler('es_mdt:client:refresh', function(what) if Board.open and (what == 'calls' or what == 'units') then Board.poke() end end)
 RegisterNUICallback('boardClose', function(_, cb) Board.close() cb({ ok = true }) end)
 --- { id, act = 'respond' | 'route' | 'detach' | 'ack' }

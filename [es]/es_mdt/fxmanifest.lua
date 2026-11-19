@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.0.7'
+version '2.0.8'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -23,6 +23,8 @@ shared_scripts {
     'departments/config.lua',
     'mdt/config.lua',
     'doj/config.lua',
+    'mdt/shared/speed.lua',        -- 2.0.8: the speeding alert's limit (both sides)
+    'shared/settings.lua',         -- 2.0.8: /whip > Settings > MDT (after every config: saved values are written over them)
 }
 
 server_scripts {
@@ -39,6 +41,7 @@ server_scripts {
     'departments/server/main.lua',
     'mdt/server/tables.lua',
     'mdt/server/fetch.lua',
+    'mdt/server/places.lua',       -- 2.0.8: named stores, banks and Vangelico for robbery alerts
     'mdt/server/ops.lua',
     'mdt/server/evidence.lua',
     'mdt/server/cases.lua',

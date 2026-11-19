@@ -74,6 +74,14 @@ local function hook()
     if ok then print('^2[es_mdt] whip_evidence found: case check hooked (case IDs are MDT case numbers, e.g. C-2026-0001)^7') end
 end
 
+-- 2.0.8: turned on in /whip > Settings > MDT while running: hook up then (a tick later: never inside whip_core's settings call)
+if Whip and Whip.onConfigChanged then
+    Whip.onConfigChanged('WhipEvidence.enabled', function(value)
+        if value == false then return end
+        SetTimeout(1000, function() pcall(hook) end)
+    end)
+end
+
 -- ---------------------------------------------------------------- stored snapshots
 local function decode(s)
     if type(s) ~= 'string' or s == '' then return nil end

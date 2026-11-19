@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.7).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.8).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -29,6 +29,8 @@ All screenshots use made-up test data.
 | ![Critical call](docs/images/13_critical_card.png) A critical call (alarm until acknowledged) | ![Call board](docs/images/13_call_board.png) The quick call board (O) |
 | ![Merged call](docs/images/13_merged_call.png) Repeat reports merged: ×3, 2 responding, details, a linked report | ![Search circle](docs/images/13_search_circle.png) A witness call's search circle on the live map |
 | ![Preset alert](docs/images/13_preset_alert_card.png) A ready-made alert (store robbery) with suspect details | ![Alert sounds](docs/images/13_alert_sounds_popover.png) Alert volume and mute in the Aa popover |
+| ![Admin settings](docs/images/14_whip_settings_mdt.png) Change the MDT live: /whip → Settings → MDT | ![Speeding settings](docs/images/14_whip_settings_speeding.png) Speeding alerts set up by the admin |
+| ![Pause menu](docs/images/14_pause_settings_mdt.png) Each player's MDT size and alert sound in the pause menu | ![Store name](docs/images/14_store_name_card.png) Robbery calls name the store |
 
 ## Requirements
 
@@ -94,6 +96,43 @@ Players can change every key under GTA Settings → Key Bindings → FiveM.
 
 **Display size.** Each player can make the MDT, Departments and DOJ pages smaller or larger with the **Aa** button in each page's header: a slider from 70% to 150% that resizes the pages as you drag, quick sizes, and a Reset. `/mdtscale <percent>` does the same from chat. The size is saved on the player's PC and used every time a page opens. The pages stay centred and on screen at every size. Server owners set the default and the range in `Config.UI` (`es_mdt/mdt/config.lua`).
 
+## Changing settings live
+
+New in 2.0.8. **Change live in `/whip` → Settings → MDT.** `config.lua` is the defaults. A value saved in the panel overrides it until you press **Reset** on that setting.
+
+| Group | What is in it |
+|---|---|
+| Calls | 911/311 cooldown, shared routing, auto-close and the hard cap, the sweep interval, keeping closed calls (days), escalation, backup requests, panic cooldown |
+| Alerts on screen | call cards (on/off, seconds, panic seconds, sound), sounds (engine, default volume), the critical alarm (repeat seconds, max repeats, stop when a unit responds), the call board, urgent-announcement hours |
+| Repeat reports and search areas | merging (distance, window), search circles (radius, minimum, shrink), **robbery store names** (`places.radius`, extra places) |
+| Automatic alerts | on-duty law exempt, search circles, per-minute cap, and for shots, vehicle theft, fights, explosions, a civilian down and **speeding**: on/off, chance, cooldown, priority and their own options |
+| Records, fines and jail | off-duty read only, fine cap, unpaid-fine warrant days, warrant BOLOs, jail provider, record minutes per month, whip_evidence bridge, map refresh |
+| Display size | the MDT size range and the default |
+| Commands and keys (restart) | `/mdt` and its key, the 911/311/medical commands, chat suggestions, panic, backup and call-board commands and keys, DevTools. These need a restart. |
+
+Everything except the last group applies when you press **Apply**, with no restart. A setting's options are hidden until it is switched on.
+
+![Commands and keys](docs/images/14_whip_settings_restart.png)
+
+**Players: pause menu → Settings → Server Settings → MDT.** **MDT display size** (the same as **Aa** and `/mdtscale`), **Dispatch alert volume** and **Mute dispatch alerts**, saved on each player's PC. **Reset this tab** goes back to the server's defaults. Keys (MDT, panic, call board) are rebound in GTA Settings → Key Bindings → FiveM.
+
+**Robbery calls name the store.** `StoreRobbery`, `BankRobbery` and `JewelryRobbery` are titled with the nearest known place, e.g. "24/7 Supermarket, Innocence Blvd", "Fleeca Bank, Legion Square" or "Vangelico Jewelry, Rockford Hills". About 60 places are built in (24/7, LTD, Rob's Liquor, Ammu-Nation, clothing stores, barbers, every Fleeca, Paleto, Pacific Standard, Vangelico). The name is picked in this order:
+
+1. `data.storeName` (or `label`) passed by your robbery script.
+2. Your script's store id or number (`data.store` / `storeId` / `id` / `shop` / `bankId`) mapped in `Config.Dispatch.places.ids`, to a built-in id (`'247_innocence'`, `'fleeca_legion'`, `'pacific'` …) or to a name.
+3. The nearest built-in place within `places.radius` (40 m).
+4. Otherwise "Store, <street>".
+
+```lua
+places = {
+    radius = 40,
+    ids = { [1] = '247_innocence', ['shop_7'] = 'Davis Liquor' },        -- your script's ids -> a place id or a name
+    extra = { { id = 'my_store', kind = 'store', name = 'Corner Shop, Grove St', coords = vector3(100.0, -1800.0, 29.0) } },
+},
+```
+
+**Speeding** (`Config.Dispatch.alerts.speeding`, off by default): `units` (`'mph'` or `'km/h'`), `limit` (80), `highwayLimit` (110 on roads named Fwy, Freeway, Hwy, Highway, Route or Interstate; 0 means one limit everywhere), `seconds` over the limit (4), `cooldown`, `chance` and `priority`. The alert reads e.g. "112 mph in a 80 zone", and the server checks the speed itself.
+
 ## Dispatch: routing, panic, backup and alerts
 
 All of this is in `Config.Dispatch` and `Config.Panic` (`es_mdt/mdt/config.lua`).
@@ -113,7 +152,7 @@ New in 2.0.7. Everything is in `Config.Dispatch` (`es_mdt/mdt/config.lua`).
 **Ready-made alerts for your scripts.** These are server exports, one line each. `data` is optional: `street`, `message`, `title`, `priority`, `critical`, `groups`, `witness`, `radius`, and suspect details (`plate`, `vehicle`, `color`, `weapon`, `suspect`, `direction`). Pass `player = source` and the server reads that player's position, car plate and colour, and the weapon in their hand.
 
 ```lua
-exports.es_mdt:StoreRobbery(coords, { street = 'Innocence Blvd', player = source })
+exports.es_mdt:StoreRobbery(coords, { player = source })   -- titled e.g. '24/7 Supermarket, Innocence Blvd' (2.0.8: storeName / store id / nearest store)
 exports.es_mdt:BankRobbery(coords, 'fleeca')            -- 'fleeca' | 'paleto' | 'pacific' (Paleto and Pacific are critical)
 exports.es_mdt:JewelryRobbery(coords)
 exports.es_mdt:HouseRobbery(coords, { suspect = 'Male, dark hoodie' })
@@ -169,7 +208,7 @@ Each part keeps its own config file:
 | `es_mdt/doj/config.lua` | commands and key, who may view, warrants needing a judge, courthouse locations, case kinds and stages, hearings, filings, fees, bail, sentences, service, name changes, the bar, images |
 | `es_jail/config.lua` | permissions, items, cuffs, breaking out, lockpicking, jail and prison, prison jobs, escape, test mode |
 
-Every option is commented in its file. The penal code, report templates, department ranks and permissions are seeded from config on first start. After that you manage them in game.
+Every option is commented in its file. Most of `mdt/config.lua` can also be changed live in `/whip` → Settings → MDT (see [Changing settings live](#changing-settings-live)). The penal code, report templates, department ranks and permissions are seeded from config on first start. After that you manage them in game.
 
 ### Permissions
 
@@ -409,6 +448,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.0.8:** in Lua tests against whip_core's real settings code (`shared/settings.lua`, the pause-menu `player_prefs.lua`): the MDT page registers with nothing left off (about 100 settings), the defaults, the hidden sub-options, the restart rows, the type checks, values applied live into the tables the MDT holds, `/whip` Reset, and the three pause-menu rows (get, set, reset, admin default and range changes, a player's own choice kept). Also: the store names (built-in places, `storeName`, ids, the nearest place, extra places, the fallback, only the same store merging, the title on exports and the board), speeding (units, both limits, highway roads only by the road name, the peak cap, switched off live), and the client switches read live (backup, board, detectors, popup, alarm). The panel and the pause-menu page were rendered in whip_core's own UI with the real data, and all the 2.0.3 to 2.0.7 tests still pass. On a live server: es_mdt 2.0.8 starts with the schema check and no errors. Not tested in game: changing a setting in `/whip` and the pause menu with a real player, and the built-in store positions (from community maps, not checked in game).
 - **Tested for 2.0.7:** in Lua tests: every preset and export (the bank choice and fallback, `Alert` both ways, an unknown preset, no coordinates), suspect details (plate and text cleaning, weapon names and signed hashes as classes and grades, the details the server reads from a player), the search circle (the centre 0.2 to 0.85 of the radius from the spot in 200 random draws, only the centre and radius sent, no height), merging (×N, the shrinking circle still holding the true spot, another kind or after the window is a new call, notes at most every 30 s, priority only up, panics and es_jail alerts never merge, `merge = false`), critical calls (panic, presets, `panic = false`), the automatic alerts (fights, a civilian down only when really down and only for civilians, sent to EMS; speeding off by default and checked against the server's own speed reading; explosions ignoring harmless, invisible and on-duty-law ones, with a cooldown; the per-minute cap while merges still work), the call board (only for units on duty, no phone, audience or source label), links (attached or high rank only, missing records refused, unlink), and retention (batches with pauses, the counts, open and linked calls kept with their notes, a call linked during a sweep kept whole, `0` keeps everything). On the client: the three sound tiers, the alarm repeating and stopping (Hide, a unit responding, the board's Ack, closing, `maxRepeats`), mute and volume (saved, `/mdtvolume`, reset), the merged card, the board (the key O, its screen and focus, Respond with GPS, live reloads at most once a second, not over another screen or the MDT), the panic message, and the locker (MDT closed first, the stash asked for only once no screen is open, one request for two presses, never reopening the MDT, a refusal shown). Against real MariaDB: the 2.0.7 columns and the closed-call index (used by the cleanup query), the circle stored and listed by the real SQL, merging and the real time window, links, and the cleanup's `DELETE … JOIN` guards. The schema test passed again with 2.0.7 (fresh, 1.x and broken 2.0.4 databases). In browser tests: the critical, merged and preset cards, the MDT list and call page (×3, N responding, details, links), the search circles on the live map, the call board, the link dialog, **Open locker** sending one request, the rate-limit retry, and the alert-sound controls. All the 2.0.3 to 2.0.6 tests still pass. On a live server: migration `005_dispatch207` and the schema check, the presets through the real exports (a critical Pacific Standard call, cleaned details), a witness call's circle with the true spot kept on the server, three fight reports merged into one call (×3, a smaller circle that still holds the spot), es_jail-style alerts kept separate, a critical panic test call, `LinkCall`, the per-minute cap, and retention on old test calls (removed, a linked one kept, real calls untouched). Not tested in game with a real player: the sounds and alarm themselves, the O key, the fight, explosion, down and speeding detection, and the locker stash opening after the MDT closes.
 - **Tested for 2.0.6:** in Lua tests: routing for every call kind (including a server with no EMS department, and `shared`), the medical line, chat suggestions, the unit list, the panic key mapping (END, the old mapping kept) and pressing it while dead, at 0 health and ragdolled, the panic callback being `whileDead` with no death checks, the panic cooldown and on-duty rule, OFFICER DOWN going to law and EMS, backup (linking, priority, cooldown, while downed), escalation (never a panic, never past P1, never a call with a unit), and shots and theft alerts (toggles, chance, cooldowns, law and suppressed exemptions, area merging, the exports). In browser tests: the call card's unit list, escalated, officer-down and backup cards, and the MDT call page with units and Request backup. On a live server: the calls filed and routed, and the database migration. Not tested in game with a real player: the END key itself, pressing it while actually downed, and the game-side shots and theft detection.
 - **Tested for 2.0.5:** the schema self-check against a real MariaDB database, using whip_core's own `EnsureTable` and migration code: a fresh database, an old 1.x database with rows in it, and a broken 2.0.4 fresh install all end up with every column and key of all 68 tables. The 2.0.4 errors were reproduced and then repaired. Extra columns, keys and rows were left untouched. A fix that fails gives a loud error and a start problem, and is repaired at the next start. A second start does nothing.

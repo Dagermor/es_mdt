@@ -356,7 +356,10 @@ local function findMerge(kind, preset, title, x, y, r, secs)
         FROM `es_mdt_calls` WHERE `status` = 'active' AND `kind` = ? AND `x` IS NOT NULL
         AND COALESCE(`lastReportAt`, `createdAt`) >= NOW() - INTERVAL ? SECOND AND (`preset` <=> ?) ORDER BY `id` DESC LIMIT 20]], { kind, secs, preset }) or {}
     for _, row in ipairs(rows) do
-        if (kind ~= 'alert' or row.title == title) and dist2({ x = x, y = y }, row) <= r then return row end
+        -- a plain alert, or a robbery titled with its place (2.0.8): only the same title merges (two stores side by side stay two calls)
+        local P = preset and presetOf(preset) or nil
+        local byTitle = kind == 'alert' or (P and type(P.place) == 'string')
+        if (not byTitle or row.title == title) and dist2({ x = x, y = y }, row) <= r then return row end
     end
     return nil
 end
@@ -1106,7 +1109,13 @@ local function presetAlert(name, coords, data, label)
     local pos = x and { x = x, y = y, z = z } or (src and coordsOf(src)) or nil
     if not pos then return false, 'Give coords, or a player (data.player = their server id)' end
     local s = function(v, n) return type(v) == 'string' and MDT.str(v, n) or nil end
-    return addCall({ preset = name, coords = pos, street = s(data.street, 120), message = s(data.message, 500), title = s(data.title, 120),
+    -- 2.0.8: robbery presets are titled with the place's name ("24/7 Supermarket, Innocence Blvd"), not a number
+    local title = s(data.title, 120)
+    if not title and type(P.place) == 'string' and EsPlaceName then
+        local okp, pname = pcall(EsPlaceName, P.place, pos, data, s(data.street, 120), name)
+        if okp and type(pname) == 'string' then title = MDT.str(pname, 120) end
+    end
+    return addCall({ preset = name, coords = pos, street = s(data.street, 120), message = s(data.message, 500), title = title,
         priority = data.priority, critical = data.critical, groups = data.groups, witness = data.witness, radius = data.radius,
         details = detailsOf(data, src), callerName = s(data.callerName, 80) or (P.witness and 'Witness' or 'Alarm'),
         sourceLabel = label, blip = data.blip })
@@ -1271,6 +1280,24 @@ if type(CreateThread) == 'function' then
             end
             Wait(24 * 3600 * 1000)
         end
+    end)
+end
+
+-- 2.0.8: retention changed in /whip > Settings > MDT: a sweep a minute later (not inside whip_core's settings call), so
+-- turning it on or shortening it acts now, not in a day
+if Whip and Whip.onConfigChanged then
+    local pending = false
+    Whip.onConfigChanged('Dispatch.keepClosedDays', function(value)
+        if pending or (tonumber(value) or 0) <= 0 or type(SetTimeout) ~= 'function' then return end
+        pending = true
+        SetTimeout(60000, function()
+            pending = false
+            if retentionDays() <= 0 then return end
+            CreateThread(function()
+                local ok, err = pcall(retentionSweep)
+                if not ok then print(('^3[es_mdt] call retention failed: %s^7'):format(tostring(err))) end
+            end)
+        end)
     end)
 end
 
@@ -1789,9 +1816,18 @@ function MDT.registerOps()
             local veh = ped and ped ~= 0 and GetVehiclePedIsIn(ped, false) or 0
             if veh == 0 or GetPedInVehicleSeat(veh, -1) ~= ped then return end
             local v = GetEntityVelocity(veh)
-            local mph = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) * 2.236936
-            if mph < (tonumber(cfg.mph) or 120) * 0.8 then return end
-            info.message = ('A vehicle is driving dangerously fast (about %d mph)'):format(math.floor(mph / 5 + 0.5) * 5)
+            local ms = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+            -- 2.0.8: the admin's limit (city / highway, mph / km/h; mdt/shared/speed.lua). The server's own reading, a
+            -- little slack for the moment between the game seeing it and this
+            local street = str(d.street, 120)
+            local limit, units, limitMs = EsSpeedLimit(street, cfg)
+            if ms < limitMs * 0.9 then return end
+            -- the driver's game saw the peak; it counts only up to 20% over what the server reads now
+            local seen = tonumber(d.speed)
+            if seen and seen > ms then ms = math.min(seen, ms * 1.2) end
+            local shown = EsSpeedIn(ms, units)
+            if shown <= limit then return end
+            info.message = ('%d %s in a %d zone'):format(shown, units == 'kmh' and 'km/h' or 'mph', limit)
             info.details = detailsOf({ vehicle = str(d.model, 30) ~= '' and str(d.model, 30) or nil, readWeapon = false }, source)
         end
         autoAlert(kind, pos, info)
@@ -2010,10 +2046,9 @@ function MDT.registerOps()
     -- old calls close themselves
     -- 2.0.4: the auto-close sweep (silent; see autoCloseSweep), and the caches' clean-up every 5 minutes
     CreateThread(function()
-        local every = math.max(15, tonumber(DSP.sweepSeconds) or 60)
         local lastClean = now()
         while true do
-            Wait(every * 1000)
+            Wait(math.max(15, tonumber(DSP.sweepSeconds) or 60) * 1000)   -- 2.0.8: read each round (live settings)
             local ok, err = pcall(autoCloseSweep)
             if not ok then print(('^3[es_mdt] auto-close sweep failed: %s^7'):format(tostring(err))) end
             ok, err = pcall(escalateSweep)   -- 2.0.6: after the auto-close (a call closing now is not re-alerted)

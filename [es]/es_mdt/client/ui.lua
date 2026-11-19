@@ -150,3 +150,70 @@ RegisterCommand('mdtvolume', function(_, args)
     if not s.muted then EsAlertSound('priority') end
 end, false)
 TriggerEvent('chat:addSuggestion', '/mdtvolume', 'Dispatch alert volume (0-100), or mute / unmute', { { name = 'volume', help = '0-100, mute or unmute' } })
+
+-- ---------------------------------------------------------------- 2.0.8: the pause menu (Settings > Server > MDT)
+-- Each player's size, alert volume and mute as rows of WHIP's Server Settings page (Whip.playerSetting). The values stay
+-- where they always were (the KVPs above), so the page, the Aa popover, /mdtscale and /mdtvolume always agree: the page
+-- reads `get` each time it opens. A value equal to the server's default is not kept (the KVP is deleted), so that player
+-- follows the default, also when an admin changes it later (/whip > Settings > MDT). Rows are declared again when the
+-- server's range or defaults change.
+local KEYS_HELP = 'Keys (MDT, panic, call board ...) are rebound in GTA Settings > Key Bindings > FiveM.'
+local function pct(v) return math.floor((tonumber(v) or 1) * 100 + 0.5) end
+local function declareRows()
+    if not (Whip and Whip.playerSetting) then return end
+    local lo, hi, def = range()
+    Whip.playerSetting({
+        key = 'es_mdt.scale', group = 'MDT', type = 'slider', label = 'MDT display size', unit = '%',
+        min = pct(lo), max = pct(hi), step = 5, default = pct(def),
+        help = 'MDT, Departments and DOJ pages. Also the Aa button in their header, or /mdtscale. ' .. KEYS_HELP,
+        get = function() return pct(state().scale) end,
+        set = function(v)
+            v = tonumber(v)
+            if not v then return end
+            local _, _, d = range()
+            if math.abs(v - pct(d)) < 0.5 then reset() else set(v / 100) end
+            push()
+        end,
+    })
+    local vs = volState()
+    Whip.playerSetting({
+        key = 'es_mdt.alertVolume', group = 'MDT', type = 'slider', label = 'Dispatch alert volume', unit = '%',
+        min = 0, max = 100, step = 5, default = vs.def,
+        help = 'New calls, critical alarms and announcements. Also the Aa button, or /mdtvolume.',
+        get = function() return volState().volume end,
+        set = function(v)
+            v = tonumber(v)
+            if not v then return end
+            v = math.floor(math.min(100, math.max(0, v)) + 0.5)
+            if v == volState().def then DeleteResourceKvp(KVP_VOL) else SetResourceKvpInt(KVP_VOL, v + 1) end
+            pushVol()
+        end,
+    })
+    Whip.playerSetting({
+        key = 'es_mdt.alertMute', group = 'MDT', type = 'toggle', label = 'Mute dispatch alerts', default = false,
+        help = 'No alert sounds at all (cards and blips still show).',
+        get = function() return volState().muted end,
+        set = function(v)
+            if v == true then SetResourceKvpInt(KVP_MUTE, 1) else DeleteResourceKvp(KVP_MUTE) end
+            pushVol()
+        end,
+    })
+end
+declareRows()
+
+-- an admin changed the size range / default or the sound defaults: the pages and the rows follow at once
+if Whip and Whip.onConfigChanged then
+    local queued = false
+    local function again()
+        if queued then return end
+        queued = true
+        SetTimeout(0, function()   -- never from inside whip_core's settings call
+            queued = false
+            push()
+            pushVol()
+            declareRows()
+        end)
+    end
+    Whip.onConfigChanged('UI', again)
+    Whip.onConfigChanged('Dispatch.sounds', again)
+end

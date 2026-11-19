@@ -154,6 +154,10 @@ end
 local WOUND = { gunshot = true, stab = true, blunt = true, vehicle = true, fall = true, burn = true, explosion = true, other = true }
 local PART = { head = true, torso = true, arms = true, legs = true }
 local RANGE = { close = true, short = true, far = true }
+-- 2.0.18: the exact spot of a hit (whip_evidence 4.2.4+, from the bone that was hit; _l / _r = the body's own side)
+local SPOT = { head = true, neck = true, chest = true, belly = true, pelvis = true, shoulder_l = true, shoulder_r = true,
+    upperarm_l = true, forearm_l = true, hand_l = true, upperarm_r = true, forearm_r = true, hand_r = true,
+    thigh_l = true, shin_l = true, foot_l = true, thigh_r = true, shin_r = true, foot_r = true }
 local function str(v, n) return type(v) == 'string' and v:sub(1, n or 80) or nil end
 local function num(v) v = tonumber(v) return v and v == v and v or nil end
 local function woundList(t)
@@ -169,7 +173,7 @@ local function reportView(r)
     local d = type(r.details) == 'table' and r.details or {}
     local marks, byPart, ranges = {}, {}, {}
     for _, m in ipairs(type(d.marks) == 'table' and d.marks or {}) do
-        if type(m) == 'table' and PART[m.p] and WOUND[m.w] then marks[#marks + 1] = { p = m.p, w = m.w, i = m.i == true or nil, f = m.f == true or nil } end
+        if type(m) == 'table' and PART[m.p] and WOUND[m.w] then marks[#marks + 1] = { p = m.p, s = SPOT[m.s] and m.s or nil, w = m.w, i = m.i == true or nil, f = m.f == true or nil } end
         if #marks >= 24 then break end
     end
     for _, x in ipairs(type(d.byPart) == 'table' and d.byPart or {}) do

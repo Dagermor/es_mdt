@@ -233,9 +233,11 @@ end
 --- the waypoint is cleared only when it still points at the call (a waypoint the player set elsewhere stays)
 local function dropCallWaypoint(t)
     if not IsWaypointActive() then return end
-    if t and t.x then
+    -- 2.0.9: a call that follows its officer moves (t.x, t.y); the waypoint is where the route was last set (Routed)
+    local w0 = t and (Routed[t.id] or (t.x and t))
+    if w0 and w0.x then
         local w = GetBlipInfoIdCoord(GetFirstBlipInfoId(8))
-        if #(vector2(w.x, w.y) - vector2(t.x, t.y)) > 60.0 then return end
+        if #(vector2(w.x, w.y) - vector2(w0.x, w0.y)) > 60.0 then return end
     end
     SetWaypointOff()
 end
@@ -494,6 +496,41 @@ end)
 RegisterNetEvent('es_mdt:client:detached', function(d)
     if type(d) ~= 'table' or not d.id then return end
     if clearRoute(tonumber(d.id)) then notify(('%s detached your unit from call #%d · GPS cleared'):format(d.by or 'Your partner', d.id), 'inform') end
+end)
+
+-- 2.0.9: a backup / panic call follows its officer: its spot moved. The card, the board and my arrival check use the new
+-- spot at once; my GPS route follows at most every `gps` seconds, once the officer is `gpsMove` m from where it points,
+-- and only while the waypoint still points at the call (one I put somewhere else stays). Never after I arrived.
+local MovedAt = {}
+RegisterNetEvent('es_mdt:client:callMoved', function(d)
+    if type(d) ~= 'table' then return end
+    local id, x, y = tonumber(d.id), tonumber(d.x), tonumber(d.y)
+    if not id or not x or not y then return end
+    local c = find(id)
+    if c then c.x, c.y = x, y if shown == id then render(false) end end
+    if lastPanic and tonumber(lastPanic.callId) == id then lastPanic.x, lastPanic.y = x, y end
+    local t = Target
+    local mine = t and t.id == id
+    if mine then t.x, t.y = x, y end
+    local r = Routed[id]
+    if r and not (mine and t.arrived) then
+        local gpsMs = math.max(3, tonumber(d.gps) or 10) * 1000
+        local far = #(vector2(r.x, r.y) - vector2(x, y)) >= math.max(10, tonumber(d.gpsMove) or 35)
+        if far and GetGameTimer() - (MovedAt[id] or -gpsMs) >= gpsMs and waypointNear(r.x, r.y) then
+            SetNewWaypoint(x + 0.0, y + 0.0)
+            Routed[id] = { x = x, y = y }
+            MovedAt[id] = GetGameTimer()
+        end
+    end
+    if Board.open then Board.poke() end
+    SendNUIMessage({ action = 'callMoved', call = { id = id, x = x, y = y } })
+end)
+-- 2.0.9: my backup / panic: a unit is coming (its marker is on my map until it gets here) / it got here
+RegisterNetEvent('es_mdt:client:followUnit', function(d)
+    if type(d) ~= 'table' then return end
+    local what = d.kind == 'panic' and 'your panic' or 'your backup request'
+    if d.state == 'arrived' then notify(('%s is with you'):format(d.cs or 'A unit'), 'success', 5000)
+    else notify(('%s is responding to %s · marker on your map'):format(d.cs or 'A unit', what), 'success', 6000) end
 end)
 
 RegisterNetEvent('es_mdt:client:panic', function(p)

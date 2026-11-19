@@ -141,6 +141,7 @@
     { key: 'dashboard', label: 'Dashboard', ico: '◧' },
     { key: 'dispatch', label: 'Dispatch', ico: '☎' },
     { key: 'units', label: 'Active units', ico: '◉' },
+    { key: 'livemap', label: 'Live map', ico: '⌖', show: () => (S.ctx.onDuty || S.ctx.staff) && ((S.ctx.config.liveMap || {}).enabled !== false || S.ctx.staff) },
     { key: 'arrest', label: 'Process arrest', ico: '⛓', show: () => !!P().mdt_reports_write },
     { key: 'bolos', label: 'BOLOs', ico: '⚑' },
     { key: 'jail', label: 'Jail', ico: '▥' },
@@ -1586,6 +1587,7 @@
       if (S.view === 'people') { if (S.lastPeopleQ) peopleSearch(S.lastPeopleQ); if (S.personId && $('#p-detail')) personDetail(S.personId, true); return; }
       if (S.view === 'vehicles') return;
       if (S.view === 'units' && S.unitsMode === 'map') return;
+      if (S.view === 'livemap') return;
       if (S.view === 'arrest') return;
       if (S.view === 'dispatch' && HOOK.dispatchRefresh) { HOOK.dispatchRefresh(); return; }
       if (S.view === 'weapons') { weaponSearch(); if (!$('#w-detail')) return; if (S.wSerial) weaponDetail(S.wSerial, true); else weaponOverview(true); return; }

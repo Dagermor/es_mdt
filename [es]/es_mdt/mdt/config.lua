@@ -192,6 +192,19 @@ Config.Dispatch = {
     -- 2.0.6: "Request backup" (the call in the MDT, or /backup): a backup call at the officer's position, linked to their call.
     -- P1 when the call is a panic or P1, else `priority`. key = default key ('' = unbound; players can rebind it).
     backup = { enabled = true, command = 'backup', key = '', priority = 2, urgentPriority = 1, cooldown = 45 },
+    -- 2.0.9: a backup (and panic) call FOLLOWS the officer who asked: the server reads their position every `seconds`
+    -- and moves the call, its blip and its spot (Respond / GPS / arrival) when they have moved `minMove` metres, until the
+    -- call closes (or auto-closes) or they go off duty / leave. Units on it get their GPS moved too, at most every
+    -- `gpsSeconds` and only once the officer is `gpsMove` metres from where the route points (a waypoint they set
+    -- somewhere else is never touched). The officer who asked sees a marker for each unit coming (`responders`), live,
+    -- until that unit is `arriveDistance` metres away (or On scene) or the call ends.
+    follow = {
+        backup = true, panic = true,
+        seconds = 4, minMove = 10,
+        gpsSeconds = 10, gpsMove = 35,
+        responders = true, arriveDistance = 40,
+        blip = { sprite = 56, color = 3, scale = 0.85 },   -- the responders' markers (56 = GTA's "cop patrol")
+    },
     -- 2.0.6: automatic alerts from the game. On-duty law never sets them off. chance = how often a witness calls it in
     -- (0.0 - 1.0); cooldown = seconds per player; a second report near an active one adds a note to it (area) instead
     -- of a new call. Other scripts: exports.es_mdt:ShotsFired(coords) / VehicleTheft(coords, plate, model) always file.
@@ -368,8 +381,23 @@ Config.Panic = {
     blip     = { sprite = 161, color = 1 },
 }
 
--- Live map (Active units > Map): positions refresh this often while an officer looks at it
-Config.MapRefreshMs = 3000
+-- Live map (MDT > Live map): positions refresh this often, only while an officer has the tab open
+Config.MapRefreshMs = 2500
+
+-- 2.0.9: the Live map tab. Calls follow the Dispatch tab's routing (an officer sees the calls their MDT lists).
+--   units: whose positions an officer sees: 'group' = their dispatch group (police, sheriff and state police see each
+--          other; EMS sees EMS), 'own' = their own department only, 'all' = every unit on duty. Admins see everyone.
+--   image: the map picture. The default (img/map.webp) is GTA V's own map, which belongs to Rockstar Games (see
+--          html/mdt/img/NOTICE.md). Any 4096 x 4096 picture of the same layout works: a file in this resource or
+--          an https:// link.
+Config.LiveMap = {
+    enabled = true,
+    units = 'group',
+    calls = true,
+    bolos = true,
+    showSpeed = true,
+    image = 'img/map.webp',
+}
 
 -- Mugshots: a picture from the officer's own game, through a camera aimed at the suspect's face (WHIP RequestScreenshot).
 -- Or a link to a public picture (http/https, jpg/png/webp, 2 MB at most).

@@ -302,87 +302,14 @@
   }
 
   // ================================================================ LIVE MAP
-  const MAP = { size: 4096, scale: 0.5, x: 0, y: 0, timer: null, data: null, show: { units: true, calls: true, bolos: true }, centered: false };
-  const toMap = (wx, wy) => [((0.02072 * wx + 117.3) / 256) * MAP.size, ((-0.0205 * wy + 172.8) / 256) * MAP.size];
-  HOOK.unitsToggle = (mode) => `<div class="seg" id="u-mode"><button data-umode="list" class="${mode === 'list' ? 'on' : ''}" data-probe-press>☰ List</button><button data-umode="map" class="${mode === 'map' ? 'on' : ''}" data-probe-press>🗺 Map</button></div>`;
-  HOOK.unitsWire = (v) => $$('[data-umode]', v).forEach((b) => b.onclick = () => { S.unitsMode = b.dataset.umode; if (S.unitsMode !== 'map') stopMap(); go('units'); });
-  function stopMap() { clearTimeout(MAP.timer); MAP.timer = null; }
-
-  HOOK.unitsMap = (v) => {
-    v.innerHTML = `<div class="v-head"><div><div class="v-title">Active units</div><div class="hint">Live positions of everyone on duty, active calls and where BOLO plates were last read · every ${Math.round((cfg().mapRefreshMs || 3000) / 1000)} s</div></div>
-      <div class="row">${HOOK.unitsToggle('map')}</div></div>
-      <div class="map-card"><div class="map-wrap" id="map-wrap"><div class="map-inner" id="map-inner"><img src="img/map.webp" alt="" draggable="false" id="map-img"><div id="map-pins"></div></div></div>
-        <div class="map-tools"><button class="btn small" data-mz="1" title="Zoom in">＋</button><button class="btn small" data-mz="-1" title="Zoom out">－</button><button class="btn small" id="map-me" title="Center on me">◎ Me</button></div>
-        <div class="map-legend">${[['units', '● Units'], ['calls', '☎ Calls'], ['bolos', '⚑ BOLO plates']].map(([k, l]) => `<label class="chip-t"><input type="checkbox" data-ml="${k}"${MAP.show[k] ? ' checked' : ''}><span>${l}</span></label>`).join('')}<span class="hint" id="map-stamp"></span></div>
-        <div class="map-pop hidden" id="map-pop"></div></div>`;
-    HOOK.unitsWire(v);
-    const wrap = $('#map-wrap');
-    const apply = () => { const inner = $('#map-inner'); if (!inner) return; inner.style.transform = `translate(${MAP.x}px, ${MAP.y}px) scale(${MAP.scale})`; inner.style.setProperty('--inv', 1 / MAP.scale); };
-    const zoomAt = (f, cx, cy) => { const ns = Math.max(0.18, Math.min(3, MAP.scale * f)); const k = ns / MAP.scale; MAP.x = cx - (cx - MAP.x) * k; MAP.y = cy - (cy - MAP.y) * k; MAP.scale = ns; apply(); };
-    MAP.center = (wx, wy) => { const [px, py] = toMap(wx, wy); MAP.x = wrap.clientWidth / 2 - px * MAP.scale; MAP.y = wrap.clientHeight / 2 - py * MAP.scale; apply(); };
-    wrap.addEventListener('wheel', (e) => { e.preventDefault(); const r = wrap.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
-    let drag = null;
-    wrap.addEventListener('mousedown', (e) => { if (e.target.closest('.mpin')) return; drag = { x: e.clientX, y: e.clientY, ox: MAP.x, oy: MAP.y }; wrap.classList.add('grab'); $('#map-pop').classList.add('hidden'); });
-    window.addEventListener('mousemove', (e) => { if (!drag) return; MAP.x = drag.ox + e.clientX - drag.x; MAP.y = drag.oy + e.clientY - drag.y; apply(); });
-    window.addEventListener('mouseup', () => { drag = null; if (wrap) wrap.classList.remove('grab'); });
-    $$('[data-mz]', v).forEach((b) => b.onclick = () => zoomAt(+b.dataset.mz > 0 ? 1.35 : 1 / 1.35, wrap.clientWidth / 2, wrap.clientHeight / 2));
-    $$('[data-ml]', v).forEach((c) => c.onchange = () => { MAP.show[c.dataset.ml] = c.checked; drawPins(); });
-    $('#map-me').onclick = () => { const me = MAP.data && (MAP.data.units || []).find((u) => u.charId === S.ctx.me.charId); if (me) MAP.center(me.x, me.y); else MAP.center(200, -900); };
-    if (!MAP.centered) { MAP.scale = 0.55; MAP.center(200, -900); } else apply();
-    pollMap(true);
-  };
-
-  async function pollMap(first) {
-    clearTimeout(MAP.timer);
-    if (S.view !== 'units' || S.unitsMode !== 'map' || !$('#map-wrap')) return;
-    if (S.open) {
-      const r = await call('mapData');
-      if (!$('#map-wrap')) return;
-      if (r.ok) {
-        MAP.data = r.data; drawPins();
-        if (first && !MAP.centered) { const me = (r.data.units || []).find((u) => u.charId === S.ctx.me.charId); if (me) MAP.center(me.x, me.y); MAP.centered = true; }
-        $('#map-stamp').textContent = `${(r.data.units || []).length} on duty · ${(r.data.calls || []).length} calls · updated ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-      } else if (first) { $('#map-stamp').textContent = r.why || 'The map is not available'; }
-    }
-    MAP.timer = setTimeout(() => pollMap(false), cfg().mapRefreshMs || 3000);
-  }
-
-  function drawPins() {
-    const host = $('#map-pins'); if (!host || !MAP.data) return;
-    const d = MAP.data, out = [];
-    if (MAP.show.bolos) (d.bolos || []).forEach((b) => { const [x, y] = toMap(b.x, b.y); out.push(`<div class="mpin mp-bolo" style="left:${x}px;top:${y}px" data-mp="b:${b.id}"><span class="pm">⚑</span><span class="pl">${esc(b.plate || 'BOLO')}</span></div>`); });
-    // 2.0.7: a witness call's search area (its centre is not the spot; the spot is somewhere inside)
-    if (MAP.show.calls) (d.calls || []).forEach((c) => { if (!c.radius) return; const [x, y] = toMap(c.x, c.y); const r = (0.02072 * c.radius / 256) * MAP.size;
-      out.push(`<div class="marea p${c.priority}" style="left:${x}px;top:${y}px;width:${2 * r}px;height:${2 * r}px"></div>`); });
-    if (MAP.show.calls) (d.calls || []).forEach((c) => { const [x, y] = toMap(c.x, c.y); out.push(`<div class="mpin mp-call p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}${c.critical ? ' is-crit' : ''}" style="left:${x}px;top:${y}px" data-mp="c:${c.id}"><span class="pm">${c.kind === 'panic' ? '⚠' : '☎'}</span><span class="pl">#${c.id}</span></div>`); });
-    if (MAP.show.units) (d.units || []).forEach((u) => { const [x, y] = toMap(u.x, u.y); const me = u.charId === S.ctx.me.charId; const st = M.statusOf(u.status);
-      out.push(`<div class="mpin mp-unit${u.panic ? ' is-panic' : ''}${me ? ' me' : ''}" style="left:${x}px;top:${y}px;--sc:${esc(st.color)};--gc:${esc(u.color1 || '#3b82f6')}" data-mp="u:${u.charId}"><span class="pm"><i class="hd" style="transform:rotate(${-(u.h || 0)}deg)"></i></span><span class="pl">${esc(u.callsign || u.name.split(' ')[0])}</span></div>`); });
-    host.innerHTML = out.join('');
-    $$('[data-mp]', host).forEach((el) => el.onclick = (e) => { e.stopPropagation(); mapPop(el.dataset.mp, el); });
-  }
-
-  function mapPop(key, el) {
-    const [k, id] = key.split(':'), d = MAP.data, pop = $('#map-pop');
-    let html = '';
-    if (k === 'u') { const u = d.units.find((x) => x.charId === +id); if (!u) return; const st = M.statusOf(u.status);
-      html = `<b>${esc(u.callsign || '—')} ${esc(u.name)}</b><div class="hint">${esc(u.deptShort || '')} · <span style="color:${esc(st.color)}">${esc(st.label)}</span>${u.car ? ' · in a vehicle' : ' · on foot'}</div>${u.panic ? '<div class="txt-bad"><b>⚠ PANIC</b></div>' : ''}
-        <div class="row"><button class="btn small" data-pw="${u.x},${u.y}">⌖ Waypoint</button><button class="btn small ghost" data-person="${u.charId}">Profile</button></div>`; }
-    if (k === 'c') { const c = d.calls.find((x) => x.id === +id); if (!c) return;
-      html = `<div class="row">${priPill(c.priority)}${kindTag(c.kind)}</div><b>#${c.id} ${esc(c.title)}</b><div class="hint">📍 ${esc(c.street || '')} · ${ago(c.createdAt)}</div>
-        <div class="row"><button class="btn small" data-pw="${c.x},${c.y}">⌖ Waypoint</button><button class="btn small accent" data-pcall="${c.id}">Open call</button></div>`; }
-    if (k === 'b') { const b = d.bolos.find((x) => x.id === +id); if (!b) return;
-      html = b.kind === 'person'
-        ? `<div class="row"><span class="pill">Person</span>${pill('BOLO', 'bad')}</div><b>${esc(b.title)}</b><div class="hint">Last seen ${ago(b.seenAt)}</div>
-        <div class="row"><button class="btn small" data-pw="${b.x},${b.y}">⌖ Waypoint</button>${b.charId ? `<button class="btn small ghost" data-person="${b.charId}">Profile</button>` : ''}</div>`
-        : `<div class="row"><span class="plate">${esc(b.plate || '')}</span>${pill('BOLO', 'bad')}</div><b>${esc(b.title)}</b><div class="hint">Plate last read ${ago(b.seenAt)}</div>
-        <div class="row"><button class="btn small" data-pw="${b.x},${b.y}">⌖ Waypoint</button>${b.plate ? `<button class="btn small ghost" data-pveh="${esc(b.plate)}">Vehicle</button>` : ''}</div>`; }
-    pop.innerHTML = html; pop.classList.remove('hidden');
-    const r = el.getBoundingClientRect(), wr = $('.map-card').getBoundingClientRect();
-    pop.style.left = Math.min(wr.width - 270, Math.max(8, r.left - wr.left + 14)) + 'px'; pop.style.top = Math.min(wr.height - 150, Math.max(8, r.top - wr.top + 10)) + 'px';
-    $$('[data-pw]', pop).forEach((b) => b.onclick = async () => { const [x, y] = b.dataset.pw.split(',').map(Number); said(await post('waypoint', { x, y }), 'Waypoint set'); });
-    $$('[data-pcall]', pop).forEach((b) => b.onclick = () => { D.status = 'active'; go('dispatch', +b.dataset.pcall); });
-    $$('[data-pveh]', pop).forEach((b) => b.onclick = () => go('vehicles', b.dataset.pveh));
-  }
+  // 2.0.9: the map is its own tab now (livemap.js). The Units page's Map button opens it.
+  HOOK.unitsToggle = (mode) => `<div class="seg" id="u-mode"><button data-umode="list" class="${mode === 'list' ? 'on' : ''}" data-probe-press>☰ List</button><button data-umode="map" class="${mode === 'map' ? 'on' : ''}" data-probe-press>🗺 Live map</button></div>`;
+  HOOK.unitsWire = (v) => $$('[data-umode]', v).forEach((b) => b.onclick = () => { if (b.dataset.umode === 'map') { S.unitsMode = 'list'; go('livemap'); } else { S.unitsMode = 'list'; go('units'); } });
+  HOOK.unitsMap = () => { S.unitsMode = 'list'; go('livemap'); };
+  M.openCall = (id) => { D.status = 'active'; go('dispatch', +id); };
+  M.priPill = (p) => priPill(p);
+  M.kindTag = (k) => kindTag(k);
+  M.kindLabel = (k) => KIND[k] || k;
 
   // ================================================================ MUGSHOTS
   HOOK.person = (box, p, reload) => {
@@ -714,8 +641,8 @@
       if (S.view === 'dashboard' && !(M.modalOpen && M.modalOpen())) go('dashboard');
     } else if (m.action === 'callEscalated' || m.action === 'callMerged') {   // 2.0.6 / 2.0.7: quiet (the Dispatch tab refreshes by itself)
       if (S.open) M.loadBadges();
-    } else if (m.action === 'open') { setTimeout(() => urgentOnOpen(S.ctx), 350);
-    } else if (m.action === 'close') { stopMap(); }
+    } else if (m.action === 'open') { setTimeout(() => urgentOnOpen(S.ctx), 350);   // (the live map stops itself on close: livemap.js)
+    }
   });
 })();
 

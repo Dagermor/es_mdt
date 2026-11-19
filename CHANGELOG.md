@@ -1,5 +1,26 @@
 # Changelog
 
+## es_mdt 2.0.9 (2026-11-18)
+
+**Backup and panic calls follow the officer who asked, with a marker for each unit coming. Plus a new Live map tab: every unit and call on an interactive GTA map, updated live.** See [Live map](README.md#live-map) and [Backup and panic follow the officer](README.md#backup-and-panic-follow-the-officer).
+
+- **Backup and panic calls follow the officer** (`Config.Dispatch.follow`, or `/whip` → Settings → MDT → *Backup and panic follow the officer*):
+  - The server reads the officer's position itself every 4 s (`seconds`). Once they have moved 10 m (`minMove`), it moves the call's blip and its spot, so Respond, GPS and the arrival check all use where the officer is now.
+  - Units on the call get their GPS moved too, at most every 10 s (`gpsSeconds`), and only once the officer is 35 m (`gpsMove`) from where the route points. A waypoint a unit set somewhere else is never touched.
+  - The officer who asked sees a marker on their map for each unit coming ("Responding · 1-A-12"), live. A marker goes away when that unit is 40 m away (`arriveDistance`) or On scene, or when the call ends. They get a notice when a unit starts responding and when it arrives.
+  - Following stops when the call closes or auto-closes, or the officer goes off duty or leaves. The call then stays where they were last, with a note on it.
+  - Backup and panic can each be switched on or off. Calls followed when the server restarts stay where they were.
+- **Live map tab in the MDT** (`Config.LiveMap`, or `/whip` → Settings → MDT → *Live map*):
+  - Every on-duty unit: callsign, name, department colour, status, in a car or on foot, heading, and speed in a vehicle. Your own pin is marked.
+  - Active calls in priority colours, critical calls pulsing, witness calls' search circles, a dashed line from each responding unit to its call, and where BOLO plates were last read.
+  - Drag to pan, scroll or double-click to zoom, keys `+` `−` `0` and the arrows. Pins glide between updates. Buttons: zoom, centre on me, fit everyone, and a dark or a colour map.
+  - Click a unit for its details (status, moving, heading, distance from you, its call) with Waypoint, Follow on the map and Profile. Click a call to see it with Respond + GPS, GPS and Open call.
+  - A side list of units by department and calls (critical first), search, department filters with counts, and a Layers menu (units, calls, search areas, responding lines, BOLO plates, labels).
+  - It refreshes every 2.5 s (`Config.MapRefreshMs`), only while the tab is open and the MDT is on screen.
+  - Who sees what: calls follow the Dispatch tab's routing. Units: `units = 'group'` (their dispatch group: police, sheriff and state police together; EMS), `'own'` (their department) or `'all'`. Admins see everything. The tab can be switched off for officers.
+  - The map picture: see [the map picture](README.md#the-map-picture). Point `Config.LiveMap.image` at your own picture, or delete the file to get a plain grid. The map still works without it.
+  - It replaces the old map in the Active units tab, whose button now opens the Live map.
+
 ## es_mdt 2.0.8 (2026-11-18)
 
 **Change the MDT live from WHIP's admin panel, set your own MDT size and alert sound from the pause menu, robbery calls named by the store, and speeding alerts the admin sets up.** See [Changing settings live](README.md#changing-settings-live).

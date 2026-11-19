@@ -342,6 +342,7 @@ local function openData(c)
             unpaidFineWarrantDays = Config.UnpaidFineWarrantDays or 0, highCommandLevel = Config.HighCommandLevel or 80,
             weaponTypes = weaponTypes(), licenseTypes = W.licenseTypes or { 'Firearm' }, boloOnStolen = W.boloOnStolen ~= false,
             outcomes = MDT.outcomeList and MDT.outcomeList() or {}, mapRefreshMs = Config.MapRefreshMs or 3000,
+            liveMap = MDT.liveMapPage and MDT.liveMapPage() or nil,   -- 2.0.9
             panicKey = (Config.Panic or {}).key or '', panicCommand = (Config.Panic or {}).command or 'panic',
             reportTemplates = Config.ReportTemplates or {}, mugshotRange = (Config.Mugshots or {}).range or 6,
             esEvidence = GetResourceState('es_evidence') == 'started', devTools = EsSuite.DevTools == true },   -- 1.11.1: es_evidence parts hidden when it is off

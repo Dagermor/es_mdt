@@ -144,7 +144,37 @@ Whip.configPage({
             { key = 'Jail.recordMinutesPerMonth', type = 'number', min = 0.05, max = 60, step = 0.05, unit = 'min', label = 'With no jail script: real minutes per month' },
             { key = 'WhipEvidence.enabled', type = 'enum', label = 'whip_evidence bridge', options = {
                 { value = 'auto', label = 'Automatic (on when whip_evidence is installed)' }, { value = true, label = 'On' }, { value = false, label = 'Off' } } },
-            { key = 'MapRefreshMs', type = 'int', min = 1000, max = 30000, step = 500, unit = 'ms', label = 'Live map refresh' },
+        } },
+        -- 2.0.9
+        { id = 'follow', label = 'Backup and panic follow the officer', settings = {
+            { key = D .. 'follow.backup', type = 'bool', label = 'A backup call follows the officer who asked',
+              help = 'Its blip, GPS routes and the spot units arrive at move with them until the call closes or they go off duty.' },
+            { key = D .. 'follow.panic', type = 'bool', label = 'A panic call follows the officer too' },
+            { key = D .. 'follow.seconds', type = 'int', min = 2, max = 30, unit = 's', label = 'Read their position every',
+              help = 'The server reads it itself.' },
+            { key = D .. 'follow.minMove', type = 'int', min = 1, max = 200, unit = 'm', label = 'Move the call once they have moved' },
+            { key = D .. 'follow.gpsSeconds', type = 'int', min = 3, max = 120, unit = 's', label = "Responders' GPS moves at most every",
+              help = 'Only while their waypoint still points at the call. One they set somewhere else is never touched.' },
+            { key = D .. 'follow.gpsMove', type = 'int', min = 10, max = 500, unit = 'm', label = "Move responders' GPS once the officer is this far from it" },
+            { key = D .. 'follow.responders', type = 'bool', label = 'The officer sees a marker for each unit responding',
+              help = 'On their own map only, live, until that unit arrives or the call ends.' },
+            { key = D .. 'follow.arriveDistance', type = 'int', min = 5, max = 300, unit = 'm', label = 'A responding unit has arrived within',
+              shownWhen = on(D .. 'follow.responders') },
+        } },
+        { id = 'livemap', label = 'Live map', settings = {
+            { key = 'LiveMap.enabled', type = 'bool', label = 'Live map tab in the MDT', help = 'Admins always have it.' },
+            { key = 'LiveMap.units', type = 'enum', label = 'Officers see the units of', options = {
+                { value = 'group', label = 'Their dispatch group (police, sheriff and state police together; EMS)' },
+                { value = 'own', label = 'Their own department only' }, { value = 'all', label = 'Every department on duty' } },
+              shownWhen = on('LiveMap.enabled') },
+            { key = 'LiveMap.calls', type = 'bool', label = 'Show active calls', help = 'The ones their Dispatch tab lists.', shownWhen = on('LiveMap.enabled') },
+            { key = 'LiveMap.bolos', type = 'bool', label = 'Show where BOLO plates were last read', shownWhen = on('LiveMap.enabled') },
+            { key = 'LiveMap.showSpeed', type = 'bool', label = "Show units' speed in a vehicle", shownWhen = on('LiveMap.enabled') },
+            { key = 'MapRefreshMs', type = 'int', min = 1000, max = 30000, step = 500, unit = 'ms', label = 'Refresh every',
+              help = 'Only while an officer has the tab open.', shownWhen = on('LiveMap.enabled') },
+            { key = 'LiveMap.image', type = 'string', maxLen = 200, label = 'Map picture',
+              help = 'img/map.webp (GTA V\'s map), a file in es_mdt/html/mdt/img, or an https:// link. 4096 x 4096, the same layout.',
+              shownWhen = on('LiveMap.enabled') },
         } },
         { id = 'display', label = 'Display size', settings = {
             { key = 'UI.defaultScale', type = 'number', min = 0.5, max = 2, step = 0.05, label = 'Default size (1 = 100%)',

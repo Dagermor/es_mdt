@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.8).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.9).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -31,6 +31,8 @@ All screenshots use made-up test data.
 | ![Preset alert](docs/images/13_preset_alert_card.png) A ready-made alert (store robbery) with suspect details | ![Alert sounds](docs/images/13_alert_sounds_popover.png) Alert volume and mute in the Aa popover |
 | ![Admin settings](docs/images/14_whip_settings_mdt.png) Change the MDT live: /whip → Settings → MDT | ![Speeding settings](docs/images/14_whip_settings_speeding.png) Speeding alerts set up by the admin |
 | ![Pause menu](docs/images/14_pause_settings_mdt.png) Each player's MDT size and alert sound in the pause menu | ![Store name](docs/images/14_store_name_card.png) Robbery calls name the store |
+| ![Live map](docs/images/15_live_map.png) The Live map: every unit, live | ![Live map call](docs/images/15_live_map_call.png) A call on the Live map: Respond + GPS |
+| ![Backup follows](docs/images/15_backup_follow_map.png) A backup call that follows the officer | ![Live map colour](docs/images/15_live_map_atlas.png) The colour map, the whole state |
 
 ## Requirements
 
@@ -106,7 +108,9 @@ New in 2.0.8. **Change live in `/whip` → Settings → MDT.** `config.lua` is t
 | Alerts on screen | call cards (on/off, seconds, panic seconds, sound), sounds (engine, default volume), the critical alarm (repeat seconds, max repeats, stop when a unit responds), the call board, urgent-announcement hours |
 | Repeat reports and search areas | merging (distance, window), search circles (radius, minimum, shrink), **robbery store names** (`places.radius`, extra places) |
 | Automatic alerts | on-duty law exempt, search circles, per-minute cap, and for shots, vehicle theft, fights, explosions, a civilian down and **speeding**: on/off, chance, cooldown, priority and their own options |
-| Records, fines and jail | off-duty read only, fine cap, unpaid-fine warrant days, warrant BOLOs, jail provider, record minutes per month, whip_evidence bridge, map refresh |
+| Records, fines and jail | off-duty read only, fine cap, unpaid-fine warrant days, warrant BOLOs, jail provider, record minutes per month, whip_evidence bridge |
+| Backup and panic follow the officer | 2.0.9: on/off for backup and for panic, how often the position is read, how far they must move, how often responders' GPS moves, the responders' markers and the arrival distance |
+| Live map | 2.0.9: the tab on/off, whose units officers see (group, own department, all), calls, BOLO plates, speed, the refresh time, the map picture |
 | Display size | the MDT size range and the default |
 | Commands and keys (restart) | `/mdt` and its key, the 911/311/medical commands, chat suggestions, panic, backup and call-board commands and keys, DevTools. These need a restart. |
 
@@ -133,6 +137,41 @@ places = {
 
 **Speeding** (`Config.Dispatch.alerts.speeding`, off by default): `units` (`'mph'` or `'km/h'`), `limit` (80), `highwayLimit` (110 on roads named Fwy, Freeway, Hwy, Highway, Route or Interstate; 0 means one limit everywhere), `seconds` over the limit (4), `cooldown`, `chance` and `priority`. The alert reads e.g. "112 mph in a 80 zone", and the server checks the speed itself.
 
+## Live map
+
+New in 2.0.9. **MDT → Live map** shows every on-duty unit and active call on an interactive map of the state.
+
+![Live map](docs/images/15_live_map.png)
+
+- **Units:** callsign, name, department colour, status, in a car or on foot, an arrow for the heading, and speed in a vehicle. Your own pin is marked. Click one for its status, heading, distance from you and its call, with **Waypoint**, **Follow** (keeps it centred) and **Profile**.
+- **Calls:** priority colours (critical calls pulse), the search circle of witness calls, a dashed line from each responding unit, and BOLO plates where they were last read. Click one to **Respond + GPS**, set the **GPS** or **Open call**.
+- **Moving around:** drag to pan; scroll, double-click or `+` / `−` to zoom; `0` fits everyone; arrow keys pan. Buttons on the right: zoom, centre on me, fit everyone, and a dark or a colour map (remembered on that PC).
+- **Finding things:** search a callsign, name or call; filter departments with the chips at the top (with counts); the **Layers** menu turns units, calls, search areas, responding lines, BOLO plates and labels on or off. The side list has the units by department and the calls, critical first.
+- **Live:** it refreshes every `Config.MapRefreshMs` (2.5 s), only while the tab is open and the MDT is on screen, and pins glide between updates.
+- **Who sees what:** calls follow the Dispatch tab's routing (an officer sees the calls their MDT lists). Units follow `Config.LiveMap.units`: `'group'` (default: police, sheriff and state police see each other; EMS sees EMS), `'own'` (their department only) or `'all'`. Admins see everything. `enabled = false` hides the tab from officers (admins keep it).
+
+```lua
+Config.LiveMap = { enabled = true, units = 'group', calls = true, bolos = true, showSpeed = true, image = 'img/map.webp' }
+```
+
+### The map picture
+
+`html/mdt/img/map.webp` is GTA V's own map. It belongs to Rockstar Games and is **not** covered by this resource's MIT license. It is here the same way WHIP's own map is: for use on FiveM servers under Rockstar's and FiveM's terms (see [`html/mdt/img/NOTICE.md`](%5Bes%5D/es_mdt/html/mdt/img/NOTICE.md)). If you would rather not ship it:
+
+- set `Config.LiveMap.image` (or the setting in `/whip`) to your own 4096 × 4096 picture of the same layout, as a file in the resource (`'img/my_map.webp'`) or an `https://` link; or
+- delete the file. The map shows a plain grid, and every unit and call is still in the right place.
+
+## Backup and panic follow the officer
+
+New in 2.0.9 (`Config.Dispatch.follow`, or `/whip` → Settings → MDT → *Backup and panic follow the officer*).
+
+![Backup follows](docs/images/15_backup_follow_map.png)
+
+- A `/backup` call (and a panic call, `panic = true`) **moves with the officer who asked**. The server reads their position every `seconds` (4) and, once they have moved `minMove` (10 m), moves the call's blip and its spot. Respond, GPS and the arrival check use where the officer is now, and the Live map shows it with a "live" tag.
+- **Units on the call** get their GPS moved at most every `gpsSeconds` (10), and only when the officer is `gpsMove` (35 m) from where the route points. A unit that set its own waypoint somewhere else keeps it.
+- **The officer who asked sees who is coming** (`responders = true`): a marker for each responding unit ("Responding · 1-A-12", `blip`), live, and a notice when a unit starts responding and when it arrives. A marker goes away when that unit is within `arriveDistance` (40 m) or On scene, or the call ends.
+- It stops when the call is closed or auto-closed, or the officer goes off duty or leaves. The call stays where they were last, with a note. After a server restart, open calls stay where they were.
+
 ## Dispatch: routing, panic, backup and alerts
 
 All of this is in `Config.Dispatch` and `Config.Panic` (`es_mdt/mdt/config.lua`).
@@ -141,7 +180,7 @@ All of this is in `Config.Dispatch` and `Config.Panic` (`es_mdt/mdt/config.lua`)
 - **Calls from players:** `/911 <message>` and `/311 <message>` (and `/ems` when `medical = 'ems'`) add the street and position automatically, and each player can call once per `cooldownSec` (30 s). They show up in chat suggestions.
 - **Units on a call:** the call card and the MDT list every unit on the call (callsign, name, status) and update live.
 - **Panic:** the **END** key (rebind under GTA Settings → Key Bindings → FiveM; `Config.Panic.key`), `/panic`, or the MDT's red button. On-duty officers only, with a `cooldown` (15 s). It files a P1 **OFFICER DOWN** call at the officer's position for law and EMS. It works while the officer is downed, injured or dead: nothing checks health, ragdoll or death, and WHIP lets the call through (`whileDead`).
-- **Request backup:** the button on your call in the MDT, or `/backup` (bindable). It files a backup call at your position, linked to your call and sent where it went: P1 for a panic or P1 call, otherwise P2. The cooldown is 45 s.
+- **Request backup:** the button on your call in the MDT, or `/backup` (bindable). It files a backup call at your position, linked to your call and sent where it went: P1 for a panic or P1 call, otherwise P2. The cooldown is 45 s. Since 2.0.9 the call follows you (see [above](#backup-and-panic-follow-the-officer)).
 - **Escalation:** a call nobody attached to goes up one priority every 5 minutes, up to P1. Panics are never escalated. The MDT updates quietly, with one soft re-alert to the units (`escalate.realert`).
 - **Shots fired and vehicle theft:** automatic alerts from the game, each with its own `enabled`, `chance`, `cooldown` and `priority`. On-duty law, suppressed weapons and the Ammu-Nation ranges never trigger them, and repeat reports near an open call merge into it (×N reports and a note) rather than making a new call. Other scripts can file them directly with `exports.es_mdt:ShotsFired(coords)` and `exports.es_mdt:VehicleTheft(coords, plate, model)`.
 
@@ -448,6 +487,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.0.9:** in Lua tests against the real server code: backup and panic calls follow the officer (the call, its blip and its spot move once they have moved far enough, units on it are told, nothing moves when they stand still), it stops on close, auto-close, off duty, leaving and with the setting off, the responders' markers (shown only to the officer who asked, not for their partner, removed on arrival, On scene, or the call ending), and the client side (the card and the arrival spot move, the GPS moves only when the route still points at the call and not too often, never after arriving). The Live map data: who sees which units (group, own, all, admins), calls by the Dispatch routing, speed, the picture setting (only a file in the resource or an https link). In browser tests: the Live map tab (pins, car and foot icons, heading, search circles, responding lines, details, Respond + GPS, GPS, waypoint, search, department filters, layers, the colour map, live updates only while open, the picture falling back to a grid), and the settings pages in whip_core's own panel. All the 2.0.3 to 2.0.8 tests still pass. On a live server: es_mdt 2.0.9 starts with the schema check and no errors. Not tested in game: the blips moving and the responders' markers with real players, the GPS moving, the notices, and how the map positions line up in game.
 - **Tested for 2.0.8:** in Lua tests against whip_core's real settings code (`shared/settings.lua`, the pause-menu `player_prefs.lua`): the MDT page registers with nothing left off (about 100 settings), the defaults, the hidden sub-options, the restart rows, the type checks, values applied live into the tables the MDT holds, `/whip` Reset, and the three pause-menu rows (get, set, reset, admin default and range changes, a player's own choice kept). Also: the store names (built-in places, `storeName`, ids, the nearest place, extra places, the fallback, only the same store merging, the title on exports and the board), speeding (units, both limits, highway roads only by the road name, the peak cap, switched off live), and the client switches read live (backup, board, detectors, popup, alarm). The panel and the pause-menu page were rendered in whip_core's own UI with the real data, and all the 2.0.3 to 2.0.7 tests still pass. On a live server: es_mdt 2.0.8 starts with the schema check and no errors. Not tested in game: changing a setting in `/whip` and the pause menu with a real player, and the built-in store positions (from community maps, not checked in game).
 - **Tested for 2.0.7:** in Lua tests: every preset and export (the bank choice and fallback, `Alert` both ways, an unknown preset, no coordinates), suspect details (plate and text cleaning, weapon names and signed hashes as classes and grades, the details the server reads from a player), the search circle (the centre 0.2 to 0.85 of the radius from the spot in 200 random draws, only the centre and radius sent, no height), merging (×N, the shrinking circle still holding the true spot, another kind or after the window is a new call, notes at most every 30 s, priority only up, panics and es_jail alerts never merge, `merge = false`), critical calls (panic, presets, `panic = false`), the automatic alerts (fights, a civilian down only when really down and only for civilians, sent to EMS; speeding off by default and checked against the server's own speed reading; explosions ignoring harmless, invisible and on-duty-law ones, with a cooldown; the per-minute cap while merges still work), the call board (only for units on duty, no phone, audience or source label), links (attached or high rank only, missing records refused, unlink), and retention (batches with pauses, the counts, open and linked calls kept with their notes, a call linked during a sweep kept whole, `0` keeps everything). On the client: the three sound tiers, the alarm repeating and stopping (Hide, a unit responding, the board's Ack, closing, `maxRepeats`), mute and volume (saved, `/mdtvolume`, reset), the merged card, the board (the key O, its screen and focus, Respond with GPS, live reloads at most once a second, not over another screen or the MDT), the panic message, and the locker (MDT closed first, the stash asked for only once no screen is open, one request for two presses, never reopening the MDT, a refusal shown). Against real MariaDB: the 2.0.7 columns and the closed-call index (used by the cleanup query), the circle stored and listed by the real SQL, merging and the real time window, links, and the cleanup's `DELETE … JOIN` guards. The schema test passed again with 2.0.7 (fresh, 1.x and broken 2.0.4 databases). In browser tests: the critical, merged and preset cards, the MDT list and call page (×3, N responding, details, links), the search circles on the live map, the call board, the link dialog, **Open locker** sending one request, the rate-limit retry, and the alert-sound controls. All the 2.0.3 to 2.0.6 tests still pass. On a live server: migration `005_dispatch207` and the schema check, the presets through the real exports (a critical Pacific Standard call, cleaned details), a witness call's circle with the true spot kept on the server, three fight reports merged into one call (×3, a smaller circle that still holds the spot), es_jail-style alerts kept separate, a critical panic test call, `LinkCall`, the per-minute cap, and retention on old test calls (removed, a linked one kept, real calls untouched). Not tested in game with a real player: the sounds and alarm themselves, the O key, the fight, explosion, down and speeding detection, and the locker stash opening after the MDT closes.
 - **Tested for 2.0.6:** in Lua tests: routing for every call kind (including a server with no EMS department, and `shared`), the medical line, chat suggestions, the unit list, the panic key mapping (END, the old mapping kept) and pressing it while dead, at 0 health and ragdolled, the panic callback being `whileDead` with no death checks, the panic cooldown and on-duty rule, OFFICER DOWN going to law and EMS, backup (linking, priority, cooldown, while downed), escalation (never a panic, never past P1, never a call with a unit), and shots and theft alerts (toggles, chance, cooldowns, law and suppressed exemptions, area merging, the exports). In browser tests: the call card's unit list, escalated, officer-down and backup cards, and the MDT call page with units and Request backup. On a live server: the calls filed and routed, and the database migration. Not tested in game with a real player: the END key itself, pressing it while actually downed, and the game-side shots and theft detection.

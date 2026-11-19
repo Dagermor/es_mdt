@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.0.8'
+version '2.0.9'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -94,6 +94,8 @@ files {
     'html/mdt/officer.js',
     'html/mdt/ops.css',
     'html/mdt/ops.js',
+    'html/mdt/livemap.css',   -- 2.0.9: the Live map tab
+    'html/mdt/livemap.js',
     'html/mdt/permitapp.js',
     'html/mdt/permits.css',
     'html/mdt/permits.js',
@@ -104,7 +106,7 @@ files {
     'html/mdt/training.js',
     'html/mdt/whipev.css',
     'html/mdt/whipev.js',
-    'html/mdt/img/map.webp',
+    'html/mdt/img/*',         -- 2.0.9: the map picture (img/map.webp, or your own: Config.LiveMap.image)
     'html/departments/app.css',
     'html/departments/app.js',
     'html/departments/index.html',

@@ -615,9 +615,12 @@ end
 --- 2.0.3: a call is closed or gone: its map blip goes for everyone at once (not only when the blip's time runs out),
 --- and a panic call takes its PANIC blip and the officer's panic flag with it.
 local PanicCall = {}   -- [charId] = the call id of their last panic
+local Follow = {}      -- 2.0.9: [callId] = a backup / panic call following its officer (below)
+local stopFollow       -- 2.0.9: below
 local function callGone(cid)
     cid = tonumber(cid)
     if not cid then return end
+    if Follow[cid] then stopFollow(cid) end
     hideDutyBlip('call:' .. cid)
     for charId, pc in pairs(PanicCall) do
         if pc == cid then
@@ -689,6 +692,7 @@ local function panic(c, street)
         message = ('Officer %s (%s) pressed the panic button'):format(who, me.g.short or ''), callerCharId = c.charId,
         callerName = me.u.name, deptId = me.g.id, blip = false })
     if callId then PanicCall[c.charId] = callId end
+    if callId and MDT.startFollow then MDT.startFollow(callId, c.charId, c.source, 'panic', pos) end   -- 2.0.9
     local list = routedDuty(aud)
     local b = PAN.blip or {}
     showDutyBlip('panic:' .. c.charId, { coords = vector3(pos.x, pos.y, pos.z),
@@ -829,6 +833,9 @@ local function unitGone(charId, source)
         tellUnits(r.callId)
     end
     if #rows > 0 then MDT.refresh('calls') end
+    for fid, f in pairs(Follow) do
+        if f.charId == charId then stopFollow(fid, 'Stopped following the officer (went off duty or left): the call stays where they were last') end
+    end
     repushDutyBlips()
     if source and GetPlayerName(source) then TriggerClientEvent('es_mdt:client:offDuty', source) end
 end
@@ -988,6 +995,7 @@ local function requestBackup(c, callId, street)
         callerCharId = c.charId, callerName = me.u.name, deptId = me.g.id, parentId = r and r.id or nil,
         audience = r and r.audience or nil })   -- none: the 'backup' route
     if not newId then BackupCool[c.charId] = nil return false, why end
+    MDT.startFollow(newId, c.charId, c.source, 'backup', pos)   -- 2.0.9: the call follows me
     if r then
         MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)',
             { r.id, c.charId, ('Backup requested (P%d) · call #%d'):format(pri, newId) })
@@ -997,6 +1005,122 @@ local function requestBackup(c, callId, street)
     return { id = newId, priority = pri, units = #routedDuty(audOf(newId)) }
 end
 MDT.requestBackup = requestBackup
+
+-- ---------------------------------------------------------------- 2.0.9: backup / panic calls follow their officer
+-- Config.Dispatch.follow (read live). Every `seconds` the server reads the officer's position itself (GetEntityCoords
+-- of their ped: nothing comes from a client) and, once they have moved `minMove` m, moves the call's row (so Respond,
+-- GPS, the arrival check and the MDT use it), its blip (and the PANIC blip) and tells the call's audience
+-- (es_mdt:client:callMoved: cards, board, responders' GPS, throttled on their side). The officer sees a marker for each
+-- unit on the call (a WHIP blip only they get), until that unit is close (`arriveDistance`) or On scene, or the call
+-- ends. It stops when the call closes / auto-closes, the officer goes off duty or leaves, or the setting is turned off.
+local function FOL() local f = DSP.follow return type(f) == 'table' and f or {} end
+MDT.followCfg = FOL
+local function respBlipId(cid, charId) return ('resp:%d:%d'):format(cid, charId) end
+local function followNote(cid, note)
+    MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { cid, nil, note })
+end
+stopFollow = function(cid, note)
+    local f = Follow[cid]
+    if not f then return end
+    Follow[cid] = nil
+    for x in pairs(f.shown) do pcall(function() WC:HideBlip(respBlipId(cid, x)) end) end
+    if note then pcall(followNote, cid, note) MDT.refresh('calls') end
+end
+MDT.stopFollow = function(cid, note) return stopFollow(tonumber(cid), note) end
+--- start following: the call's blip no longer times out (it lives until the call closes)
+function MDT.startFollow(cid, charId, source, kind, pos)
+    cid = tonumber(cid)
+    if not cid or not pos or not source or FOL()[kind] == false then return false end
+    Follow[cid] = { charId = charId, source = source, kind = kind, x = pos.x, y = pos.y, z = pos.z, shown = {}, done = {}, at = now() }
+    local b = DutyBlips['call:' .. cid]
+    if b then showDutyBlip('call:' .. cid, b.spec, nil, routedDuty(b.aud), b.aud) end
+    return true
+end
+MDT.Follow = Follow
+
+local function followResponders(cid, f, pos, idx)
+    local cfg = FOL()
+    local arrive = math.max(5, tonumber(cfg.arriveDistance) or 40)
+    local bl = type(cfg.blip) == 'table' and cfg.blip or {}
+    local want = {}
+    if cfg.responders ~= false then
+        local skip = {}
+        for _, x in ipairs(meAndPartner({ charId = f.charId })) do skip[x] = true end
+        for _, r in ipairs(MySQL.query.await('SELECT `charId` FROM `es_mdt_call_units` WHERE `callId` = ?', { cid }) or {}) do
+            local x = tonumber(r.charId)
+            local e = x and idx[x]
+            if x and not skip[x] and not f.done[x] and e and e.u.source then
+                local p = coordsOf(e.u.source)
+                local sign = e.u.callsign or e.u.name or ''
+                if p and (dist2(p, pos) <= arrive or statusOf(x) == 'scene') then
+                    f.done[x] = true   -- there: the marker goes and stays gone
+                    if f.shown[x] then TriggerClientEvent('es_mdt:client:followUnit', f.source, { id = cid, kind = f.kind, cs = sign, state = 'arrived' }) end
+                elseif p then
+                    want[x] = true
+                    local first = not f.shown[x]
+                    f.shown[x] = true
+                    pcall(function()
+                        WC:ShowBlip({ people = { f.source } }, respBlipId(cid, x), { coords = vector3(p.x, p.y, p.z),
+                            label = ('Responding · %s'):format(sign):sub(1, 40), sprite = math.tointeger(tonumber(bl.sprite)) or 56,
+                            color = math.tointeger(tonumber(bl.color)) or 3, scale = tonumber(bl.scale) or 0.85 })
+                    end)
+                    if first then TriggerClientEvent('es_mdt:client:followUnit', f.source, { id = cid, kind = f.kind, cs = sign, state = 'coming' }) end
+                end
+            end
+        end
+    end
+    for x in pairs(f.shown) do
+        if not want[x] then f.shown[x] = nil pcall(function() WC:HideBlip(respBlipId(cid, x)) end) end
+    end
+end
+
+local function followTick()
+    if next(Follow) == nil then return end
+    local cfg = FOL()
+    local _, idx = MDT.dutyNow()
+    local minMove = math.max(1, tonumber(cfg.minMove) or 10)
+    for cid, f in pairs(Follow) do
+        local e = idx[f.charId]
+        if cfg[f.kind] == false then
+            stopFollow(cid)   -- turned off: the call stays where it is now
+        elseif not e or e.u.source ~= f.source or not GetPlayerName(f.source) then
+            stopFollow(cid, 'Stopped following the officer (went off duty or left): the call stays where they were last')
+        else
+            local pos = coordsOf(f.source)
+            if pos then
+                if dist2(pos, f) >= minMove then
+                    f.x, f.y, f.z = pos.x, pos.y, pos.z
+                    MySQL.update.await("UPDATE `es_mdt_calls` SET `x` = ?, `y` = ?, `z` = ? WHERE `id` = ? AND `status` = 'active'", { pos.x, pos.y, pos.z, cid })
+                    local v = vector3(pos.x, pos.y, pos.z)
+                    local ids = { 'call:' .. cid }
+                    if f.kind == 'panic' then ids[2] = 'panic:' .. f.charId end
+                    for _, bid in ipairs(ids) do
+                        local b = DutyBlips[bid]
+                        if b then
+                            b.spec.coords = v
+                            local people = sourcesOf(b.aud and routedDuty(b.aud) or onDuty())
+                            if #people > 0 then pcall(function() WC:ShowBlip({ people = people }, bid, b.spec) end) end
+                        end
+                    end
+                    local payload = { id = cid, x = pos.x, y = pos.y, z = pos.z, gps = math.max(3, tonumber(cfg.gpsSeconds) or 10),
+                        gpsMove = math.max(10, tonumber(cfg.gpsMove) or 35) }
+                    for _, u in ipairs(routedDuty(audOf(cid))) do TriggerClientEvent('es_mdt:client:callMoved', u.source, payload) end
+                end
+                followResponders(cid, f, pos, idx)
+            end
+        end
+    end
+end
+MDT.followTick = followTick
+if type(CreateThread) == 'function' then
+    CreateThread(function()
+        while true do
+            Wait(math.max(2, math.min(30, tonumber(FOL().seconds) or 4)) * 1000)
+            local ok, err = pcall(followTick)
+            if not ok then print(('^3[es_mdt] follow: %s^7'):format(tostring(err))) end
+        end
+    end)
+end
 
 -- ---------------------------------------------------------------- 2.0.6: shots fired / vehicle theft
 -- From the game (es_mdt:server:autoAlert: Config.Dispatch.alerts, chance, cooldowns, on-duty law exempt) or from other
@@ -1347,29 +1471,108 @@ MDT.escalateSweep = escalateSweep
 -- ---------------------------------------------------------------- map
 
 local MapCache = { at = 0 }
-local function mapData()
+local function LM() local l = Config.LiveMap return type(l) == 'table' and l or {} end
+MDT.liveMapCfg = LM
+--- what the page needs: on / off, whose units, the picture (a file in this resource, or an https:// link)
+function MDT.liveMapPage()
+    local L = LM()
+    local img = type(L.image) == 'string' and L.image or ''
+    if not (img:match('^img/[%w_%-%./]+%.%a+$') and not img:find('..', 1, true)) and not img:match('^https://[%w%-%._~:/%%?#@!$&+,;=]+$') then img = 'img/map.webp' end
+    return { enabled = L.enabled ~= false, units = (L.units == 'own' or L.units == 'all') and L.units or 'group', image = img,
+        calls = L.calls ~= false, bolos = L.bolos ~= false }
+end
+--- 2.0.9: everything on the live map, read once every 1.5 s at most for every viewer (each gets their share: mapData)
+local function mapBase()
     if GetGameTimer() - MapCache.at < 1500 and MapCache.data then return MapCache.data end
     local _, idx = MDT.dutyNow()
-    local units = {}
     local t = now()
+    -- who is on which active call
+    local onCall, byCall = {}, {}
+    for _, r in ipairs(MySQL.query.await("SELECT u.`callId`, u.`charId` FROM `es_mdt_call_units` u JOIN `es_mdt_calls` c ON c.`id` = u.`callId` WHERE c.`status` = 'active' ORDER BY u.`attachedAt`") or {}) do
+        local cid, ch = tonumber(r.callId), tonumber(r.charId)
+        if cid and ch then
+            onCall[ch] = onCall[ch] or cid
+            byCall[cid] = byCall[cid] or {}
+            table.insert(byCall[cid], ch)
+        end
+    end
+    local units = {}
     for cid, e in pairs(idx) do
         if e.u.source then
             local pos, hd = coordsOf(e.u.source)
             if pos then
                 local ped = GetPlayerPed(e.u.source)
-                units[#units + 1] = { charId = cid, callsign = e.u.callsign, name = e.u.name, status = e.u.status, deptShort = e.g.short,
-                    color1 = e.g.color1, x = pos.x, y = pos.y, h = hd, car = GetVehiclePedIsIn(ped, false) ~= 0,
-                    panic = (MDT.Panic[cid] or 0) > t or nil }
+                local veh = GetVehiclePedIsIn(ped, false)
+                local ms
+                if veh ~= 0 then local v = GetEntityVelocity(veh) ms = math.sqrt(v.x * v.x + v.y * v.y) end
+                units[#units + 1] = { charId = cid, callsign = e.u.callsign, name = e.u.name, status = statusOf(cid), deptId = e.g.id,
+                    deptShort = e.g.short, deptName = e.g.name, deptType = e.g.type, color1 = e.g.color1, x = pos.x, y = pos.y,
+                    h = hd, car = veh ~= 0, ms = ms, callId = onCall[cid], panic = (MDT.Panic[cid] or 0) > t or nil }
             end
         end
     end
-    local calls = MySQL.query.await("SELECT `id`,`kind`,`priority`,`title`,`street`," .. PUB_XYZ .. ",`critical`,`reports`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt` FROM `es_mdt_calls` WHERE `status` = 'active' AND `x` IS NOT NULL ORDER BY `id` DESC LIMIT 60") or {}
-    for _, r in ipairs(calls) do r.critical = r.critical == true or r.critical == 1 or nil end
+    local calls = MySQL.query.await("SELECT `id`,`kind`,`priority`,`title`,`street`," .. PUB_XYZ .. ",`critical`,`reports`,`audience`,`preset`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt` FROM `es_mdt_calls` WHERE `status` = 'active' AND `x` IS NOT NULL ORDER BY `id` DESC LIMIT 60") or {}
+    for _, r in ipairs(calls) do
+        r.critical = r.critical == true or r.critical == 1 or nil
+        r.reports = tonumber(r.reports) or 1
+        local P = r.preset and presetOf(r.preset)
+        r.icon = P and type(P.icon) == 'string' and P.icon:sub(1, 8) or nil
+        r.follows = Follow[r.id] and true or nil
+        r.unitIds = byCall[r.id] or {}
+    end
     local bolos = MySQL.query.await([[SELECT `id`,`kind`,`charId`,`plate`,`title`,`lastX` AS `x`,`lastY` AS `y`,UNIX_TIMESTAMP(`lastSeenAt`) AS `seenAt` FROM `es_mdt_bolos`
         WHERE `status` = 'active' AND `lastX` IS NOT NULL AND `lastSeenAt` > NOW() - INTERVAL 2 HOUR ORDER BY `lastSeenAt` DESC LIMIT 30]]) or {}
     MapCache = { at = GetGameTimer(), data = { units = units, calls = calls, bolos = bolos, at = t } }
     return MapCache.data
 end
+
+--- 2.0.9: the live map as this viewer may see it. Calls: the ones their Dispatch tab lists (routing; every call for
+--- admins, routing.shared or a department in no group). Units: Config.LiveMap.units ('group' | 'own' | 'all'; admins see
+--- every unit); always themselves.
+local function mapData(c)
+    local base = mapBase()
+    local L = LM()
+    local myDept = c.dept and c.dept.id
+    local myGroup = groupOfType(c.dept and c.dept.type)
+    local mode = (L.units == 'own' or L.units == 'all') and L.units or 'group'
+    local function unitOk(u)
+        if u.charId == c.charId or c.staff or mode == 'all' then return true end
+        if mode == 'group' and myGroup then return groupOfType(u.deptType) == myGroup end
+        return u.deptId == myDept
+    end
+    local allCalls = c.staff or ROUTE.shared == true or not myGroup
+    local names = {}
+    local units = {}
+    for _, u in ipairs(base.units) do
+        names[u.charId] = u
+        if unitOk(u) then
+            local o = {}
+            for k, v in pairs(u) do if k ~= 'deptType' and k ~= 'ms' then o[k] = v end end
+            if L.showSpeed ~= false and u.ms then o.speed = u.ms end
+            units[#units + 1] = o
+        end
+    end
+    local calls = {}
+    if L.calls ~= false then
+        for _, r in ipairs(base.calls) do
+            if allCalls or inAudience(r.audience, c.dept and c.dept.type) then
+                local o = {}
+                for k, v in pairs(r) do if k ~= 'audience' and k ~= 'unitIds' then o[k] = v end end
+                o.units = {}
+                for _, ch in ipairs(r.unitIds) do
+                    local u = names[ch]
+                    o.units[#o.units + 1] = { charId = ch, callsign = u and u.callsign or nil, name = u and u.name or nil, deptShort = u and u.deptShort or nil }
+                    if ch == c.charId then o.mine = true end
+                end
+                calls[#calls + 1] = o
+            end
+        end
+    end
+    local sp = (ALR.speeding or {}).units == 'kmh' and 'kmh' or 'mph'
+    return { units = units, calls = calls, bolos = L.bolos ~= false and base.bolos or {}, at = base.at, me = c.charId,
+        mode = c.staff and 'all' or mode, speedUnits = sp }
+end
+MDT.mapData = mapData
 
 -- ---------------------------------------------------------------- mugshots
 
@@ -1835,7 +2038,8 @@ function MDT.registerOps()
 
     cb('mapData', { rate = 1000, burst = 4 }, function(c)
         if not (c.onDuty or c.staff) then return false, 'The live map is for officers on duty' end
-        return mapData()
+        if LM().enabled == false and not c.staff then return false, 'The live map is turned off on this server' end
+        return mapData(c)
     end)
 
     -- mugshots

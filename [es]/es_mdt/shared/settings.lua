@@ -21,13 +21,12 @@ do
     local RC = Config.Radar
     local function setOf(t) local o = {} for k, v in pairs(type(t) == 'table' and t or {}) do if v == true then o[#o + 1] = k end end table.sort(o, function(a, b) return tostring(a) < tostring(b) end) return o end
     if RC.enabled == nil then RC.enabled = true end
-    if RC.mdtTab == nil then RC.mdtTab = true end
     if RC.units ~= 'kmh' then RC.units = 'mph' end
     if RC.lawTypeList == nil then RC.lawTypeList = RC.lawTypes and setOf(RC.lawTypes) or { 'police', 'sheriff', 'state' } end
     if RC.classList == nil then RC.classList = RC.classes and setOf(RC.classes) or { 18 } end
     RC.models = RC.models or {}
     local defaults = { range = 110.0, angle = 18.0, plateRange = 30.0, fastLimit = 70, recheckSec = 60, scanMs = 250, parkedScanMs = 500,
-        hitSound = true, autoLockAllowed = true, keepHitsDays = 30, historyLimit = 50, recentReads = 25 }
+        hitSound = true, autoLockAllowed = true, keepHitsDays = 30 }
     for k, v in pairs(defaults) do if RC[k] == nil then RC[k] = v end end
     RC.hits = RC.hits or {}
     for k, v in pairs({ bolo = 'high', stolen = 'high', warrant = 'high', unregistered = 'low' }) do
@@ -191,9 +190,7 @@ Whip.configPage({
         } },
         { id = 'radar', label = 'Radar', settings = {
             { key = 'Radar.enabled', type = 'bool', label = 'Police radar and plate reader',
-              help = 'Off: no radar anywhere, in the car or in the MDT.' },
-            { key = 'Radar.mdtTab', type = 'bool', label = 'Radar tab in the MDT', help = 'Live readout, controls, plate reads and hits.',
-              shownWhen = on('Radar.enabled') },
+              help = 'Off: no radar in any vehicle (the panel, the remote and plate checks).' },
             { key = 'Radar.lawTypeList', type = 'list', item = { type = 'enum', options = {
                 { value = 'police', label = 'Police' }, { value = 'sheriff', label = 'Sheriff' }, { value = 'state', label = 'State Police / Rangers' },
                 { value = 'ems', label = 'EMS / Fire' }, { value = 'doj', label = 'Department of Justice' } } },
@@ -221,8 +218,6 @@ Whip.configPage({
             { key = 'Radar.hitSound', type = 'bool', label = 'Sound the alarm on a plate hit', help = 'Players can still mute the radar for themselves.', shownWhen = on('Radar.enabled') },
             { key = 'Radar.autoLockAllowed', type = 'bool', label = 'Players may use auto-lock over their speed alert', shownWhen = on('Radar.enabled') },
             { key = 'Radar.keepHitsDays', type = 'int', min = 0, max = 3650, unit = 'days', label = 'Keep plate hits for', help = '0 = forever. Cleaned once an hour.', shownWhen = on('Radar.enabled') },
-            { key = 'Radar.historyLimit', type = 'int', min = 10, max = 200, label = 'Plate hits listed in the Radar tab', shownWhen = on('Radar.mdtTab') },
-            { key = 'Radar.recentReads', type = 'int', min = 5, max = 100, label = 'Plates each officer\'s Radar tab remembers', help = 'This shift, on their own PC.', shownWhen = on('Radar.mdtTab') },
         } },
         { id = 'livemap', label = 'Live map', settings = {
             { key = 'LiveMap.enabled', type = 'bool', label = 'Live map tab in the MDT', help = 'Admins always have it.' },

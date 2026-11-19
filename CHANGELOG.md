@@ -1,8 +1,20 @@
 # Changelog
 
+## es_mdt 2.0.12 (2026-11-18)
+
+**The radar is back to in-vehicle only: no Radar tab in the MDT.** It stays part of es_mdt (one resource), as the in-car panel and the F7 remote, with its `/whip` settings and each player's pause-menu settings from 2.0.11.
+
+- **Removed:** the MDT's Radar tab, its "Radar tab in the MDT" setting, the tab's plate-hit list and list sizes (`mdtTab`, `historyLimit`, `recentReads`), the plate reads sent to the tab, and the Live map pin it used. `html/mdt/radartab.js` / `radartab.css` are gone.
+- **Kept from 2.0.11:**
+  - **`/whip` → Settings → MDT → Radar** (19 settings, live): radar on/off, which departments and vehicle classes / models get it, the default unit and speed alert, range, beam, plate camera range, scan rates, plate re-check time, hit levels, the hit alarm, auto-lock allowed, and how long plate hits are kept (30 days, cleaned hourly).
+  - **Pause menu → Settings → Server Settings → Radar:** auto-on in a police vehicle, volume, mute, lock sound, beep, own speed alert, units, panel size and position.
+  - Plate hits still go to the server's plate-hit log and move a BOLO's last-seen point, as before.
+- **Fix:** a save from the remote no longer resets choices it does not send (e.g. auto-on set in the pause menu).
+- The radar is only in es_mdt: no other radar resource is needed or started.
+
 ## es_mdt 2.0.11 (2026-11-18)
 
-**The police radar and plate reader are now a Radar tab in the MDT, with an admin Radar group in `/whip` → Settings → MDT and each player's own radar settings in the pause menu.** See [Radar tab](README.md#radar-tab).
+**The police radar and plate reader are now a Radar tab in the MDT, with an admin Radar group in `/whip` → Settings → MDT and each player's own radar settings in the pause menu.** See [Radar](README.md#radar) (the tab was removed again in 2.0.12).
 
 - **Radar tab in the MDT** (police, sheriff and state police, plus staff; an admin can hide it):
   - **Status at a glance:** *Live*, *Off*, *Not in a police vehicle* or *Go on duty to use it*, and one switch to turn the radar on or off.

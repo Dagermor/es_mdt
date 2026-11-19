@@ -35,11 +35,8 @@
   };
 
   // ---------------------------------------------------------------- the page
-  VIEWS.livemap = async (v, arg) => {
+  VIEWS.livemap = async (v) => {
     const lc = lmCfg();
-    // 2.0.11: opened on a place (the Radar tab's "Map" on a plate read): a pin there, centred, until the tab is left
-    const pt = arg && arg.point;
-    L.point = pt && isFinite(+pt.x) && isFinite(+pt.y) ? { x: +pt.x, y: +pt.y, label: String(pt.label || 'Here').slice(0, 24), kind: pt.kind || 'read' } : null;
     if (lc.enabled === false && !S.ctx.staff) { v.innerHTML = empty('The live map is turned off on this server'); return; }
     if (!(S.ctx.onDuty || S.ctx.staff)) { v.innerHTML = empty('Go on duty to see the live map'); return; }
     stop();
@@ -226,11 +223,7 @@
       if (r.ok) {
         L.data = r.data; L.at = Date.now();
         depts(); draw(); list(); detail();
-        if (first && L.point) {
-          L.centered = true;
-          centreOn(L.point.x, L.point.y, Math.max(L.z, 1.1), 0);
-          select('p:0', false);
-        } else if (first && !L.centered) {
+        if (first && !L.centered) {
           L.centered = true;
           const me = mine();
           if (me) centreOn(me.x, me.y, Math.max(L.z, 0.55), 0); else fitAll();
@@ -315,10 +308,6 @@
       const [x, y] = toMap(b.x, b.y);
       pinEl('b:' + b.id, `lp lp-bolo${sel === 'b:' + b.id ? ' sel' : ''}`, `<div class="lp-b"><span class="lp-m">⚑</span><span class="lp-l">${esc(b.plate || 'BOLO')}</span></div>`, x, y);
     });
-    if (L.point) {
-      const [x, y] = toMap(L.point.x, L.point.y);
-      pinEl('p:0', `lp lp-read${sel === 'p:0' ? ' sel' : ''}`, `<div class="lp-b"><span class="lp-m">📡</span><span class="lp-l">${esc(L.point.label)}</span></div>`, x, y);
-    }
     svg.innerHTML = areas.join('') + lines.join('');
     L.pins.forEach((el, k) => { if (!el._keep) { el.remove(); L.pins.delete(k); } });
     if (L.sel && !L.pins.has(L.sel)) { L.sel = null; L.follow = false; detail(); }
@@ -371,7 +360,7 @@
     detail();
     if (key && fly) {
       const [k, id] = [key[0], +key.slice(2)];
-      const t = k === 'p' ? L.point : k === 'u' ? unitById(id) : k === 'c' ? callById(id) : ((L.data && L.data.bolos) || []).find((b) => b.id === id);
+      const t = k === 'u' ? unitById(id) : k === 'c' ? callById(id) : ((L.data && L.data.bolos) || []).find((b) => b.id === id);
       if (t) centreOn(t.x, t.y, Math.max(L.z, 1.1));
     }
   }
@@ -409,13 +398,6 @@
         <div class="lm-acts">${c.mine ? '<span class="pill on">You are on this call</span>' : (S.ctx.onDuty ? `<button class="btn small accent" data-respond="${c.id}" data-probe-press>Respond + GPS</button>` : '')}
           <button class="btn small" data-gps="${c.id}" data-probe-press>⌖ GPS</button>
           <button class="btn small ghost" data-opencall="${c.id}" data-probe-press>Open call</button></div>`;
-    } else if (k === 'p') {
-      const p = L.point; if (!p) { box.classList.add('hidden'); return; }
-      const meU = mine();
-      const dist = meU ? Math.round(Math.hypot(meU.x - p.x, meU.y - p.y)) : null;
-      html = `<div class="lm-dh"><span class="lm-ico big read">📡</span><div><div class="lm-dt">Plate ${esc(p.label)}</div><div class="hint">Where your plate reader read it${dist != null ? ' · ' + (dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : dist + ' m') + ' from you' : ''}</div></div><button class="lm-x" data-close title="Close">✕</button></div>
-        <div class="lm-acts"><button class="btn small" data-wp="${p.x},${p.y}" data-probe-press>⌖ Waypoint</button><button class="btn small ghost" data-veh="${esc(p.label)}" data-probe-press>Vehicle</button>
-          <button class="btn small ghost" data-unpoint data-probe-press>Remove the pin</button></div>`;
     } else {
       const b = ((d.bolos) || []).find((x) => x.id === id); if (!b) { box.classList.add('hidden'); return; }
       html = `<div class="lm-dh"><span class="lm-ico big bolo">⚑</span><div><div class="lm-dt">${esc(b.title)}</div><div class="hint">${b.plate ? 'Plate ' + esc(b.plate) + ' last read ' : 'Last seen '}${ago(b.seenAt)}</div></div><button class="lm-x" data-close title="Close">✕</button></div>
@@ -423,7 +405,6 @@
     }
     box.innerHTML = html; box.classList.remove('hidden');
     $$('[data-close]', box).forEach((b) => b.onclick = () => select(null));
-    $$('[data-unpoint]', box).forEach((b) => b.onclick = () => { L.point = null; select(null); draw(); });
     $$('[data-wp]', box).forEach((b) => b.onclick = async () => { const [x, y] = b.dataset.wp.split(',').map(Number); said(await post('waypoint', { x, y }), 'Waypoint set'); });
     $$('[data-profile]', box).forEach((b) => b.onclick = () => go('people', +b.dataset.profile));
     $$('[data-veh]', box).forEach((b) => b.onclick = () => go('vehicles', b.dataset.veh));

@@ -911,7 +911,7 @@ local function checkPlate(plate)
         res.hits[#res.hits + 1] = { kind = 'bolo', level = lvl('bolo', 'high'), text = 'BOLO: ' .. (b.title or ('#' .. b.id)) }
     end
     if v then
-        res.vehicleId, res.label, res.ownerCharId = v.vehicleId, v.label, v.ownerCharId   -- 2.0.11: the Radar tab's Profile button
+        res.vehicleId, res.label = v.vehicleId, v.label
         for _, f in ipairs(MDT.flagsOf(v.flags)) do
             if tostring(f):lower() == 'stolen' then res.hits[#res.hits + 1] = { kind = 'stolen', level = lvl('stolen', 'high'), text = 'Reported stolen' } end
         end
@@ -1799,42 +1799,6 @@ function MDT.registerOps()
             end
         end
         return out
-    end)
-
-    -- 2.0.11: the Radar tab's plate hits (BOLO / stolen / warrant reads logged by every reader): the newest first, with who
-    -- read it and where. For law departments (Config.Radar.lawTypeList) and admins, on or off duty (the MDT's own rights).
-    cb('radarHistory', { rate = 800, burst = 4 }, function(c, d)
-        if RAD.enabled == false or RAD.mdtTab == false then return false, 'The radar tab is off on this server' end
-        if not (c.staff or (c.dept and radarTypes()[c.dept.type])) then return false, 'The radar is for police, sheriff and state police' end
-        local limit = math.max(10, math.min(200, math.floor(tonumber(RAD.historyLimit) or 50)))
-        local where, args = '', {}
-        if d.mine then where = ' WHERE `charId` = ?' args[1] = c.charId end
-        local plate = plateKey(d.plate or '')
-        if plate ~= '' then
-            where = where .. (where == '' and ' WHERE' or ' AND') .. ' `plate` = ?'
-            args[#args + 1] = plate
-        end
-        args[#args + 1] = limit
-        local rows = MySQL.query.await('SELECT `id`,`plate`,`kinds`,`detail`,`charId`,`x`,`y`,UNIX_TIMESTAMP(`createdAt`) AS `at` FROM `es_mdt_plate_hits`'
-            .. where .. ' ORDER BY `id` DESC LIMIT ?', args) or {}
-        local ids = {}
-        for _, r in ipairs(rows) do if r.charId then ids[#ids + 1] = r.charId end end
-        local names = MDT.namesOf(ids)
-        for _, r in ipairs(rows) do
-            r.by = r.charId and (names[r.charId] or ('#' .. r.charId)) or nil
-            r.mine = r.charId == c.charId
-            r.at = tonumber(r.at)
-            r.charId = nil
-        end
-        return { hits = rows, limit = limit, keepDays = tonumber(RAD.keepHitsDays) or 30 }
-    end)
-    -- 2.0.11: one plate, asked from the Radar tab (owner, model, its hits), the same check the reader makes
-    cb('radarPlate', { rate = 500, burst = 4 }, function(c, d)
-        if RAD.enabled == false then return false, 'The radar is off on this server' end
-        if not (c.staff or (c.dept and radarTypes()[c.dept.type])) then return false, 'The radar is for police, sheriff and state police' end
-        local res = checkPlate(type(d.plate) == 'string' and d.plate or '')
-        if not res then return false, 'No plate' end
-        return res
     end)
 
     -- dispatch board

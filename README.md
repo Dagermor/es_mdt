@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.11).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.12).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -34,9 +34,8 @@ All screenshots use made-up test data.
 | ![Live map](docs/images/15_live_map.png) The Live map: every unit, live | ![Live map call](docs/images/15_live_map_call.png) A call on the Live map: Respond + GPS |
 | ![Backup follows](docs/images/15_backup_follow_map.png) A backup call that follows the officer | ![Live map colour](docs/images/15_live_map_atlas.png) The colour map, the whole state |
 | ![Department settings](docs/images/16_settings_dept_activity.png) Department activity, live in /whip → Settings → MDT | ![DOJ settings](docs/images/16_settings_doj_money.png) DOJ fees, bail and sentences, live |
-| ![Radar tab](docs/images/17_radar_tab_live.png) The Radar tab: live readout, controls and this shift's plate reads | ![Plate hits](docs/images/17_radar_tab_hits.png) Plate hits from every officer, with a speed and plate lock |
-| ![Plate read on the map](docs/images/17_radar_map_point.png) Where a plate was read, on the Live map | ![BOLO from a read](docs/images/17_radar_bolo_prefilled.png) A BOLO from a plate read, filled in |
-| ![Radar settings](docs/images/17_whip_settings_radar.png) The radar, live in /whip → Settings → MDT → Radar | ![Pause menu radar](docs/images/17_pause_settings_radar.png) Each player's radar settings in the pause menu |
+| ![In-car radar](docs/images/18_radar_incar_panel.png) The radar in a police vehicle (only there) | ![Radar remote](docs/images/18_radar_remote.png) The radar remote (F7) |
+| ![Radar settings](docs/images/18_whip_settings_radar.png) The radar, live in /whip → Settings → MDT → Radar | ![Pause menu radar](docs/images/18_pause_settings_radar.png) Each player's radar settings in the pause menu |
 
 ## Requirements
 
@@ -114,7 +113,7 @@ New in 2.0.8. **Change live in `/whip` → Settings → MDT.** `config.lua` is t
 | Automatic alerts | on-duty law exempt, search circles, per-minute cap, and for shots, vehicle theft, fights, explosions, a civilian down and **speeding**: on/off, chance, cooldown, priority and their own options |
 | Records, fines and jail | off-duty read only, fine cap, unpaid-fine warrant days, warrant BOLOs, jail provider, record minutes per month, whip_evidence bridge |
 | Backup and panic follow the officer | 2.0.9: on/off for backup and for panic, how often the position is read, how far they must move, how often responders' GPS moves, the responders' markers and the arrival distance |
-| Radar | 2.0.11: the radar on/off, the Radar tab on/off, which department types and vehicle classes / models get it, the default unit and speed alert, range, beam width, plate camera range, how often it measures (moving and parked), plate re-check time, what counts as a hit (BOLO, stolen, owner warrant, unregistered: alert, amber or ignore), the hit alarm sound, whether auto-lock is allowed, how long plate hits are kept, how many the tab lists and how many reads it remembers |
+| Radar | 2.0.11: the radar on/off, which department types and vehicle classes / models get it, the default unit and speed alert, range, beam width, plate camera range, how often it measures (moving and parked), plate re-check time, what counts as a hit (BOLO, stolen, owner warrant, unregistered: alert, amber or ignore), the hit alarm sound, whether auto-lock is allowed, how long plate hits are kept |
 | Live map | 2.0.9: the tab on/off, whose units officers see (group, own department, all), calls, BOLO plates, speed, the refresh time, the map picture |
 | Departments: activity | 2.0.10: the inactive day lines (yellow note, orange warning, red), the rank level that counts as a head (0 = each department's top rank), notes on a head's account, how often heads are checked and duty time is saved |
 | Departments: leave (LOA) | 2.0.10: the longest leave, how far ahead it may start, the longest reason |
@@ -133,7 +132,7 @@ Everything except the last group applies when you press **Apply**, with no resta
 
 **Players: pause menu → Settings → Server Settings → MDT.** **MDT display size** (the same as **Aa** and `/mdtscale`), **Dispatch alert volume** and **Mute dispatch alerts**, saved on each player's PC. **Reset this tab** goes back to the server's defaults. Keys (MDT, panic, call board) are rebound in GTA Settings → Key Bindings → FiveM.
 
-**Players: pause menu → Settings → Server Settings → Radar** (2.0.11). Turn the radar on when getting into a police vehicle, radar volume, mute, lock sound, beep over the speed alert, their own speed alert (it follows the server's until they pick one), speed unit, panel size and position. The same values as the remote (F7) and the MDT's Radar tab.
+**Players: pause menu → Settings → Server Settings → Radar** (2.0.11). Turn the radar on when getting into a police vehicle, radar volume, mute, lock sound, beep over the speed alert, their own speed alert (it follows the server's until they pick one), speed unit, panel size and position. The same values as the remote (F7).
 
 **Robbery calls name the store.** `StoreRobbery`, `BankRobbery` and `JewelryRobbery` are titled with the nearest known place, e.g. "24/7 Supermarket, Innocence Blvd", "Fleeca Bank, Legion Square" or "Vangelico Jewelry, Rockford Hills". About 60 places are built in (24/7, LTD, Rob's Liquor, Ammu-Nation, clothing stores, barbers, every Fleeca, Paleto, Pacific Standard, Vangelico). The name is picked in this order:
 
@@ -152,30 +151,20 @@ places = {
 
 **Speeding** (`Config.Dispatch.alerts.speeding`, off by default): `units` (`'mph'` or `'km/h'`), `limit` (80), `highwayLimit` (110 on roads named Fwy, Freeway, Hwy, Highway, Route or Interstate; 0 means one limit everywhere), `seconds` over the limit (4), `cooldown`, `chance` and `priority`. The alert reads e.g. "112 mph in a 80 zone", and the server checks the speed itself.
 
-## Radar tab
+## Radar
 
-New in 2.0.11. The police radar and plate reader in the MDT, for police, sheriff and state police (`Config.Radar.lawTypeList`) and staff. It is the same radar as in the car (F5 on / off, F7 remote); the tab is just a bigger screen for it.
+The police radar and plate reader are part of es_mdt (no separate resource). They show **only in police vehicles**: the in-car panel and the remote (F7); there is no radar in the MDT (2.0.12). On duty in a radar department (`Config.Radar.lawTypeList`) and in a radar vehicle (`classList` / `models`), F5 turns it on or off.
 
-![Radar tab](docs/images/17_radar_tab_live.png)
+- **Panel:** your speed, front and rear target and fast speeds, the plate each camera reads in red (hit), amber (note) or clear, and the locks. It flashes on a plate hit.
+- **Remote (F7):** antennas on/off and Same / Opposite / Both, speed and plate locks, the speed alert, beep, auto-lock (if the admin allows it), the plate reader, mute, volume, size, drag to move, and this shift's hits with **Open in MDT**.
+- **Plate hits** (BOLO, stolen, owner warrant) are logged on the server and move a BOLO's last-seen point. Kept `keepHitsDays` (30; 0 = forever), cleaned once an hour.
 
-- **Status and power:** *Live*, *Off*, *Not in a police vehicle* or *Go on duty to use it*, with one switch to turn it on or off. Settings can be changed anywhere; speeds and plates need you in a radar vehicle, on duty.
-- **Live readout:** your speed, and for the front and rear antennas the target and fast speeds. An antenna glows red when a car is over your speed alert. Each camera shows its plate in red (hit), amber (note) or "✓ Clear", with **Look up**.
-- **Controls:** each antenna on / off and Same, Opposite or Both. Lock or unlock speed and plate, **Clear all locks**, the speed alert (− / + / slider), beep and auto-lock over the alert, the plate reader, mute.
-- **Read this shift:** every plate your reader read, newest first (kept on your PC, `recentReads`, 25), with its hit or note, model and owner, which antenna and when:
-  - **Look up** opens it in Vehicles.
-  - **⚑ BOLO** opens the BOLO form with the plate and model filled in (with BOLO rights).
-  - **Owner** opens the owner's profile.
-  - **⌖ Map** opens the Live map on a pin where it was read (Waypoint, Vehicle, Remove the pin), or sets a waypoint without the Live map.
-- **Plate hits:** every BOLO, stolen and warrant read on the server, by any officer, with who read it, when and where. *Everyone* or *Mine*. Kept `keepHitsDays` (30; 0 = forever), cleaned once an hour.
-- **Check a plate:** type any plate for its owner, model and hits.
-
-The readout is the same message the in-car panel already gets, sent only when something on it changed, so the tab costs nothing extra. Plate reads go to the page only while the tab is open. Plate hits are read from the server when you look.
-
-**Admins:** `/whip` → Settings → MDT → **Radar** (see [Changing settings live](#changing-settings-live)). **Players:** pause menu → Settings → Server Settings → **Radar**.
+**Admins:** `/whip` → Settings → MDT → **Radar**. **Players:** pause menu → Settings → Server Settings → **Radar**.
 
 | | |
 |---|---|
-| ![Radar settings](docs/images/17_whip_settings_radar.png) | ![Pause menu radar](docs/images/17_pause_settings_radar.png) |
+| ![In-car radar](docs/images/18_radar_incar_panel.png) | ![Radar remote](docs/images/18_radar_remote.png) |
+| ![Radar settings](docs/images/18_whip_settings_radar.png) | ![Pause menu radar](docs/images/18_pause_settings_radar.png) |
 
 ## Live map
 
@@ -528,13 +517,14 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 
 2.0.10 went through the cost of each part. With nobody on duty the MDT does next to nothing. On duty, the work that repeats is kept small:
 
-- **Radar tab (2.0.11):** no new loops. It listens to the readout the in-car panel already gets, plate reads are sent to it only while it is open, and plate hits are read from the server only when you look. The radar's scan rates are settings (`scanMs`, `parkedScanMs`) and it does nothing at all when turned off.
+- **Radar:** runs only in a radar vehicle, on duty; its scan rates are settings (`scanMs`, `parkedScanMs`) and it does nothing at all when turned off.
 - **Client:** shots fired looks 4 times a second while a gun is in hand (no per-frame check) and skips on-duty law. The radar looks half as often while parked and sends to the screen only on a change. The Live map loads the 2048 px picture first, the 4096 px one only when zoomed in, lets both go when you leave the tab, and only the selected unit's or call's lines are animated.
 - **Server:** who you are (department, permissions) is kept 30 s, the on-duty list 1 s, both dropped at once on any job, roster or department change. Followed backup and panic calls keep their units in memory. "Look again" updates go only to on-duty units and players with the MDT open. Small lookups are cleaned every 5 minutes.
 
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.0.12:** in Lua tests: no Radar tab callbacks on the client or the server and nothing sent for one; the 19 radar settings in whip_core's real Settings code (the tab ones gone) and the 9 pause-menu rows through whip_core's real `player_prefs.lua`; the panel in a police car and hidden on foot, in another class and when turned off; auto-on (kept when the remote saves); scan rates and classes live; plate hits, sounds, mute, lock sound, the server's hit sound; the speed alert, auto-lock, units, position and size; the server's plate check, departments and on/off, and the hourly plate-hit clean-up. In browser tests: no Radar tab in the MDT, the in-car panel (readout, a hit, the corners, 140 %, km/h), the remote (Mute, auto-lock hidden when not allowed, dragging), and the Radar settings in whip_core's own panel and pause menu. All earlier tests still pass. On a live server: es_mdt 2.0.12 starts with the schema check and no errors. Not tested in game: the radar with real traffic and a real player.
 - **Tested for 2.0.11:** in Lua tests against the real code: the 22 radar settings in whip_core's real Settings code (on the page, defaults from `config.lua`, applied live into the `Config.Radar` the radar holds, ranges, Reset, an older `config.lua` upgraded) and the 9 pause-menu rows through whip_core's real `player_prefs.lua` (get, set, Reset). On the client: the Radar tab's state on foot, in a police car and with the radar turned off, locks from the tab (refused on foot), auto-on when getting in (not after turning it off in the car, not when switched off), the scan rates and vehicle classes read live, plate reads sent to the tab only while it is open (newest first, a plate read again moves up, the server's limit, Clear), mute, the lock sound and the server's hit sound, the speed alert following the server until a player picks their own, auto-lock refused when not allowed, units, position and size. On the server: plate hits (newest first, Mine, a plate filter, the 200 cap, who read it without their character id), who may see them (law and staff; EMS, departments added live, the tab turned off), the plate check, the radar turned off, and the hourly clean-up (not in the first 5 minutes, once an hour, 0 = kept, days read live). In browser tests: the Radar tab (status, power, the readout painted in place, modes, the speed alert saved once, toggles, locks, Look up, BOLO filled in, Owner, the Live map pin, Plate hits with Everyone / Mine, Check a plate, Clear, on foot, turned off, hidden for non-law and when an admin hides it), and the Radar group and the pause-menu Radar tab rendered in whip_core's own UI. All the 2.0.3 to 2.0.10 tests still pass. On a live server: es_mdt 2.0.11 starts with the schema check and no errors. Not tested in game: the tab with a real radar and traffic, locks from the MDT, the pause-menu rows and auto-on with a real player, the sounds and mute, the plate-hit clean-up on the real database, and the settings changed live on a running server.
 - **Tested for 2.0.10:** in Lua tests against the real server code: all 44 new settings (on the page, defaults from each part's `config.lua`, applied live into the tables the code holds, ranges, Reset), the context kept 30 s and dropped on clock on / off, rank, hire, fire, job and department changes and on leaving, the on-duty list kept 1 s with fresh tables each time and live statuses, dropped on every change, "look again" updates going only to on-duty units and players with the MDT open (and to everyone if the list cannot be read), the follow units kept in memory. On the client: shots fired by ammo while aiming or on the trigger (not on a reload or an inventory change), the cooldown, on-duty law skipped and asked again on a clock change, never asked with no gun in hand, the radar sending only on a change and slowing down when parked. In browser tests: the Live map opening on the 2048 px picture, swapping to 4096 px when zoomed in, letting it go on leaving, only the selected lines moving, and the new settings groups in whip_core's own panel. All the 2.0.3 to 2.0.9 tests still pass. Not tested in game: shots detection with real guns, the radar with real traffic, the Live map's memory use in the game's browser, and the settings changed live on a running server.
 - **Tested for 2.0.9:** in Lua tests against the real server code: backup and panic calls follow the officer (the call, its blip and its spot move once they have moved far enough, units on it are told, nothing moves when they stand still), it stops on close, auto-close, off duty, leaving and with the setting off, the responders' markers (shown only to the officer who asked, not for their partner, removed on arrival, On scene, or the call ending), and the client side (the card and the arrival spot move, the GPS moves only when the route still points at the call and not too often, never after arriving). The Live map data: who sees which units (group, own, all, admins), calls by the Dispatch routing, speed, the picture setting (only a file in the resource or an https link). In browser tests: the Live map tab (pins, car and foot icons, heading, search circles, responding lines, details, Respond + GPS, GPS, waypoint, search, department filters, layers, the colour map, live updates only while open, the picture falling back to a grid), and the settings pages in whip_core's own panel. All the 2.0.3 to 2.0.8 tests still pass. On a live server: es_mdt 2.0.9 starts with the schema check and no errors. Not tested in game: the blips moving and the responders' markers with real players, the GPS moving, the notices, and how the map positions line up in game.

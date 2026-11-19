@@ -5,7 +5,7 @@ local _ENV = ESAPP('mdt'); -- es_mdt 1.3.0: police radar + plate reader (ALPR), 
 -- Settings are each player's own (KVP). The display lives in the MDT page (html), the remote opens with focus.
 -- 2.0.11: every server value is read live (/whip > Settings > MDT > Radar refills Config.Radar in place), and each player's
 -- own choices (volume, mute, size, position, units, auto-on, lock sound, speed alert) are also rows of the pause menu's
--- Settings > Server Settings > Radar. The MDT's Radar tab (html/mdt/radartab.js) shows the same readout and controls.
+-- Settings > Server Settings > Radar. 2.0.12: the radar shows only in police vehicles (the panel and the F7 remote), not in the MDT.
 local R = Config.Radar or {}
 local REMOTE = 'mdt_radar'
 local KVP = 'es_mdt:radar'
@@ -84,8 +84,6 @@ local checked = {}                 -- [plate] = { at, res }
 local asking = false
 local lastBeep = 0
 local hits = {}                    -- last plate hits, newest first (remote shows them)
-local reads = {}                   -- 2.0.11: the plates read this shift, newest first (the MDT's Radar tab)
-local tabOpen = false              -- 2.0.11: the MDT's Radar tab is on screen (it gets the reads as they come)
 
 -- 2.0.11: the vehicle classes and models, read live (Config.Radar.classList / models; classes before 2.0.11)
 local vehSets = { sig = nil, classes = {}, models = {} }
@@ -123,20 +121,8 @@ local function view()
     return o
 end
 local function pushSettings() send({ action = 'radarSettings', settings = view(), units = unitsNow() == 'kmh' and 'KMH' or 'MPH' }) end
-local function pushReads() if tabOpen then send({ action = 'radarReads', reads = reads, hits = hits }) end end
 
 -- ---------------------------------------------------------------- plate checks
---- 2.0.11: a plate read goes on top of this shift's list (once; read again it moves up), with where and what was found
-local function noteRead(k, r, pos, ant)
-    for i = #reads, 1, -1 do if reads[i].plate == k then table.remove(reads, i) end end
-    local why = {}
-    for _, h in ipairs(r.hits or {}) do if h.level == r.level then why[#why + 1] = h.text end end
-    table.insert(reads, 1, { plate = k, level = r.level, why = table.concat(why, ' · '), label = r.label, owner = r.owner,
-        ownerCharId = r.ownerCharId, vehicleId = r.vehicleId, boloId = r.boloId, at = GetCloudTimeAsInt(), ant = ant,
-        x = pos and pos.x or nil, y = pos and pos.y or nil })
-    local max = math.max(5, math.min(100, math.floor(tonumber(R.recentReads) or 25)))
-    while #reads > max do table.remove(reads) end
-end
 local function checkPlates(list, pos, ants)
     if asking or #list == 0 then return end
     asking = true
@@ -147,7 +133,6 @@ local function checkPlates(list, pos, ants)
         for k, r in pairs(res) do
             local first = not checked[k] or not checked[k].res
             checked[k] = { at = GetGameTimer(), res = r }
-            noteRead(k, r, pos, ants and ants[k])
             if first and r.level == 'high' then
                 local why = {}
                 for _, h in ipairs(r.hits or {}) do if h.level == 'high' then why[#why + 1] = h.text end end
@@ -163,7 +148,6 @@ local function checkPlates(list, pos, ants)
                 send({ action = 'radarHit', hit = hits[1] })
             end
         end
-        pushReads()
     end)
 end
 
@@ -282,21 +266,12 @@ for _, ev in ipairs({ 'whip_core:job:clockedOn', 'whip_core:job:clockedOff', 'wh
     RegisterNetEvent(ev)
 end
 
-local inPolice = false   -- 2.0.11: in a radar vehicle now (the Radar tab says why the readout is empty)
---- 2.0.11: what the MDT's Radar tab needs to draw itself
-local function state()
-    return { enabled = R.enabled ~= false, inCar = inPolice, allowed = allowed, live = live, settings = view(),
-        units = unitsNow() == 'kmh' and 'KMH' or 'MPH', reads = reads, hits = hits,
-        locks = { front = { speed = L.front.speed, fast = L.front.fast, plate = L.front.plate }, rear = { speed = L.rear.speed, fast = L.rear.fast, plate = L.rear.plate } } }
-end
-local function pushState() if tabOpen then send({ action = 'radarState', state = state() }) end end
 local function setLive(on)
     if live == on then return end
     live = on
     lastSig = nil   -- 2.0.10: a fresh readout right away
     if on then pushSettings() end
     send({ action = 'radarShow', show = on })
-    pushState()
 end
 
 local function closeRemote()
@@ -318,10 +293,8 @@ CreateThread(function()
         if R.enabled == false then   -- 2.0.11: turned off in /whip: nothing runs
             if live then setLive(false) end
             if remoteOpen then closeRemote() end
-            if inPolice then inPolice = false pushState() end
             Wait(2000)
         elseif policeCar(veh) then
-            if not inPolice then inPolice = true pushState() end
             refreshAllowed(veh)
             -- 2.0.11: getting into a radar vehicle turns the radar on (pause menu: Radar > Turn on in a police vehicle)
             if veh ~= lastVeh and S.autoOn and not S.shown then S.shown = true save() end
@@ -338,7 +311,6 @@ CreateThread(function()
                 Wait(500)
             end
         else
-            if inPolice then inPolice = false pushState() end
             lastVeh = 0
             if live then setLive(false) end
             if remoteOpen then closeRemote() end
@@ -431,7 +403,13 @@ end, false)
 -- ---------------------------------------------------------------- from the page
 --- 2.0.11: settings from a page: the speed alert equal to the server's is not kept (the player follows the server)
 local function fromPage(t)
-    local n = clean(t)
+    -- 2.0.12: laid over what the player has now, so a key the page leaves out (e.g. auto-on, set in the pause menu) is kept
+    local m = copy(S)
+    for k, v in pairs(type(t) == 'table' and t or {}) do
+        if (k == 'front' or k == 'rear') and type(v) == 'table' then for a, b in pairs(v) do m[k][a] = b end else m[k] = v end
+    end
+    if type(t) == 'table' and t.fast == nil then m.fast = S.fast end
+    local n = clean(m)
     if n.fast and n.fast == math.floor(tonumber(R.fastLimit) or 70) then n.fast = nil end
     if not (R.autoLockAllowed ~= false) then n.autoLock = S.autoLock end
     return n
@@ -454,24 +432,7 @@ RegisterNUICallback('radarLock', function(d, cb)
     local a = d.antenna == 'rear' and 'rear' or 'front'
     if not inCar() then return cb({ ok = false, why = 'Get in a police vehicle, on duty' }) end
     local ok = d.what == 'plate' and lockPlate(a) or (d.what ~= 'plate' and lockSpeed(a))
-    cb({ ok = ok == true, why = ok ~= true and ('Nothing to lock on the ' .. a .. ' antenna') or nil, state = state() })
-end)
--- 2.0.11: the MDT's Radar tab
-RegisterNUICallback('radarTab', function(d, cb)
-    tabOpen = type(d) == 'table' and d.open == true
-    if tabOpen then lastSig = nil end
-    cb({ ok = true, data = state() })
-end)
-RegisterNUICallback('radarPower', function(d, cb)
-    if R.enabled == false then return cb({ ok = false, why = 'The radar is turned off on this server' }) end
-    S.shown = type(d) == 'table' and d.on == true
-    save()
-    lastSig = nil
-    cb({ ok = true, data = state() })
-end)
-RegisterNUICallback('radarClearReads', function(_, cb)
-    reads = {}
-    cb({ ok = true, data = state() })
+    cb({ ok = ok == true, why = ok ~= true and ('Nothing to lock on the ' .. a .. ' antenna') or nil })
 end)
 RegisterNUICallback('radarOpenPlate', function(d, cb)
     local p = key(type(d) == 'table' and d.plate or '')
@@ -488,9 +449,9 @@ end)
 
 -- ---------------------------------------------------------------- 2.0.11: the pause menu (Settings > Server Settings > Radar)
 -- Each player's own radar choices as rows of WHIP's Server Settings page (Whip.playerSetting). They are the same values as
--- the remote (F7) and the MDT's Radar tab (KVP es_mdt:radar), so all three always agree: the page reads `get` each time.
+-- the remote (F7) (KVP es_mdt:radar), so both always agree: the page reads `get` each time.
 -- The speed alert and the units follow the server's default until the player picks their own.
-local function changed() save() lastSig = nil pushSettings() pushState() end
+local function changed() save() lastSig = nil pushSettings() end
 local function declareRows()
     if not (Whip and Whip.playerSetting) then return end
     local G = 'Radar'
@@ -541,7 +502,7 @@ if Whip and Whip.onConfigChanged then
     Whip.onConfigChanged('Radar', function()
         if queued then return end
         queued = true
-        SetTimeout(0, function() queued = false lastSig = nil pushSettings() pushState() declareRows() end)
+        SetTimeout(0, function() queued = false lastSig = nil pushSettings() declareRows() end)
     end)
 end
 

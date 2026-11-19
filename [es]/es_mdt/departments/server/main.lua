@@ -1004,13 +1004,14 @@ local function grantPermissions()
             for _, d in ipairs(sortedDepts()) do
                 local known = permMap(d.type)
                 for _, role in ipairs(WC:GetJobRoles(d.jobId) or {}) do
-                    local perms, changed = {}, false
-                    for k, v in pairs(role.permissions or {}) do perms[k] = v end
+                    -- 2.1.2: send only the added keys (whip_core keeps the rest); the whole table was refused when the
+                    -- rank still held a key the job no longer knows
+                    local have, add, changed = role.permissions or {}, {}, false
                     for perm, minLevel in pairs(g.perms) do
-                        if known[perm] and (role.level or 0) >= minLevel and not perms[perm] then perms[perm] = true changed = true end
+                        if known[perm] and (role.level or 0) >= minLevel and not have[perm] then add[perm] = true changed = true end
                     end
                     if changed then
-                        local ok, why = WC:UpdateJobRole(d.jobId, role.roleId, { permissions = perms })
+                        local ok, why = WC:UpdateJobRole(d.jobId, role.roleId, { permissions = add })
                         if not ok then okAll = false print(('^3[es_departments] grant %s to %s/%s: %s (will retry)^7'):format(g.id, d.short, role.name, tostring(why))) end
                     end
                 end
@@ -1041,13 +1042,12 @@ local function mirrorPermissions()
             for _, d in ipairs(sortedDepts()) do
                 local known = permMap(d.type)
                 for _, role in ipairs(WC:GetJobRoles(d.jobId) or {}) do
-                    local perms, changed = {}, false
-                    for k, v in pairs(role.permissions or {}) do perms[k] = v end
+                    local have, add, changed = role.permissions or {}, {}, false
                     for target, src in pairs(g.perms) do
-                        if known[target] and known[src] and perms[src] and not perms[target] then perms[target] = true changed = true end
+                        if known[target] and known[src] and have[src] and not have[target] then add[target] = true changed = true end
                     end
                     if changed then
-                        local ok, why = WC:UpdateJobRole(d.jobId, role.roleId, { permissions = perms })
+                        local ok, why = WC:UpdateJobRole(d.jobId, role.roleId, { permissions = add })
                         if ok then print(('[es_departments] %s/%s: permissions %s copied'):format(d.short, role.name, g.id))
                         else okAll = false print(('^3[es_departments] mirror %s to %s/%s: %s^7'):format(g.id, d.short, role.name, tostring(why))) end
                     end

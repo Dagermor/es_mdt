@@ -1,5 +1,10 @@
 # Changelog
 
+## es_mdt 2.1.2 (2026-11-19)
+
+- **Fix (the real cause behind 2.1.1): permission grants and mirrors now send whip_core only the permissions they add.** They used to send the rank's whole list, and whip_core refuses the whole update when a rank still holds a key the job no longer knows (on Divided RP: old `evidence_*` keys on LSPD Captain, Sergeant and Officer; whip_evidence uses rank levels, and whip_core drops such keys on any rank save). The 2.1.1 retry and the follow-up grant stay, so servers that ran 2.1.0 or 2.1.1 get the ticket and impound permissions on the next start.
+- Tested: grant211 now mimics whip_core's checks (10 checks); all 26 test files pass.
+
 ## es_mdt 2.1.1 (2026-11-19)
 
 - **Fix: the new ticket and impound permissions were skipped on some existing ranks.** whip_core refuses a rank update while that rank holds a permission from a resource that starts later (for example whip_evidence's `evidence_*`), and the one-time grant was remembered anyway. Grants now count as done only when every rank took them, and failed ranks are retried for about 90 seconds after start. A follow-up grant (`mdt211_tickets_impound_retry`, adds missing permissions only) repairs servers that ran 2.1.0.

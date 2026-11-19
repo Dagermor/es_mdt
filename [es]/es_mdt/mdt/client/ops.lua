@@ -161,7 +161,7 @@ local function render(restart)
     SendNUIMessage({ action = 'cpop', show = true, restart = restart, seq = seq,
         call = { id = c.id, kind = c.kind, priority = c.priority, title = c.title, message = c.message, street = c.street,
             callerName = c.callerName, units = c.units, closed = c.closed, outcome = c.outcome, mine = myCall == c.id,
-            escalated = c.escalated, parentId = c.parentId,
+            escalated = c.escalated, parentId = c.parentId, backup = c.backup,
             critical = c.critical, icon = c.icon, reports = c.reports, radius = c.radius, details = c.details, alarm = Alarm[c.id] ~= nil },
         dist = dist, age = ageOf(c), left = math.max(0, hideAt - GetGameTimer()),
         more = math.max(0, #Queue - 1), state = f and f.state or nil, note = f and f.text or nil,
@@ -571,6 +571,10 @@ local function askBackup(id)
     CreateThread(function()
         local r, why = wc():Callback('es_mdt:callBackup', { id = id, street = streetHere() })
         if type(r) ~= 'table' then return notify(why or 'Backup request did not go through', 'error') end
+        if r.merged then   -- 2.0.15: onto the call I am on
+            return notify(('Backup %s on call #%d (P%d)%s'):format(r.again and 'requested again' or 'requested', r.id, r.priority or 2,
+                (r.units or 0) > 0 and ' · its units were alerted' or ' · no other units on duty'), 'success', 6000)
+        end
         notify(('Backup requested (P%d, call #%d)%s'):format(r.priority or 2, r.id, (r.units or 0) > 0 and '' or ' · no other units on duty'), 'success', 6000)
     end)
 end
@@ -584,6 +588,35 @@ do
     end, false)
     RegisterKeyMapping(BCMD, 'Police: request backup', 'keyboard', BKP.key or '')
 end
+
+-- 2.0.15: an officer on a call asked for backup on it: the call again, with its "Backup requested" banner (card and sound,
+-- like a new call; the asking officer never gets this)
+RegisterNetEvent('es_mdt:client:callBackup', function(d)
+    if type(d) ~= 'table' or not tonumber(d.id) then return end
+    local id = tonumber(d.id)
+    local c = find(id)
+    if c then
+        if c.closed then return end
+        c.priority, c.backup = tonumber(d.priority) or c.priority, d.backup
+        if d.x then c.x, c.y, c.z, c.radius = d.x, d.y, d.z, tonumber(d.radius) end
+    else
+        c = d
+    end
+    SendNUIMessage({ action = 'callBackup', call = { id = id, priority = c.priority, backup = d.backup } })
+    if Board.open then Board.poke() end
+    if POP.sound ~= false then
+        tone(tierOf(c))
+        if c.critical then startAlarm(id) end
+    end
+    if MDTC.isOpen() then return end
+    if not popOn() then
+        return notify(('Backup requested on #%d · %s%s'):format(id, d.backup and d.backup.by or 'an officer', c.street and c.street ~= '' and (' · ' .. c.street) or ''), 'error', 9000)
+    end
+    if not find(id) then push(c) return end
+    unqueue(id)
+    table.insert(Queue, 1, id)
+    show(id)
+end)
 
 -- 2.0.6: an unanswered call went up a priority: a soft re-alert (one quiet tone and its card again, never over the MDT)
 RegisterNetEvent('es_mdt:client:callEscalated', function(d)

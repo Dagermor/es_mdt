@@ -57,6 +57,14 @@ local function plateKey(p) return (type(p) == 'string' and p or ''):upper():gsub
 --- them, someone coming on gets the ones still up). [id] = { spec, gen }
 local DutyBlips = {}
 local blipGen = 0
+--- 2.0.15: backup asked for ON a call (merged into it): [callId] = { charId, by, short, at, n, px, py } (the banner, and
+--- the asking officer's live spot for the Live map), and the officer it follows: [callId] = a follow entry (below)
+local BackupOn, BkFollow = {}, {}
+local function pubBackup(cid)
+    local b = BackupOn[tonumber(cid) or 0]
+    if not b then return nil end
+    return { by = b.by, short = b.short, at = b.at, n = b.n, x = b.px, y = b.py }
+end
 local routedDuty   -- 2.0.6: below (who a call's audience reaches)
 local function showDutyBlip(id, spec, secs, list, aud)
     blipGen = blipGen + 1
@@ -575,6 +583,7 @@ local function shapeCall(r)
     local P = r.preset and presetOf(r.preset)
     r.icon = P and type(P.icon) == 'string' and P.icon:sub(1, 8) or nil
     r.audience = nil   -- routing is the server's business
+    r.backup = pubBackup(r.id)   -- 2.0.15
     return r
 end
 MDT.shapeCall = shapeCall
@@ -631,14 +640,20 @@ end
 --- and a panic call takes its PANIC blip and the officer's panic flag with it.
 local PanicCall = {}   -- [charId] = the call id of their last panic
 local Follow = {}      -- 2.0.9: [callId] = a backup / panic call following its officer (below)
-local function followDirty(cid) local f = Follow[tonumber(cid)] if f then f.units = nil end end   -- 2.0.10: its unit list is read again
+local function followDirty(cid)
+    local f = Follow[tonumber(cid)] if f then f.units = nil end
+    f = BkFollow[tonumber(cid)] if f then f.units = nil end   -- 2.0.15
+end   -- 2.0.10: its unit list is read again
 local stopFollow       -- 2.0.9: below
+local stopBkFollow     -- 2.0.15: below
 local function callGone(cid)
     cid = tonumber(cid)
     if not cid then return end
     if Follow[cid] then stopFollow(cid) end
     hideDutyBlip('call:' .. cid)
     hideCallArea(cid)   -- 2.0.14
+    if BkFollow[cid] then stopBkFollow(cid) end   -- 2.0.15
+    BackupOn[cid] = nil
     for charId, pc in pairs(PanicCall) do
         if pc == cid then
             PanicCall[charId] = nil
@@ -993,6 +1008,7 @@ MDT.lawOnDuty = lawOnDuty
 -- ---------------------------------------------------------------- 2.0.6: request backup
 
 local BackupCool = {}
+local mergeBackup   -- 2.0.15: below (after the follow code)
 --- An officer on duty asks for backup: a 'backup' call at THEIR position (not the call's), linked to the call they are on
 --- (callId; they must be attached) or on its own (callId nil). P1 when the call is a panic or P1, else Config.Dispatch.backup.priority.
 --- It goes where the call went (or by the 'backup' route); a note on the call says so. -> { id, priority, units } | false, why
@@ -1016,6 +1032,13 @@ local function requestBackup(c, callId, street)
     local pri = MDT.int(urgent and (BKP.urgentPriority or 1) or (BKP.priority or 2), 1, 3)
     BackupCool[c.charId] = now() + math.max(5, tonumber(BKP.cooldown) or 45)
     local who = ('%s %s'):format(me.u.callsign or '', me.u.name or ''):gsub('^%s+', '')
+    -- 2.0.15: on a call: no new call, the backup goes onto that call (Config.Dispatch.backup.merge = false: the 2.0.6 way)
+    if r and BKP.merge ~= false then
+        local ok, res, why = pcall(mergeBackup, c, me, r, pri, pos, who)
+        if ok and res then return res end
+        BackupCool[c.charId] = nil
+        return false, (ok and why) or 'Backup request failed'
+    end
     street = MDT.str(street, 120)
     if street == '' and r then street = r.street or '' end
     local title = r and ('Backup · #%d %s'):format(r.id, r.title or '') or ('Backup · %s'):format(who)
@@ -1107,7 +1130,9 @@ local function followResponders(cid, f, pos, idx)
     end
 end
 
+local followBackups   -- 2.0.15: below
 local function followTick()
+    if next(BkFollow) ~= nil then followBackups() end   -- 2.0.15
     if next(Follow) == nil then return end
     local cfg = FOL()
     local _, idx = MDT.dutyNow()
@@ -1147,6 +1172,117 @@ local function followTick()
 end
 MDT.followTick = followTick
 MDT.followDirty = followDirty   -- 2.0.10 (tests add units straight to the table)
+
+-- ---------------------------------------------------------------- 2.0.15: backup merged into the call
+-- An officer attached to a call asks for backup: no new call. The call is marked "Backup requested" (who, when), goes up
+-- to the backup priority (never down), its units are alerted again (card and sound; never the asking officer), the
+-- timeline says so, and a marker follows the asking officer on the GTA maps and the Live map. The call's own spot and
+-- search circle stay. Units respond to the call itself. Asking again refreshes it (the cooldown still applies).
+local function bkSpec(f)
+    local bl = type(BKP.marker) == 'table' and BKP.marker or {}
+    return { coords = vector3(f.x, f.y, f.z or 0.0), label = ('Backup · %s'):format(f.label or ''):sub(1, 40),
+        sprite = math.tointeger(tonumber(bl.sprite)) or 1, color = math.tointeger(tonumber(bl.color)) or 1,
+        scale = tonumber(bl.scale) or 1.0, flash = bl.flash ~= false }
+end
+stopBkFollow = function(cid, note)
+    local f = BkFollow[cid]
+    if not f then return end
+    BkFollow[cid] = nil
+    for x in pairs(f.shown) do pcall(function() WC:HideBlip(respBlipId(cid, x)) end) end
+    hideDutyBlip('bk:' .. cid)
+    local b = BackupOn[cid]
+    if b then b.px, b.py = nil, nil end
+    if note then pcall(followNote, cid, note) MDT.refresh('calls') end
+end
+MDT.stopBkFollow = function(cid, note) return stopBkFollow(tonumber(cid), note) end
+MDT.BackupOn, MDT.BkFollow = BackupOn, BkFollow
+
+followBackups = function()
+    local cfg = FOL()
+    local _, idx = MDT.dutyNow()
+    local minMove = math.max(1, tonumber(cfg.minMove) or 10)
+    for cid, f in pairs(BkFollow) do
+        local e = idx[f.charId]
+        if cfg.backup == false then
+            stopBkFollow(cid)
+        elseif not e or e.u.source ~= f.source or not GetPlayerName(f.source) then
+            stopBkFollow(cid, 'Stopped following the officer who asked for backup (went off duty or left)')
+        else
+            local pos = coordsOf(f.source)
+            if pos then
+                if dist2(pos, f) >= minMove then
+                    f.x, f.y, f.z = pos.x, pos.y, pos.z
+                    local b = BackupOn[cid]
+                    if b then b.px, b.py = pos.x, pos.y end
+                    local db = DutyBlips['bk:' .. cid]
+                    if db then
+                        db.spec.coords = vector3(pos.x, pos.y, pos.z)
+                        local people = sourcesOf(routedDuty(db.aud))
+                        if #people > 0 then pcall(function() WC:ShowBlip({ people = people }, 'bk:' .. cid, db.spec) end) end
+                    end
+                end
+                followResponders(cid, f, pos, idx)
+            end
+        end
+    end
+end
+
+mergeBackup = function(c, me, r, pri, pos, who)
+    local cid = tonumber(r.id)
+    local from = tonumber(r.priority) or 3
+    local to = math.min(from, pri)
+    if to < from then
+        MySQL.update.await("UPDATE `es_mdt_calls` SET `priority` = LEAST(`priority`, ?) WHERE `id` = ? AND `status` = 'active'", { to, cid })
+    end
+    local old = BackupOn[cid]
+    local b = { charId = c.charId, by = who, short = me.g.short or '', at = now(), n = (old and old.n or 0) + 1, px = pos.x, py = pos.y }
+    BackupOn[cid] = b
+    MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { cid, c.charId,
+        MDT.str(('Backup requested%s by %s (%s) · %s'):format(b.n > 1 and ' again' or '', who, b.short,
+            to < from and ('P%d → P%d'):format(from, to) or ('P%d'):format(to)), 500) })
+    local aud = r.audience
+    local list = routedDuty(aud)
+    -- the map: the call's blip flashes at P1, the circle takes the colour
+    local cb = DutyBlips['call:' .. cid]
+    if cb and to == 1 and not cb.spec.flash then
+        cb.spec.flash = true
+        pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. cid, cb.spec) end)
+    end
+    local ab = DutyBlips['area:' .. cid]
+    if ab and ab.spec.color ~= areaColor(to) then
+        ab.spec.color = areaColor(to)
+        pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'area:' .. cid, ab.spec) end)
+    end
+    -- the asking officer: a marker that follows them (a call that already follows its officer, a panic, keeps that)
+    if not Follow[cid] and FOL().backup ~= false then
+        local f = BkFollow[cid]
+        if f and f.source ~= c.source then
+            for x in pairs(f.shown) do pcall(function() WC:HideBlip(respBlipId(cid, x)) end) end
+            f = nil
+        end
+        f = f or { shown = {}, done = {} }
+        f.charId, f.source, f.kind, f.label, f.at = c.charId, c.source, 'backup', who, now()
+        f.x, f.y, f.z = pos.x, pos.y, pos.z
+        BkFollow[cid] = f
+        showDutyBlip('bk:' .. cid, bkSpec(f), nil, list, aud)
+    end
+    -- everyone the call went to, again (card and sound), except the asking officer
+    local p = MySQL.single.await(('SELECT %s FROM `es_mdt_calls` WHERE `id` = ?'):format(CALL_COLS), { cid })
+    if p then
+        shapeCall(p)
+        p.priority = math.min(tonumber(p.priority) or to, to)
+        p.from = to < from and from or nil
+        p.closeNote, p.outcome, p.closedBy, p.closedAt, p.callerPhone = nil, nil, nil, nil, nil
+        p.sourceLabel, p.fx, p.fy, p.audience = nil, nil, nil, nil   -- never who filed it, never the true spot
+        p.units = {}
+        for _, u in ipairs(list) do
+            if u.source ~= c.source then TriggerClientEvent('es_mdt:client:callBackup', u.source, p) end
+        end
+    end
+    MDT.log(c, 'call_backup', { callId = cid, merged = true, priority = to, n = b.n })
+    MDT.refresh('calls')
+    return { id = cid, merged = true, priority = to, again = b.n > 1 or nil, units = math.max(0, #list - 1) }
+end
 if type(CreateThread) == 'function' then
     CreateThread(function()
         while true do
@@ -1558,6 +1694,7 @@ local function mapBase()
         local P = r.preset and presetOf(r.preset)
         r.icon = P and type(P.icon) == 'string' and P.icon:sub(1, 8) or nil
         r.follows = Follow[r.id] and true or nil
+        r.backup = pubBackup(r.id)   -- 2.0.15: the banner and the asking officer's spot
         r.unitIds = byCall[r.id] or {}
     end
     local bolos = MySQL.query.await([[SELECT `id`,`kind`,`charId`,`plate`,`title`,`lastX` AS `x`,`lastY` AS `y`,UNIX_TIMESTAMP(`lastSeenAt`) AS `seenAt` FROM `es_mdt_bolos`
@@ -2299,6 +2436,18 @@ function MDT.registerOps()
         for _, r in ipairs(rows) do
             CallAud[r.id] = r.audience or false
             pcall(showCallArea, r.id, tonumber(r.fx), tonumber(r.fy), r.radius, r.priority, r.audience)
+        end
+        -- 2.0.15: the "Backup requested" banner of active calls, from their timeline (the follow marker does not come back)
+        local ok2, notes = pcall(MySQL.query.await, [[SELECT n.`callId`, n.`byCharId`, n.`note`, UNIX_TIMESTAMP(n.`createdAt`) AS `at` FROM `es_mdt_call_notes` n
+            JOIN `es_mdt_calls` c ON c.`id` = n.`callId` WHERE c.`status` = 'active' AND n.`note` LIKE 'Backup requested%' ORDER BY n.`id`]])
+        if ok2 and type(notes) == 'table' then
+            for _, n in ipairs(notes) do
+                local by, short = tostring(n.note):match('^Backup requested.- by (.-) %(([^)]*)%)')
+                if by then
+                    local old = BackupOn[n.callId]
+                    BackupOn[n.callId] = { charId = n.byCharId, by = by, short = short, at = tonumber(n.at) or now(), n = (old and old.n or 0) + 1 }
+                end
+            end
         end
     end)
 

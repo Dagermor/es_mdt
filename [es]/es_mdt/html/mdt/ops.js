@@ -11,6 +11,10 @@
   // 2.0.7: critical tier, merged reports, "N responding", search circle, suspect details
   const GRADE_CLS = ['', 'g1', 'g2', 'g3', 'g4', 'g5'];
   const critTag = (c) => c.critical && c.status !== 'closed' ? '<span class="crit-tag" title="Critical: above P1">CRITICAL</span>' : '';
+  // 2.0.15: backup asked on this call (it joined the call): who and when, in the player's own clock
+  const bkTime = (t) => { try { return new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+  const bkTag = (c) => c.backup && c.status !== 'closed' ? `<span class="bk-tag" title="Backup requested by ${esc(c.backup.by || '')} at ${esc(bkTime(c.backup.at))}">🚨 Backup requested</span>` : '';
+  const bkBanner = (c) => c.backup && c.status === 'active' ? `<div class="bk-banner"><b>🚨 Backup requested</b> by ${esc(c.backup.by || 'an officer')}${c.backup.short ? ` (${esc(c.backup.short)})` : ''} · ${esc(bkTime(c.backup.at))} · ${ago(c.backup.at)}${(c.backup.n || 1) > 1 ? ` · asked ${esc(c.backup.n)}×` : ''}${c.backup.x != null ? '<span class="hint"> · their live spot is on the Live map</span>' : ''}</div>` : '';
   const repTag = (c) => (c.reports || 1) > 1 ? `<span class="rep-tag" title="Repeat reports merged into this call">×${c.reports} reports</span>` : '';
   const respTag = (c) => c.status === 'closed' ? '' : `<span class="resp-tag${(c.units || []).length ? '' : ' none'}">${(c.units || []).length} responding</span>`;
   const iconOf = (c) => c.icon ? `<span class="c-ico">${esc(c.icon)}</span>` : '';
@@ -76,7 +80,7 @@
     D.list = r.data.calls || [];
     if (D.status === 'active' && $('#d-n')) $('#d-n').textContent = D.list.length || '';
     box.innerHTML = D.list.length ? D.list.map((c) => `<div class="call res click p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}${c.critical && c.status !== 'closed' ? ' is-crit' : ''}${D.sel === c.id ? ' sel' : ''}" data-cpick="${c.id}">
-        <div class="c-top">${critTag(c)}${priPill(c.priority)}${kindTag(c.kind)}${escTag(c)}${iconOf(c)}<b class="c-title">#${c.id} ${esc(c.title)}</b>${repTag(c)}<span class="hint c-age" data-age="${c.createdAt}">${ago(c.createdAt)}</span></div>
+        <div class="c-top">${critTag(c)}${priPill(c.priority)}${kindTag(c.kind)}${escTag(c)}${iconOf(c)}<b class="c-title">#${c.id} ${esc(c.title)}</b>${repTag(c)}${bkTag(c)}<span class="hint c-age" data-age="${c.createdAt}">${ago(c.createdAt)}</span></div>
         ${c.message ? `<div class="c-msg">${esc(c.message)}</div>` : ''}
         <div class="c-foot"><span class="hint">📍 ${esc(c.street || (c.x != null ? 'See the map' : 'No location'))}${c.radius ? ` · ~${c.radius} m search area` : ''}</span>${respTag(c)}<span class="spacer"></span>
           ${c.status === 'closed' ? outBadge(c.outcome) : (c.units.length ? c.units.map(unitChip).join('') : '<span class="pill warn">No units</span>')}
@@ -97,6 +101,7 @@
     box.innerHTML = `<div class="call-head p${c.priority}${c.kind === 'panic' ? ' is-panic' : ''}${c.critical && active ? ' is-crit' : ''}">
         <div class="row">${critTag(c)}${priPill(c.priority)}${kindTag(c.kind)}${escTag(c)}${repTag(c)}${respTag(c)}${active ? pill('Active', 'on') : pill('Closed', 'off') + outBadge(c.outcome, true)}<span class="spacer"></span><span class="hint">${dateTime(c.createdAt)} · ${ago(c.createdAt)}</span></div>
         <div class="v-title">${iconOf(c)}#${c.id} ${esc(c.title)}</div>
+        ${bkBanner(c)}
         ${c.parent ? `<div class="link-call" data-gocall="${c.parent.id}">⤴ Backup for call <b>#${c.parent.id}</b> ${esc(c.parent.title || '')}${c.parent.status === 'closed' ? ' · closed' : ''}</div>` : ''}
         ${(c.backups || []).length ? `<div class="link-row">${c.backups.map((b) => `<span class="link-call small${b.status === 'closed' ? ' off' : ''}" data-gocall="${b.id}">🚨 Backup #${b.id} · P${b.priority}${b.status === 'closed' ? ' · closed' : ''}</span>`).join('')}</div>` : ''}
         ${c.message ? `<div class="c-say">“${esc(c.message)}”</div>` : ''}
@@ -122,7 +127,7 @@
     if ($('#cd-close')) $('#cd-close').onclick = () => closeForm(c, reload);
     if ($('#cd-backup')) $('#cd-backup').onclick = (e) => busy(e.currentTarget, async () => {
       const x = await call('callBackup', { id });
-      if (said(x, x.ok ? `Backup requested · P${x.data.priority} call #${x.data.id}` : '')) reload();
+      if (said(x, x.ok ? (x.data.merged ? `Backup requested on this call · P${x.data.priority}${x.data.units ? ' · its units were alerted' : ''}` : `Backup requested · P${x.data.priority} call #${x.data.id}`) : '')) reload();
     });
     $$('[data-gocall]', box).forEach((n) => n.onclick = () => { const to = +n.dataset.gocall; D.sel = to; dList(true); dDetail(to); });
     // 2.0.7: links (report / warrant / case): a linked call is kept by the retention cleanup
@@ -639,7 +644,7 @@
       toast(`${lv === 'urgent' ? '🚨 URGENT' : lv === 'important' ? '❗ Important' : '📣'} ${a.deptShort || ''} · ${a.title}`, lv === 'urgent' ? 'err' : 'ok');
       if (lv === 'urgent') urgentBanner(a);
       if (S.view === 'dashboard' && !(M.modalOpen && M.modalOpen())) go('dashboard');
-    } else if (m.action === 'callEscalated' || m.action === 'callMerged') {   // 2.0.6 / 2.0.7: quiet (the Dispatch tab refreshes by itself)
+    } else if (m.action === 'callEscalated' || m.action === 'callMerged' || m.action === 'callBackup') {   // 2.0.6 / 2.0.7: quiet (the Dispatch tab refreshes by itself)
       if (S.open) M.loadBadges();
     } else if (m.action === 'open') { setTimeout(() => urgentOnOpen(S.ctx), 350);   // (the live map stops itself on close: livemap.js)
     }
@@ -650,6 +655,7 @@
 // Lua owns the queue and timing (client/ops.lua); this only draws what it is told: { action: 'cpop', show, call, ... }.
 (() => {
   const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const cpTime = (t) => { try { return new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };   // 2.0.15
   const CODE = { '911': '911', '311': '311', panic: 'PANIC', officer: 'OFFICER', alert: 'ALERT', medical: 'MEDICAL', shots: 'SHOTS', theft: 'THEFT', backup: 'BACKUP',
     robbery: 'ROBBERY', drugs: 'DRUGS', explosion: 'EXPLOSION', fight: 'FIGHT', suspicious: 'SUSPICIOUS', down: 'PERSON DOWN', speeding: 'SPEEDING' };
   // 2.0.7: suspect details on the card (one line of chips)
@@ -728,6 +734,7 @@
         <span class="cp-code k-${esc(c.kind)}">${c.icon ? `<span class="cp-ico">${esc(c.icon)}</span>` : ''}${esc(CODE[c.kind] || 'CALL')}</span>
         <span class="cp-pri">${esc(PRI[c.priority] || 'P2')}</span>
         ${(c.reports || 1) > 1 ? `<span class="cp-rep" title="Repeat reports merged into this call">×${esc(c.reports)} reports</span>` : ''}
+        ${c.backup && !c.closed ? '<span class="cp-bkb" title="An officer on this call asked for backup">BACKUP</span>' : ''}
         ${c.escalated ? `<span class="cp-esc" title="No unit yet: raised from P${esc(c.escalated)}">↑ from P${esc(c.escalated)}</span>` : ''}
         <span class="cp-id">#${esc(c.id)}</span>
         <span class="cp-sp"></span>
@@ -736,6 +743,7 @@
       </div>
       <div class="cp-title">${esc(c.title || 'Call')}</div>
       ${c.parentId ? `<div class="cp-link">⤴ Backup for call #${esc(c.parentId)}</div>` : ''}
+      ${c.backup && !c.closed ? `<div class="cp-bk">🚨 Backup requested by <b>${esc(c.backup.by || 'an officer')}</b>${c.backup.short ? ` (${esc(c.backup.short)})` : ''} · ${esc(cpTime(c.backup.at))}</div>` : ''}
       ${c.message && c.message !== c.title ? `<div class="cp-msg">${esc(c.message)}</div>` : ''}
       <div class="cp-meta">
         <span class="cp-loc">📍 ${esc(c.street || 'Location on your map')}</span>
@@ -759,7 +767,7 @@
     lastCard = m;
     const c = m.call, k = m.keys || {};
     // what changes the card's shape; units, distance and age do not
-    const sig = [c.id, c.kind, c.priority, c.escalated || '', c.parentId || '', c.title, c.message, c.street, c.callerName, !!c.closed, c.outcome || '', !!c.mine, m.more || 0,
+    const sig = [c.id, c.kind, c.priority, c.escalated || '', c.parentId || '', c.backup ? `${c.backup.at}:${c.backup.n}` : '', c.title, c.message, c.street, c.callerName, !!c.closed, c.outcome || '', !!c.mine, m.more || 0,
       !!c.critical, c.icon || '', c.reports || 1, c.radius || 0, JSON.stringify(c.details || null), !!c.alarm,
       m.state || '', m.note || '', k.attend, k.dismiss, k.recall, k.detach, k.pad || '', padHud()].join('|');
     const fresh = m.seq !== cur.seq || !root.querySelector('.cp-card');

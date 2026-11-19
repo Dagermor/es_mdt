@@ -43,6 +43,8 @@ do
         if CC[k] == nil then CC[k] = v end
     end
 end
+-- 2.0.15: backup asked on a call goes onto that call (an older config.lua has no `merge`)
+if type(Config.Dispatch) == 'table' and type(Config.Dispatch.backup) == 'table' and Config.Dispatch.backup.merge == nil then Config.Dispatch.backup.merge = true end
 local ROOT = setmetatable({ Suite = EsSuite, Dept = DEPT, Doj = DOJC }, {
     __index = function(_, k) return Config[k] end,
     __newindex = function(_, k, v) Config[k] = v end,
@@ -100,6 +102,8 @@ Whip.configPage({
             { key = D .. 'backup.priority', type = 'int', min = 1, max = 3, label = 'Backup call priority', shownWhen = on(D .. 'backup.enabled') },
             { key = D .. 'backup.urgentPriority', type = 'int', min = 1, max = 3, label = 'Backup priority on a panic / P1 call', shownWhen = on(D .. 'backup.enabled') },
             { key = D .. 'backup.cooldown', type = 'int', min = 0, max = 600, unit = 's', label = 'One backup request per officer every', shownWhen = on(D .. 'backup.enabled') },
+            { key = D .. 'backup.merge', type = 'bool', label = 'Backup on a call joins that call (no new call)', shownWhen = on(D .. 'backup.enabled'),
+              help = 'On: the call is marked "Backup requested" with who and when, goes up to the backup priority, its units are alerted again and a marker follows the officer who asked. Off: a separate backup call, as before. Backup on no call is always its own call.' },
             { key = 'Panic.cooldown', type = 'int', min = 0, max = 300, unit = 's', label = 'Panic button: once every' },
         } },
         { id = 'alerts', label = 'Alerts on screen', settings = {

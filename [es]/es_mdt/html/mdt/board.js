@@ -34,7 +34,7 @@
       return `<div class="cb-row p${c.priority}${c.critical ? ' crit' : ''}${mine ? ' mine' : ''}" data-id="${c.id}">
         <div class="cb-l">
           <div class="cb-t">${c.critical ? '<span class="cb-crit">CRIT</span>' : ''}<span class="cb-p">P${esc(c.priority)}</span><span class="cb-k">${c.icon ? esc(c.icon) + ' ' : ''}${esc(KIND[c.kind] || c.kind)}</span>
-            <b>#${c.id} ${esc(c.title)}</b>${(c.reports || 1) > 1 ? `<span class="cb-rep">×${esc(c.reports)}</span>` : ''}<span class="cb-age">${ageTxt(age(c))}</span></div>
+            <b>#${c.id} ${esc(c.title)}</b>${(c.reports || 1) > 1 ? `<span class="cb-rep">×${esc(c.reports)}</span>` : ''}${c.backup ? `<span class="cb-bk" title="Backup requested by ${esc(c.backup.by || '')}">🚨 Backup</span>` : ''}<span class="cb-age">${ageTxt(age(c))}</span></div>
           <div class="cb-s">📍 ${esc(c.street || (c.x != null ? 'On the map' : 'No location'))}${c.radius ? ` <span class="cb-area">◎ ~${esc(c.radius)} m</span>` : ''}</div>
           ${det(c.details)}
           <div class="cb-units">${unitsTxt(c)}</div>

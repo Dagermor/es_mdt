@@ -191,7 +191,11 @@ Config.Dispatch = {
     escalate = { enabled = true, minutes = 5, top = 1, realert = true },
     -- 2.0.6: "Request backup" (the call in the MDT, or /backup): a backup call at the officer's position, linked to their call.
     -- P1 when the call is a panic or P1, else `priority`. key = default key ('' = unbound; players can rebind it).
-    backup = { enabled = true, command = 'backup', key = '', priority = 2, urgentPriority = 1, cooldown = 45 },
+    backup = { enabled = true, command = 'backup', key = '', priority = 2, urgentPriority = 1, cooldown = 45,
+        -- 2.0.15: asked ON a call, the backup goes onto that call (no new call): "Backup requested" (who, when), the backup
+        -- priority, its units alerted again, and a marker that follows the asking officer (`marker`: GTA blip sprite / colour).
+        -- false: a separate backup call, as before. Backup asked on no call is always its own call.
+        merge = true, marker = { sprite = 1, color = 1, scale = 1.0, flash = true } },
     -- 2.0.9: a backup (and panic) call FOLLOWS the officer who asked: the server reads their position every `seconds`
     -- and moves the call, its blip and its spot (Respond / GPS / arrival) when they have moved `minMove` metres, until the
     -- call closes (or auto-closes) or they go off duty / leave. Units on it get their GPS moved too, at most every

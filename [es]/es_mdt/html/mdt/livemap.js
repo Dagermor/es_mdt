@@ -287,7 +287,14 @@
       if (L.show.areas && c.radius) areas.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${metresToPx(c.radius).toFixed(1)}" class="lm-area p${c.priority}"/>`);
       const ico = c.kind === 'panic' ? '⚠' : c.kind === 'backup' ? '⇶' : (c.icon || '☎');
       const cls = `lp lp-call p${c.priority}${c.critical ? ' crit' : ''}${c.kind === 'panic' ? ' panic' : ''}${c.mine ? ' mine' : ''}${sel === 'c:' + c.id ? ' sel' : ''}${hit ? '' : ' dim'}`;
-      pinEl('c:' + c.id, cls, `<div class="lp-b"><span class="lp-m">${esc(ico)}</span><span class="lp-l">#${c.id}${(c.units || []).length ? ` · ${(c.units || []).length}` : ''}${c.follows ? ' · live' : ''}</span></div>`, x, y);
+      pinEl('c:' + c.id, cls, `<div class="lp-b"><span class="lp-m">${esc(ico)}</span><span class="lp-l">#${c.id}${(c.units || []).length ? ` · ${(c.units || []).length}` : ''}${c.follows ? ' · live' : ''}${c.backup ? ' · backup' : ''}</span></div>`, x, y);
+      // 2.0.15: backup asked on this call: the asking officer's live spot, linked to the call (which stays where it is)
+      if (c.backup && c.backup.x != null) {
+        const [bx, by] = toMap(c.backup.x, c.backup.y);
+        lines.push(`<line x1="${x.toFixed(1)}" y1="${y.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" class="lm-bkline"/>`);
+        const who = String(c.backup.by || '').split(' ')[0];
+        pinEl('k:' + c.id, `lp lp-bk${sel === 'c:' + c.id ? ' sel' : ''}${hit ? '' : ' dim'}`, `<div class="lp-b"><span class="lp-m">🚨</span><span class="lp-l">Backup · ${esc(who)} · #${c.id}</span></div>`, bx, by);
+      }
     });
     const units = L.show.units ? visUnits() : [];
     const byId = new Map(units.map((u) => [u.charId, u]));
@@ -351,6 +358,7 @@
 
   // ---------------------------------------------------------------- selection, details and actions
   function select(key, fly) {
+    if (key && key[0] === 'k') key = 'c' + key.slice(1);   // 2.0.15: a backup marker opens its call
     L.sel = key;
     if (!key || key[0] !== 'u') L.follow = false;
     $$('.lp.sel').forEach((el) => el.classList.remove('sel'));
@@ -393,7 +401,7 @@
       html = `<div class="lm-dh"><span class="lm-ico big call p${c.priority}">${esc(c.kind === 'panic' ? '⚠' : c.kind === 'backup' ? '⇶' : (c.icon || '☎'))}</span>
           <div><div class="lm-dt">#${c.id} ${esc(c.title)}</div><div class="hint">📍 ${esc(c.street || 'Unknown street')} · ${ago(c.createdAt)}</div></div>
           <button class="lm-x" data-close title="Close">✕</button></div>
-        <div class="row lm-tags">${M.priPill ? M.priPill(c.priority) : 'P' + c.priority}${M.kindTag ? M.kindTag(c.kind) : ''}${c.critical ? '<span class="crit-tag">CRITICAL</span>' : ''}${(c.reports || 1) > 1 ? `<span class="rep-tag">×${c.reports} reports</span>` : ''}${c.follows ? '<span class="lm-livetag">Follows the officer</span>' : ''}${c.radius ? `<span class="pill">Search area ~${c.radius} m</span>` : ''}</div>
+        <div class="row lm-tags">${M.priPill ? M.priPill(c.priority) : 'P' + c.priority}${M.kindTag ? M.kindTag(c.kind) : ''}${c.critical ? '<span class="crit-tag">CRITICAL</span>' : ''}${(c.reports || 1) > 1 ? `<span class="rep-tag">×${c.reports} reports</span>` : ''}${c.follows ? '<span class="lm-livetag">Follows the officer</span>' : ''}${c.backup ? `<span class="bk-tag" title="Their live spot: the 🚨 marker">🚨 Backup · ${esc(c.backup.by || '')}</span>` : ''}${c.radius ? `<span class="pill">Search area ~${c.radius} m</span>` : ''}</div>
         <div class="lm-units">${us.length ? `<i>${us.length} responding</i>${us.map((x) => `<span>${esc(x.callsign || x.name || '#' + x.charId)}</span>`).join('')}` : '<i class="none">Nobody responding yet</i>'}</div>
         <div class="lm-acts">${c.mine ? '<span class="pill on">You are on this call</span>' : (S.ctx.onDuty ? `<button class="btn small accent" data-respond="${c.id}" data-probe-press>Respond + GPS</button>` : '')}
           <button class="btn small" data-gps="${c.id}" data-probe-press>⌖ GPS</button>

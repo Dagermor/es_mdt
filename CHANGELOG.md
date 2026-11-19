@@ -1,5 +1,23 @@
 # Changelog
 
+## es_mdt 2.0.15 (2026-11-19)
+
+**Backup on a call now joins that call instead of making a new one.**
+
+- **Asked by an officer attached to a call** (the MDT's Request backup, `/backup` or the controller): no new call.
+  - The call is marked **🚨 Backup requested**, with who asked (callsign, name, department) and when, in each player's own clock. This shows as a banner in the call's details and on the call card, and as a badge in the Dispatch list, on the call board and on the Live map.
+  - It goes up to the backup priority (`backup.priority`, or `urgentPriority` on a panic or P1 call) and never down. At P1 its map blip flashes, and its search circle takes the new colour.
+  - Every unit the call is routed to gets it again, with the card and sound, **except the officer who asked**.
+  - A timeline note: "Backup requested by 1-A-21 Kara Vance (LSPD) · P2 → P1".
+  - A **🚨 Backup marker follows the officer who asked**, on the GTA minimap and pause map and on the Live map, with a dashed line to the call. The call keeps its own location and search circle. The asking officer still sees a marker for each responding unit, as before. The marker stops when they go off duty or leave, and goes when the call closes.
+  - **Respond** attaches to the call itself.
+  - Asking again (after the cooldown, which is kept) refreshes the banner ("asked 2×") and alerts the units again.
+- **Backup with no call** is still its own backup call that follows the officer, as before.
+- `/whip` → Settings → MDT: **"Backup on a call joins that call (no new call)"** (`Config.Dispatch.backup.merge`, on by default; off = the 2.0.6 separate backup call). The marker's look is `backup.marker`.
+- After a restart, the banner of active calls comes back from their timeline. The follow marker comes back only when backup is asked again.
+- Performance: nothing new runs on the client. The marker is moved by the server's existing 4 s follow check, only while a backup is being followed.
+- The "Changed by …, <time>" line under a setting in `/whip` → Settings is drawn by whip_core (its date is formatted in whip_core's server code), so es_mdt cannot change its time zone.
+
 ## es_mdt 2.0.14 (2026-11-19)
 
 **Fix: a witness call's search circle now shows on the GTA minimap and pause map for as long as the call is active**, not only on the MDT's Live map.

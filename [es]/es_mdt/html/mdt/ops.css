@@ -425,3 +425,12 @@
 .cp-keys.pad .espg.sh { width: auto; }
 .cp-keys.pad .cp-k { gap: 3px; }
 .cp-hold { font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; opacity: .75; margin: 0 3px 0 2px; }
+
+/* 2.0.15: backup asked on a call (it joined the call) */
+.bk-tag { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: rgba(239,68,68,.2); color: #fecaca; margin-left: 6px; animation: bkPulse 1.6s ease-in-out infinite; }
+.bk-banner { margin: 8px 0 2px; padding: 8px 11px; border-radius: 9px; background: rgba(239,68,68,.14); border: 1px solid rgba(248,113,113,.55); color: #fee2e2; font-size: 13px; }
+.bk-banner b { color: #fca5a5; }
+.cp-bkb { padding: 1px 6px; border-radius: 5px; font-size: 10.5px; font-weight: 800; background: #dc2626; color: #fff; animation: bkPulse 1.4s ease-in-out infinite; }
+.cp-bk { margin: 3px 0 2px; padding: 4px 8px; border-radius: 7px; background: rgba(239,68,68,.16); border: 1px solid rgba(248,113,113,.45); color: #fee2e2; font-size: 12px; }
+.cb-bk { font-size: 10.5px; font-weight: 800; color: #fecaca; background: rgba(239,68,68,.22); padding: 1px 6px; border-radius: 5px; margin-left: 4px; }
+@keyframes bkPulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }

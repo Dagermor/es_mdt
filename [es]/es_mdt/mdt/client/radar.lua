@@ -321,6 +321,7 @@ end)
 
 -- ---------------------------------------------------------------- controls
 local function inCar() return policeCar(GetVehiclePedIsIn(PlayerPedId(), false)) and allowed end
+MDTC.radarInCar = inCar   -- 2.0.13: client/pad.lua (LB + D-Down held opens the remote only here)
 
 -- look LR/UD (1, 2), attack / aim (24, 25), vehicle mouse look (106), weapon wheel (37, 12-17), pause (199, 200, 322),
 -- vehicle aim / attack / passenger attack (68, 69, 70, 91, 92), melee (140-142, 257, 263, 264)
@@ -385,7 +386,7 @@ cmd('radarremote', 'remote', K.remote, function()
     SetNuiFocus(true, true)
     SetNuiFocusKeepInput(false)
     pushSettings()
-    send({ action = 'radarRemote', open = true, hits = hits, closeKey = remoteKey() })
+    send({ action = 'radarRemote', open = true, hits = hits, closeKey = remoteKey(), pad = type(ESPAD) == 'table' and ESPAD.button('es_mdt_board') or nil })
     -- belt and braces while it is open: if any other layer keeps game input, look / aim / attack / weapon wheel /
     -- pause / vehicle aim and shoot stay off (WHIP's shared block), so the mouse and Esc only reach the remote.
     -- Steering and throttle are not in it.

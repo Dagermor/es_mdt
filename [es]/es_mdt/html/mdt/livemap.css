@@ -113,3 +113,11 @@
 .lm-acts { display: flex; gap: 6px; flex-wrap: wrap; } .lm-acts .btn.on { border-color: var(--ui-accent); }
 .lm-foot { padding: 8px 12px; border-top: 1px solid var(--ui-border); font-size: 11px; }
 @media (max-width: 1200px) { .lm { grid-template-columns: minmax(0, 1fr) 280px; } .lm-search input { width: 130px; } }
+
+/* 2.0.13: the controller's cross (A picks the pin nearest it), shown only while a pad drives */
+.lm-cross { display: none; position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; margin: -17px 0 0 -17px; z-index: 6; pointer-events: none;
+  border: 2px solid rgba(90, 162, 255, .9); border-radius: 50%; box-shadow: 0 0 0 2px rgba(0, 0, 0, .45), 0 0 14px rgba(90, 162, 255, .55); }
+.lm-cross::before, .lm-cross::after { content: ''; position: absolute; background: rgba(90, 162, 255, .95); }
+.lm-cross::before { left: 50%; top: -9px; bottom: -9px; width: 2px; margin-left: -1px; }
+.lm-cross::after { top: 50%; left: -9px; right: -9px; height: 2px; margin-top: -1px; }
+html.esp-pad .lm-cross { display: block; }

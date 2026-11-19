@@ -690,6 +690,29 @@
     bar.style.transition = `transform ${Math.max(0, ms)}ms linear`; bar.style.transform = 'scaleX(0)';
   };
 
+  // 2.0.13: on a controller the card shows its button (LB + D-Left unless the player moved it): a tap responds, held it hides
+  const padHud = () => { const P = window.ESPad && window.ESPad.state(); return !!(P && P.pad && P.hints !== 'off'); };
+  function keysHtml(m) {
+    const c = m.call, k = m.keys || {};
+    if (padHud() && k.pad) {
+      const g = window.ESPad.slotGlyphs(k.pad);
+      return `<div class="cp-keys pad">
+        <span class="cp-k cp-go">${g}${c.mine ? 'GPS again' : 'Respond + GPS'}</span>
+        <span class="cp-k">${g}<b class="cp-hold">hold</b>${m.more ? 'Next' : 'Hide'}</span>
+      </div>`;
+    }
+    return `<div class="cp-keys">
+        <span class="cp-k cp-go"><kbd>${esc(keyName(k.attend || 'E'))}</kbd>${c.mine ? 'GPS again' : 'Respond + GPS'}</span>
+        <span class="cp-k"><kbd>${esc(keyName(k.dismiss || 'DEL'))}</kbd>${m.more ? 'Next' : 'Hide'}</span>
+        ${c.mine ? `<span class="cp-k dim">${esc(k.detach || '/detach')} to leave</span>` : `<span class="cp-k dim">${esc(k.recall || '/calls')}</span>`}
+      </div>`;
+  }
+  let lastCard = null;
+  document.addEventListener('espad:state', () => {
+    const root = box(), f = root.querySelector('.cp-keys');
+    if (f && lastCard && lastCard.show) f.outerHTML = keysHtml(lastCard);
+  });
+
   function build(m, enter) {
     const root = box(), c = m.call, k = m.keys || {};
     const panic = c.kind === 'panic';
@@ -698,11 +721,7 @@
     if (m.state === 'attached') foot = `<div class="cp-flash ok">✓ ${esc(m.note || 'Attached · GPS set')}</div>`;
     else if (m.state === 'closed' || c.closed) foot = `<div class="cp-flash off">${esc(m.note || ('Closed' + (c.outcome ? ' · ' + c.outcome : '')))}</div>`;
     else if (m.state === 'error') foot = `<div class="cp-flash bad">${esc(m.note || 'That did not work')}</div>`;
-    else foot = `<div class="cp-keys">
-        <span class="cp-k cp-go"><kbd>${esc(keyName(k.attend || 'E'))}</kbd>${c.mine ? 'GPS again' : 'Respond + GPS'}</span>
-        <span class="cp-k"><kbd>${esc(keyName(k.dismiss || 'DEL'))}</kbd>${m.more ? 'Next' : 'Hide'}</span>
-        ${c.mine ? `<span class="cp-k dim">${esc(k.detach || '/detach')} to leave</span>` : `<span class="cp-k dim">${esc(k.recall || '/calls')}</span>`}
-      </div>`;
+    else foot = keysHtml(m);
     root.innerHTML = `<div class="cp-card cp-p${c.priority || 2}${panic ? ' panic' : ''}${c.critical && !c.closed ? ' crit' : ''} st-${state}${enter ? ' enter' : ''}">
       <div class="cp-top">
         ${c.critical && !c.closed ? `<span class="cp-crit${c.alarm ? ' ring' : ''}" title="Critical: above P1">CRITICAL</span>` : ''}
@@ -737,11 +756,12 @@
   function draw(m) {
     const root = box();
     if (!m.show || !m.call) { root.classList.add('hidden'); root.innerHTML = ''; cur = { seq: -1, sig: '' }; return; }
+    lastCard = m;
     const c = m.call, k = m.keys || {};
     // what changes the card's shape; units, distance and age do not
     const sig = [c.id, c.kind, c.priority, c.escalated || '', c.parentId || '', c.title, c.message, c.street, c.callerName, !!c.closed, c.outcome || '', !!c.mine, m.more || 0,
       !!c.critical, c.icon || '', c.reports || 1, c.radius || 0, JSON.stringify(c.details || null), !!c.alarm,
-      m.state || '', m.note || '', k.attend, k.dismiss, k.recall, k.detach].join('|');
+      m.state || '', m.note || '', k.attend, k.dismiss, k.recall, k.detach, k.pad || '', padHud()].join('|');
     const fresh = m.seq !== cur.seq || !root.querySelector('.cp-card');
     if (fresh) build(m, true);                 // a new call: build, slide in once, bar from full
     else if (sig !== cur.sig) build(m, false); // same call, new state (attached / closed / queue): rebuild still, bar for what is left

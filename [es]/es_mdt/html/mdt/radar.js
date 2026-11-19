@@ -106,7 +106,9 @@
         <div class="rm-row"><span class="rm-hint">Drag the radar to move it.</span><button class="rm-b" data-rm="pos">Reset position</button><button class="rm-b" data-rm="test">♪ Test beep</button></div></div>
       <div class="rm-sec"><div class="rm-t">Plate hits <span class="rm-hint">· BOLO, stolen, owner warrant</span></div>
         ${R.hits.length ? R.hits.map((h) => `<div class="rm-hit"><span class="rd-pl sm">${esc(h.plate)}</span><span class="rm-why">${esc(h.text)}</span><button class="rm-b" data-open="${esc(h.plate)}">Open in MDT</button></div>`).join('') : '<div class="rm-hint">No hits yet this shift.</div>'}</div>
-      <div class="rm-keys">Keys (GTA Settings › Key Bindings › FiveM): radar on/off, remote, lock front/rear speed, lock front/rear plate, reset. <b>/radaropen</b> opens the last hit. More in the pause menu: Settings › Server Settings › Radar.</div>
+      <div class="rm-keys">${(() => { const P = window.ESPad && window.ESPad.state(); return P && P.pad && P.nav
+        ? `Controller: ${window.ESPad.glyph('dpad')} move, ${window.ESPad.glyph('a')} pick, ${window.ESPad.glyph('b')} close. ${R.pad ? `Hold ${window.ESPad.slotGlyphs(R.pad)} in a police car to open this remote.` : 'Put the remote on a button in the pause menu\'s Controller screen.'}`
+        : 'Keys (GTA Settings › Key Bindings › FiveM): radar on/off, remote, lock front/rear speed, lock front/rear plate, reset.'; })()} <b>/radaropen</b> opens the last hit. More in the pause menu: Settings › Server Settings › Radar.</div>
     </div>`;
     const redraw = () => { remote(); place(); if (R.last) draw(R.last); save(); };
     $$('[data-tog]', el).forEach((b) => b.onclick = () => { const k = b.dataset.tog; if (k === 'front' || k === 'rear') s[k].on = !s[k].on; else s[k] = !s[k]; redraw(); });
@@ -145,7 +147,7 @@
       el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2400);
       if (R.remote) remote();
     } else if (m.action === 'radarRemote') {
-      R.remote = !!m.open; if (Array.isArray(m.hits)) R.hits = m.hits; if (m.closeKey) R.closeKey = m.closeKey;
+      R.remote = !!m.open; if (Array.isArray(m.hits)) R.hits = m.hits; if (m.closeKey) R.closeKey = m.closeKey; R.pad = m.pad || null;
       $('#radar-remote').classList.toggle('hidden', !R.remote); el.classList.toggle('editing', R.remote);
       if (R.remote) remote();
       if (R.last) draw(R.last);

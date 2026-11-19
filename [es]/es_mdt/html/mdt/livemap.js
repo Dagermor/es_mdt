@@ -42,7 +42,7 @@
     stop();
     L.pins = new Map();
     v.innerHTML = `<div class="lm">
-      <div class="lm-map" id="lm-map" tabindex="0" aria-label="Live map: drag to move, scroll to zoom">
+      <div class="lm-map" id="lm-map" tabindex="0" aria-label="Live map: drag to move, scroll to zoom"><div class="lm-cross" aria-hidden="true"></div>
         <div class="lm-inner" id="lm-inner">
           <img id="lm-img" alt="" draggable="false">
           <svg class="lm-svg" id="lm-svg" viewBox="0 0 ${SIZE} ${SIZE}" width="${SIZE}" height="${SIZE}"></svg>
@@ -426,4 +426,32 @@
   window.addEventListener('message', (e) => { const m = e.data; if (m && m.action === 'close') stop(); if (m && m.action === 'callMoved' && L.data && S.view === 'livemap') { const c = callById(+m.call.id); if (c) { c.x = +m.call.x; c.y = +m.call.y; draw(); } } });
   document.addEventListener('visibilitychange', () => { if (!document.hidden && S.view === 'livemap' && mapEl()) poll(false); });
   M.liveMap = L;
+
+  // 2.0.13: a controller (html/pad.js): left stick moves, right stick / triggers zoom about the middle, A picks the pin nearest
+  // the cross in the middle, X fits everything, Y finds my unit
+  window.ESPadMap = {
+    active: () => S.open && S.view === 'livemap' && !!mapEl() && !document.querySelector('#modal:not(.hidden)'),
+    pan(dx, dy) { cancelAnimationFrame(L.tz); if (L.follow) setFollow(false); L.x += dx; L.y += dy; clampView(); apply(); },
+    zoom(f) {
+      const m = mapEl(); if (!m) return;
+      cancelAnimationFrame(L.tz);
+      const z = Math.max(MIN_Z, Math.min(MAX_Z, L.z * f)), k = z / L.z, cx = m.clientWidth / 2, cy = m.clientHeight / 2;
+      L.x = cx - (cx - L.x) * k; L.y = cy - (cy - L.y) * k; L.z = z; clampView(); apply();
+    },
+    nearest() {
+      const m = mapEl(); if (!m) return;
+      const r = m.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let best = null, bd = Infinity;
+      L.pins.forEach((el, key) => {
+        if (!el.isConnected || el.offsetParent === null) return;
+        const b = el.getBoundingClientRect(); if (!b.width) return;
+        const d = Math.hypot(b.left + b.width / 2 - cx, b.top + b.height / 2 - cy);
+        if (d < bd) { bd = d; best = key; }
+      });
+      if (!best) return toast('Nothing on the map yet', 'bad');
+      select(best, true);
+    },
+    fit: () => fitAll(),
+    me: () => { const b = $('#lm-me'); if (b) b.click(); },
+  };
 })();

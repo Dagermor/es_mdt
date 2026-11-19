@@ -157,7 +157,7 @@ TriggerEvent('chat:addSuggestion', '/mdtvolume', 'Dispatch alert volume (0-100),
 -- reads `get` each time it opens. A value equal to the server's default is not kept (the KVP is deleted), so that player
 -- follows the default, also when an admin changes it later (/whip > Settings > MDT). Rows are declared again when the
 -- server's range or defaults change.
-local KEYS_HELP = 'Keys (MDT, panic, call board ...) are rebound in GTA Settings > Key Bindings > FiveM.'
+local KEYS_HELP = 'Keys (MDT, panic, call board ...) are rebound in GTA Settings > Key Bindings > FiveM; controller buttons on the pause menu\'s Controller screen.'
 local function pct(v) return math.floor((tonumber(v) or 1) * 100 + 0.5) end
 local function declareRows()
     if not (Whip and Whip.playerSetting) then return end

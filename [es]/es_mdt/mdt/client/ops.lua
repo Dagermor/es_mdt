@@ -165,7 +165,8 @@ local function render(restart)
             critical = c.critical, icon = c.icon, reports = c.reports, radius = c.radius, details = c.details, alarm = Alarm[c.id] ~= nil },
         dist = dist, age = ageOf(c), left = math.max(0, hideAt - GetGameTimer()),
         more = math.max(0, #Queue - 1), state = f and f.state or nil, note = f and f.text or nil,
-        keys = { attend = keyOf(CMD.attend, POP.attendKey), dismiss = keyOf(CMD.dismiss, POP.dismissKey), recall = '/' .. CMD.recall, detach = '/' .. CMD.detach } })
+        keys = { attend = keyOf(CMD.attend, POP.attendKey), dismiss = keyOf(CMD.dismiss, POP.dismissKey), recall = '/' .. CMD.recall, detach = '/' .. CMD.detach,
+            pad = type(ESPAD) == 'table' and ESPAD.button('es_mdt_call') or nil } })   -- 2.0.13: the controller's button (LB + D-Left unless moved)
 end
 
 local function hide()
@@ -859,7 +860,7 @@ local function boardOpen()
     wc():SetScreenOpen(true, BOARD_SCREEN)
     SetNuiFocus(true, true)
     SetNuiFocusKeepInput(false)
-    SendNUIMessage({ action = 'board', show = true, loading = true, key = boardKey() })
+    SendNUIMessage({ action = 'board', show = true, loading = true, key = boardKey(), pad = type(ESPAD) == 'table' and ESPAD.button('es_mdt_board') or nil })
     boardLoad()
 end
 -- 2.0.8: always registered; board.enabled is read on each press (boardOpen), so it changes live
@@ -954,4 +955,7 @@ exports('OpenVehicle', function(plate)
     return true
 end)
 
+-- 2.0.13: the commands client/pad.lua puts on WHIP's controller buttons (each keeps its own checks), and whether a call card is up
+MDTC.padCmds = { attend = CMD.attend, dismiss = CMD.dismiss, backup = BKP.command or 'backup', board = boardKeyCmd, panic = PANIC_KEY_CMD }
+MDTC.callShown = function() return shown ~= nil end
 MDTC.opsLoaded = true

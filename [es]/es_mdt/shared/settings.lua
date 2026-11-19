@@ -34,6 +34,15 @@ do
     end
     RC.keys = RC.keys or {}
 end
+-- 2.0.13: controller support. A config.lua from before 2.0.13 has no Controller table: everything on, as the defaults.
+do
+    Config.Controller = Config.Controller or {}
+    local CC = Config.Controller
+    for k, v in pairs({ enabled = true, buttons = true, navigation = true, keyboard = true, hints = true,
+        panicHoldMs = 1500, dismissHoldMs = 600, remoteHoldMs = 600 }) do
+        if CC[k] == nil then CC[k] = v end
+    end
+end
 local ROOT = setmetatable({ Suite = EsSuite, Dept = DEPT, Doj = DOJC }, {
     __index = function(_, k) return Config[k] end,
     __newindex = function(_, k, v) Config[k] = v end,
@@ -304,6 +313,24 @@ Whip.configPage({
             { key = 'Doj.Sentence.maxMonths', type = 'int', min = 0, max = 10000, unit = 'months', label = 'Longest sentence' },
             { key = 'Doj.Sentence.maxService', type = 'int', min = 0, max = 1000, unit = 'tasks', label = 'Most community service' },
             { key = 'Doj.Sentence.maxProbationDays', type = 'int', min = 0, max = 3650, unit = 'days', label = 'Longest probation' },
+        } },
+        { id = 'controller', label = 'Controller', settings = {
+            { key = 'Controller.enabled', type = 'bool', label = 'Controller support',
+              help = 'Off: no es_mdt buttons on the controller and its screens are mouse only. Players can also turn it off for themselves (pause menu > Settings > Server Settings > Controller).' },
+            { key = 'Controller.buttons', type = 'bool', label = 'MDT actions on the controller', shownWhen = on('Controller.enabled'),
+              help = 'LB + Y the MDT, LB + D-Up (hold) panic, LB + D-Left respond (hold: hide the card), LB + D-Right backup, LB + D-Down the call board (hold in a radar car: the radar remote). Players move them on the pause menu\'s Controller screen.' },
+            { key = 'Controller.navigation', type = 'bool', label = 'Move through screens with the D-pad and sticks', shownWhen = on('Controller.enabled'),
+              help = 'A highlight on the selected button. A picks, B goes back, LB / RB switch tabs, LT / RT scroll. Live map: left stick moves, right stick or triggers zoom.' },
+            { key = 'Controller.keyboard', type = 'bool', label = 'On-screen keyboard for text boxes', shownWhen = on('Controller.enabled'),
+              help = 'A on a text box opens WHIP\'s on-screen keyboard (only for players on a controller).' },
+            { key = 'Controller.hints', type = 'bool', label = 'Button hints at the bottom of each screen', shownWhen = on('Controller.enabled'),
+              help = 'Controller pictures on a pad, keys on a keyboard. Players pick the style or hide them in the pause menu.' },
+            { key = 'Controller.panicHoldMs', type = 'int', min = 500, max = 5000, step = 100, unit = 'ms', label = 'Hold panic for',
+              shownWhen = on('Controller.enabled'), help = 'How long LB + D-Up must be held, so a panic is never sent by accident.' },
+            { key = 'Controller.dismissHoldMs', type = 'int', min = 300, max = 3000, step = 100, unit = 'ms', label = 'Hold to hide a call card',
+              shownWhen = on('Controller.enabled'), help = 'LB + D-Left: a tap responds, held this long it hides the card.' },
+            { key = 'Controller.remoteHoldMs', type = 'int', min = 300, max = 3000, step = 100, unit = 'ms', label = 'Hold for the radar remote',
+              shownWhen = on('Controller.enabled'), help = 'LB + D-Down: a tap opens the call board, held this long in a radar car it opens the radar remote.' },
         } },
         { id = 'display', label = 'Display size', settings = {
             { key = 'UI.defaultScale', type = 'number', min = 0.5, max = 2, step = 0.05, label = 'Default size (1 = 100%)',

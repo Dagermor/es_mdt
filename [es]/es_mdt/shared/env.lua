@@ -10,6 +10,7 @@
 --   RegisterNUICallback(name)    departments -> 'dept_<name>', doj -> 'doj_<name>' (their pages post to those)
 --   SendNUIMessage(msg)          goes to that part's page only (html/index.html hands it to the right frame)
 --   SetNuiFocus(a, b)            per part; the game's focus is on while any part wants it
+--   SetNuiFocusKeepInput(k)      2.0.13: left to the pad layer (client/pad.lua) while a controller drives a screen
 
 local SELF = GetCurrentResourceName()
 local REAL = _G
@@ -25,10 +26,26 @@ end
 
 -- NUI focus: one per part, the game's is the OR of them
 local Focus = {}
+local focusOrder = 0
 local function applyFocus()
-    local f, c = false, false
-    for _, st in pairs(Focus) do f = f or st[1] c = c or st[2] end
+    local f, c, top, topAt = false, false, nil, -1
+    for app, st in pairs(Focus) do
+        f = f or st[1] c = c or st[2]
+        if st[3] > topAt then top, topAt = app, st[3] end
+    end
+    -- 2.0.13: with controller support on, client/pad.lua (Whip.padScreen) owns the focus while any part has it: the
+    -- cursor goes while a pad drives and comes back with the mouse. Off (or no pad layer): as before.
+    if type(ESPAD) == 'table' and ESPAD.focus(f, top) then return end
     SetNuiFocus(f, c)
+end
+--- 2.0.13: is a part's screen up (the pad layer re-applies the focus when a setting changes)
+function ESFocusState()
+    local f, top, topAt = false, nil, -1
+    for app, st in pairs(Focus) do
+        f = f or st[1]
+        if st[3] > topAt then top, topAt = app, st[3] end
+    end
+    return f, top, applyFocus
 end
 
 local envs = {}
@@ -54,9 +71,17 @@ function ESAPP(app)
         e.SendNUIMessage = function(msg) return SendNUIMessage({ __app = app, m = msg }) end
         e.SetNuiFocus = function(hasFocus, hasCursor)
             local on = (hasFocus or hasCursor) and true or false
-            Focus[app] = on and { hasFocus and true or false, hasCursor and true or false } or nil
+            local was = Focus[app]
+            if on and not was then focusOrder = focusOrder + 1 end
+            Focus[app] = on and { hasFocus and true or false, hasCursor and true or false, was and was[3] or focusOrder } or nil
             applyFocus()
             SendNUIMessage({ __shell = 'focus', app = app, on = on })
+        end
+        -- 2.0.13: while a pad drives a screen, the pad layer decides (the game keeps its input, so the pad can be read;
+        -- walking, looking and fighting are held off). Otherwise as the part asks.
+        e.SetNuiFocusKeepInput = function(keep)
+            if type(ESPAD) == 'table' and ESPAD.owns() then return end
+            return SetNuiFocusKeepInput(keep)
         end
     end
     envs[app] = e

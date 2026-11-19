@@ -368,6 +368,20 @@ Config.UI = {
     maxScale     = 1.5,     -- the largest (2.0 at the most)
 }
 
+-- 2.0.13: controller (gamepad) support, matching WHIP's own menus. The buttons are WHIP's (RegisterPadAction): LB + Y, LB +
+-- D-pad. Players move them in the pause menu's Controller screen, and turn es_mdt's controller help on or off, set the stick
+-- speed and the button pictures under Settings > Server Settings > Controller. Every value here changes live (/whip > Settings > MDT).
+Config.Controller = {
+    enabled    = true,      -- off: no es_mdt buttons on the controller, and its screens are mouse only (as before 2.0.13)
+    buttons    = true,      -- the MDT, panic, respond / dismiss, backup and the call board on WHIP's LB combos
+    navigation = true,      -- the D-pad / left stick moves a highlight in every es_mdt screen; A picks, B goes back, LB / RB tabs
+    keyboard   = true,      -- A on a text box opens WHIP's on-screen keyboard (pad players only)
+    hints      = true,      -- button hints at the bottom of each screen (controller pictures on a pad, keys on a keyboard)
+    panicHoldMs   = 1500,   -- LB + D-Up must be held this long to send a panic (no accidental panics)
+    dismissHoldMs = 600,    -- LB + D-Left: a tap responds to the call card, held this long it hides the card
+    remoteHoldMs  = 600,    -- LB + D-Down: a tap opens the call board, held this long in a radar car it opens the radar remote
+}
+
 -- Panic button: any on-duty officer. Key (players can rebind it in GTA Settings > Key Bindings > FiveM).
 Config.Panic = {
     command  = 'panic',     -- /panic (also the MDT's red button)

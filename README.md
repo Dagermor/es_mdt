@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.12).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.13).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -36,6 +36,8 @@ All screenshots use made-up test data.
 | ![Department settings](docs/images/16_settings_dept_activity.png) Department activity, live in /whip → Settings → MDT | ![DOJ settings](docs/images/16_settings_doj_money.png) DOJ fees, bail and sentences, live |
 | ![In-car radar](docs/images/18_radar_incar_panel.png) The radar in a police vehicle (only there) | ![Radar remote](docs/images/18_radar_remote.png) The radar remote (F7) |
 | ![Radar settings](docs/images/18_whip_settings_radar.png) The radar, live in /whip → Settings → MDT → Radar | ![Pause menu radar](docs/images/18_pause_settings_radar.png) Each player's radar settings in the pause menu |
+| ![Controller focus](docs/images/19_mdt_focus_ring.png) The MDT on a controller: focus ring and button hints | ![Controller Live map](docs/images/19_livemap_controller.png) The Live map on a controller: stick pans, triggers zoom |
+| ![Controller call card](docs/images/19_call_card_and_panic_hold.png) Call card with pad buttons, and the panic hold ring | ![Controller settings](docs/images/19_whip_settings_controller.png) Controller support, live in /whip → Settings → MDT |
 
 ## Requirements
 
@@ -97,7 +99,7 @@ The old names keep working: `exports.es_departments:*`, `exports.es_doj:*`, the 
 | `/ftotest`, `/dojtest` | | staff, **DevTools only** | solo test tools |
 | es_jail: `/jail`, `/unjail`, `/jailtime` | X = struggle | police / inmates | jail (es_jail) |
 
-Players can change every key under GTA Settings → Key Bindings → FiveM.
+Players can change every key under GTA Settings → Key Bindings → FiveM. **On a controller** see [Controller](#controller): LB + Y the MDT, LB + ▲ (hold) panic, LB + ◀ respond, LB + ▶ backup, LB + ▼ the call board.
 
 **Display size.** Each player can make the MDT, Departments and DOJ pages smaller or larger with the **Aa** button in each page's header: a slider from 70% to 150% that resizes the pages as you drag, quick sizes, and a Reset. `/mdtscale <percent>` does the same from chat. The size is saved on the player's PC and used every time a page opens. The pages stay centred and on screen at every size. Server owners set the default and the range in `Config.UI` (`es_mdt/mdt/config.lua`).
 
@@ -165,6 +167,49 @@ The police radar and plate reader are part of es_mdt (no separate resource). The
 |---|---|
 | ![In-car radar](docs/images/18_radar_incar_panel.png) | ![Radar remote](docs/images/18_radar_remote.png) |
 | ![Radar settings](docs/images/18_whip_settings_radar.png) | ![Pause menu radar](docs/images/18_pause_settings_radar.png) |
+
+## Controller
+
+es_mdt works with a gamepad (2.0.13), through WHIP's own pad system. On a controller the buttons below work in the world, and every es_mdt screen can be used without a mouse.
+
+**In the world** (each is LB + a button, so nothing clashes with driving or combat; players can move them on the pause menu's **Controller** screen):
+
+| Button | Does |
+|---|---|
+| LB + Y | open / close the MDT |
+| LB + D-pad ▲, **hold 1.5 s** | **panic** (a red ring fills as you hold; works while downed or dead) |
+| LB + D-pad ◀ | respond to the call card shown, with GPS. **Hold**: hide the card |
+| LB + D-pad ▶ | request backup |
+| LB + D-pad ▼ | the call board. **Hold** in a radar vehicle: the radar remote |
+| (none by default) | radar on / off: a player can give it a button on the Controller screen |
+
+**In the screens** (MDT, Live map, call board, radar remote, permit application, Departments, DOJ):
+
+| Button | Does |
+|---|---|
+| D-pad / left stick | move the focus ring |
+| A / ✕ | select. On a text box: WHIP's on-screen keyboard |
+| B / ○ | back: closes a dialog, then the screen |
+| LB / RB (L1 / R1) | previous / next tab or page |
+| LT / RT (L2 / R2), right stick | scroll |
+| X / □ | search (opens the keyboard) |
+| Y / △ | jump to the tabs |
+| Start / Options | close |
+
+**Live map:** left stick pans, right stick or LT / RT zoom around the centre cross, A opens the pin nearest the cross, X fits everything, Y goes to your unit.
+
+**Hints:** a bar at the bottom of each screen shows Xbox or PlayStation buttons on a pad and keys on a keyboard, switching by itself.
+
+**Admins:** `/whip` → Settings → MDT → **Controller**: controller support, the MDT buttons, screen navigation, the on-screen keyboard, hints, and the hold times (`Config.Controller` in `mdt/config.lua`: `panicHoldMs` 1500, `dismissHoldMs` 600, `remoteHoldMs` 600). **Players:** pause menu → Settings → Server Settings → **Controller**: MDT controller support, stick speed, and button hints (Xbox, PlayStation or off).
+
+The pad is read only while an es_mdt screen is open. With no screen open, es_mdt adds no per-frame work, only WHIP's own button checks.
+
+| | |
+|---|---|
+| ![Focus ring](docs/images/19_mdt_focus_ring.png) | ![Dialog](docs/images/19_mdt_dialog_focus.png) |
+| ![Call board](docs/images/19_call_board_controller.png) | ![Radar remote](docs/images/19_radar_remote_controller.png) |
+| ![Departments](docs/images/19_departments_controller.png) | ![DOJ](docs/images/19_doj_controller.png) |
+| ![PlayStation hints](docs/images/19_hints_playstation.png) | ![Pause menu](docs/images/19_pause_controller.png) |
 
 ## Live map
 
@@ -524,6 +569,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.0.13:** in Lua tests against WHIP's real pad code (`Whip.padScreen` and the pad actions): every action registered on its slot, the panic hold (released early, nothing; held, the panic; set to work over any screen, the death screen too), respond / hide and board / remote holds, the admin switches applied live (actions removed and added back), each player's on/off, stick speed and hints, the Controller settings in whip_core's real Settings and pause-menu code, the on-screen keyboard and its fallback, and no per-frame loops with no screen open. In browser tests with simulated pad input: the focus ring, D-pad and stick moves, A, B, LB / RB, LT / RT, X and Y, the keyboard on text boxes, dialogs, the Live map (pan, zoom, nearest pin), the call card and hold ring, the call board, the radar remote, the permit application, Departments and DOJ, with Xbox, PlayStation and keyboard hints, and no page errors. **Not yet tried on a real controller.**
 - **Tested for 2.0.12:** in Lua tests: no Radar tab callbacks on the client or the server and nothing sent for one; the 19 radar settings in whip_core's real Settings code (the tab ones gone) and the 9 pause-menu rows through whip_core's real `player_prefs.lua`; the panel in a police car and hidden on foot, in another class and when turned off; auto-on (kept when the remote saves); scan rates and classes live; plate hits, sounds, mute, lock sound, the server's hit sound; the speed alert, auto-lock, units, position and size; the server's plate check, departments and on/off, and the hourly plate-hit clean-up. In browser tests: no Radar tab in the MDT, the in-car panel (readout, a hit, the corners, 140 %, km/h), the remote (Mute, auto-lock hidden when not allowed, dragging), and the Radar settings in whip_core's own panel and pause menu. All earlier tests still pass. On a live server: es_mdt 2.0.12 starts with the schema check and no errors. Not tested in game: the radar with real traffic and a real player.
 - **Tested for 2.0.11:** in Lua tests against the real code: the 22 radar settings in whip_core's real Settings code (on the page, defaults from `config.lua`, applied live into the `Config.Radar` the radar holds, ranges, Reset, an older `config.lua` upgraded) and the 9 pause-menu rows through whip_core's real `player_prefs.lua` (get, set, Reset). On the client: the Radar tab's state on foot, in a police car and with the radar turned off, locks from the tab (refused on foot), auto-on when getting in (not after turning it off in the car, not when switched off), the scan rates and vehicle classes read live, plate reads sent to the tab only while it is open (newest first, a plate read again moves up, the server's limit, Clear), mute, the lock sound and the server's hit sound, the speed alert following the server until a player picks their own, auto-lock refused when not allowed, units, position and size. On the server: plate hits (newest first, Mine, a plate filter, the 200 cap, who read it without their character id), who may see them (law and staff; EMS, departments added live, the tab turned off), the plate check, the radar turned off, and the hourly clean-up (not in the first 5 minutes, once an hour, 0 = kept, days read live). In browser tests: the Radar tab (status, power, the readout painted in place, modes, the speed alert saved once, toggles, locks, Look up, BOLO filled in, Owner, the Live map pin, Plate hits with Everyone / Mine, Check a plate, Clear, on foot, turned off, hidden for non-law and when an admin hides it), and the Radar group and the pause-menu Radar tab rendered in whip_core's own UI. All the 2.0.3 to 2.0.10 tests still pass. On a live server: es_mdt 2.0.11 starts with the schema check and no errors. Not tested in game: the tab with a real radar and traffic, locks from the MDT, the pause-menu rows and auto-on with a real player, the sounds and mute, the plate-hit clean-up on the real database, and the settings changed live on a running server.
 - **Tested for 2.0.10:** in Lua tests against the real server code: all 44 new settings (on the page, defaults from each part's `config.lua`, applied live into the tables the code holds, ranges, Reset), the context kept 30 s and dropped on clock on / off, rank, hire, fire, job and department changes and on leaving, the on-duty list kept 1 s with fresh tables each time and live statuses, dropped on every change, "look again" updates going only to on-duty units and players with the MDT open (and to everyone if the list cannot be read), the follow units kept in memory. On the client: shots fired by ammo while aiming or on the trigger (not on a reload or an inventory change), the cooldown, on-duty law skipped and asked again on a clock change, never asked with no gun in hand, the radar sending only on a change and slowing down when parked. In browser tests: the Live map opening on the 2048 px picture, swapping to 4096 px when zoomed in, letting it go on leaving, only the selected lines moving, and the new settings groups in whip_core's own panel. All the 2.0.3 to 2.0.9 tests still pass. Not tested in game: shots detection with real guns, the radar with real traffic, the Live map's memory use in the game's browser, and the settings changed live on a running server.

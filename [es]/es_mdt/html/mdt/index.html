@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="officer.css">
 <link rel="stylesheet" href="permits.css">
 <link rel="stylesheet" href="whipev.css">
+<link rel="stylesheet" href="../pad.css">
 </head>
 <body>
 <div id="radar" class="hidden"></div>
@@ -68,5 +69,8 @@
   <script src="permitapp.js"></script>
   <script src="whipev.js"></script>
 <script src="../scale.js"></script>
+<script>/* 2.0.13: controller (html/pad.js) */ window.ESPadPage = { tabs: ['#pa-tabs button', '#nav .nav-item'],
+  keys: () => document.querySelector('#cboard:not(.hidden)') ? [['Esc', 'Close'], ['Click', 'Respond / GPS']] : [['Esc', 'Back / close'], ['Ctrl+K', 'Search'], ['Enter', 'Confirm']] };</script>
+<script src="../pad.js"></script>
 </body>
 </html>

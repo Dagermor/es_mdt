@@ -419,3 +419,9 @@
 .cb-btn:hover { background: rgba(255,255,255,.12); } .cb-btn:disabled { opacity: .45; cursor: default; }
 .cb-btn.go { background: #2563eb; border-color: #3b82f6; color: #fff; } .cb-btn.go:hover { background: #1d4ed8; }
 .cb-btn.ghost { background: transparent; } .cb-btn.warn { background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.55); color: #fecaca; }
+
+/* 2.0.13: the card's controller button */
+.cp-keys.pad .espg { width: 18px; min-width: 18px; height: 18px; font-size: 10px; }
+.cp-keys.pad .espg.sh { width: auto; }
+.cp-keys.pad .cp-k { gap: 3px; }
+.cp-hold { font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; opacity: .75; margin: 0 3px 0 2px; }

@@ -47,14 +47,16 @@
     }).join('');
     root.innerHTML = `<div class="cb-card" role="dialog" aria-label="Call board">
       <div class="cb-head"><span class="cb-title">Call board</span><span class="cb-count">${(B.calls || []).length} active</span><span class="cb-sp"></span>
-        <span class="cb-hint"><kbd>${esc(keyName(B.key) || 'ESC')}</kbd> / <kbd>ESC</kbd> close</span><button class="cb-x" data-close aria-label="Close">✕</button></div>
+        ${(() => { const P = window.ESPad && window.ESPad.state(); return P && P.pad && P.nav && P.hints !== 'off'
+          ? `<span class="cb-hint">${window.ESPad.glyph('b')} close</span>` : `<span class="cb-hint"><kbd>${esc(keyName(B.key) || 'ESC')}</kbd> / <kbd>ESC</kbd> close</span>`; })()}<button class="cb-x" data-close aria-label="Close">✕</button></div>
       ${B.note ? `<div class="cb-note ${B.note.ok ? 'ok' : 'bad'}">${esc(B.note.text)}</div>` : ''}
       <div class="cb-list">${B.error ? `<div class="cb-empty">${esc(B.error)}</div>` : B.loading && !(B.calls || []).length ? '<div class="cb-empty">Loading…</div>'
         : rows || '<div class="cb-empty">No active calls. Quiet shift.</div>'}</div></div>`;
     root.classList.remove('hidden');
   }
+  document.addEventListener('espad:state', () => { if (el && !el.classList.contains('hidden')) draw(); });   // 2.0.13: the close hint follows the device
   let noteT = null;
-  function note(text, ok) { B.note = { text, ok }; draw(); clearTimeout(noteT); noteT = setTimeout(() => { B.note = null; draw(); }, 2600); }
+  function note(text, ok) { B.note = { text, ok }; draw(); clearTimeout(noteT); noteT = setTimeout(() => { B.note = null; if (el && !el.classList.contains('hidden')) draw(); }, 2600); }   // 2.0.13: closed meanwhile: stays closed
   function close() { post('boardClose'); }
 
   document.addEventListener('click', (e) => {
@@ -79,7 +81,7 @@
   window.addEventListener('message', (e) => {
     const m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
     if (!m || m.action !== 'board') return;
-    if (!m.show) { B.calls = []; B.error = null; if (el) { el.classList.add('hidden'); el.innerHTML = ''; } return; }
+    if (!m.show) { B.calls = []; B.error = null; B.note = null; clearTimeout(noteT); if (el) { el.classList.add('hidden'); el.innerHTML = ''; } return; }
     if (m.key) B.key = m.key;
     B.loading = !!m.loading; B.error = m.error || null;
     if (Array.isArray(m.calls)) { B.calls = m.calls; B.now = m.now || Math.floor(Date.now() / 1000); B.at = Date.now(); B.myCall = m.myCall || null; }

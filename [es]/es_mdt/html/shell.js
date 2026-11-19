@@ -187,6 +187,23 @@
   }
   post('esui_volume_get').then(takeVol).catch(() => {});
 
+  // 2.0.13: the controller on the size popover: up / down move, left / right change a slider, A picks, B closes
+  let pf = -1;
+  function padPop(cmd) {
+    const list = Array.from(pop.querySelectorAll('button, input[type=range]')).filter((el) => !el.disabled && el.offsetParent !== null);
+    if (!list.length) return;
+    const el = list[pf] || null;
+    if (cmd === 'b' || cmd === 'menu') { pf = -1; closePop(); return; }
+    if (el && el.type === 'range' && (cmd === 'left' || cmd === 'right')) {
+      el.value = String(+el.value + (cmd === 'right' ? 1 : -1) * (+el.step || 5));
+      el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if (cmd === 'up' || cmd === 'left') pf = pf <= 0 ? list.length - 1 : pf - 1;
+    else if (cmd === 'down' || cmd === 'right') pf = (pf + 1) % list.length;
+    else if (cmd === 'a' && el) el.click();
+    const now = Array.from(pop.querySelectorAll('button, input[type=range]')).filter((x) => !x.disabled && x.offsetParent !== null);
+    now.forEach((x, i) => x.classList.toggle('pf', i === pf));
+  }
+
   window.addEventListener('message', (ev) => {
     // a part's frame may only ask for the display-size popover
     if (ev.source && ev.source !== window && ev.source !== window.parent) {
@@ -203,6 +220,8 @@
     if (d.__shell === 'scale') { takeState(d); return; }
     if (d.__shell === 'volume') { takeVol(d); return; }
     if (d.__shell === 'tone') { playTone(String(d.tier || 'soft')); return; }
+    // 2.0.13: the size popover is the shell's own: while it is up the controller works it (the page under it waits)
+    if (d.__app && d.m && pop && !pop.hidden && (d.m.action === 'pad' || d.m.action === 'padAxes')) { if (d.m.action === 'pad') padPop(String(d.m.cmd)); return; }
     if (d.__app) { send(d.__app, d.m); return; }
     PARTS.forEach((p) => send(p, d));
   });

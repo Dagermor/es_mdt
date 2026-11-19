@@ -1,5 +1,31 @@
 # Changelog
 
+## es_mdt 2.0.13 (2026-11-18)
+
+**Controller support everywhere in es_mdt.** On a gamepad, officers can open the MDT, panic, respond, call backup and use the call board and radar remote. Every es_mdt screen also works with the pad: the MDT, Live map, call board, radar remote, permit application, Departments and DOJ. See [Controller](README.md#controller).
+
+- **Buttons in the world** use WHIP's own pad system (`RegisterPadAction`, the slots left free on a WHIP server). Every press is LB + a button, so nothing clashes with driving or combat:
+
+  | Button | Does | Notes |
+  |---|---|---|
+  | LB + Y | open / close the MDT | |
+  | LB + D-pad ▲ (**hold 1.5 s**) | **panic** | a red ring fills as you hold, so it can't go off by accident; works while downed or dead and inside screens |
+  | LB + D-pad ◀ | respond to the call card shown (+ GPS) | **hold** 0.6 s: hide the card |
+  | LB + D-pad ▶ | request backup | |
+  | LB + D-pad ▼ | the call board | **hold** 0.6 s in a radar vehicle: the radar remote |
+  | (none) | radar on / off | a player can put it on any button on the pause menu's Controller screen, in a vehicle only |
+
+  Players can move any of them on the pause menu's **Controller** screen (whip_core). Keyboard keys are unchanged.
+- **Screens on a pad:** a blue focus ring on the selected item. D-pad or left stick moves it, **A** selects, **B** goes back or closes (dialogs first), **LB / RB** switch tabs (MDT pages, the permit form's photo tabs, Department tabs, DOJ pages), **LT / RT** or the right stick scroll, **X** search (opens the keyboard), **Y** jumps to the tab list, and **Start** closes. The mouse cursor hides while the pad is in use and comes back with the mouse.
+- **Text boxes:** **A** on a text box opens WHIP's on-screen keyboard (`OpenKeyboard`, with GTA's keyboard as a fallback). Its title is the field's label, it is limited to the field's length (number pad for numbers), and Enter follows (a search runs).
+- **Live map on a pad:** the left stick pans, the right stick or LT / RT zoom about the centre cross, **A** opens the pin nearest the cross, **X** fits everything, and **Y** goes to your unit.
+- **Hints:** a bar at the bottom of each screen shows the buttons (Xbox or PlayStation pictures) on a pad and the keys on a keyboard. It switches by itself when you change device. The call card and call board show the pad buttons too ("LB + ◀ Respond + GPS", "hold Hide").
+- **`/whip` → Settings → MDT → Controller** (live, 8 settings): controller support on/off; the MDT buttons, screen navigation, the on-screen keyboard and hints each on/off; and the hold times for panic (1.5 s), hiding a card (0.6 s) and the radar remote (0.6 s).
+- **Pause menu → Settings → Server Settings → Controller** (each player, kept on their PC, next to WHIP's own cursor speed): MDT controller support on/off, stick speed (25–300%), and button hints (Xbox, PlayStation or off).
+- **Performance (the 2.0.10 rules kept):** nothing runs per frame when no es_mdt screen is open. The pad is only read while a screen is open (WHIP's `padScreen`), and stick moves are sent at most 20 times a second, only while the stick moves. A hold runs a 50 ms check only between press and release. The buttons in the world are WHIP's own checks, with nothing added.
+- **Fix:** the call board no longer comes back on screen if you close it within 2.6 s of pressing Respond / Leave (the "Responding" note's timer redrew it).
+- `mdt/config.lua` gains `Config.Controller`. An older `config.lua` without it gets the defaults.
+
 ## es_mdt 2.0.12 (2026-11-18)
 
 **The radar is back to in-vehicle only: no Radar tab in the MDT.** It stays part of es_mdt (one resource), as the in-car panel and the F7 remote, with its `/whip` settings and each player's pause-menu settings from 2.0.11.

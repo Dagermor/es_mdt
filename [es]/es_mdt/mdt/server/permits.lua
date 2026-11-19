@@ -200,7 +200,8 @@ local function decide(id, decision, note, by, byLabel, payDept)
         local d = payDept and ED:GetDepartment(payDept)
         local jaccts = d and WC:GetJobBankAccounts(d.jobId) or {}
         if P.feeToDepartment ~= false and jaccts[1] then
-            pcall(function() WC:BankSystemDeposit(jaccts[1].accountId, fee, { reason = ('%s fee #%d'):format(LABEL, a.id) }) end)
+            local okd = pcall(function() return assert(WC:BankSystemDeposit(jaccts[1].accountId, fee, { reason = ('%s fee #%d'):format(LABEL, a.id) })) end)
+            if okd then TriggerEvent('es_mdt:server:deptIncome', d.jobId, fee, 'permit', ('%s fee #%d'):format(LABEL, a.id), a.charId) end
         end
     end
     local ok, why = issue(a.charId, by, 'application', ('Application #%d approved by %s%s'):format(a.id, byLabel or 'a reviewer', note ~= '' and (': ' .. note) or ''))

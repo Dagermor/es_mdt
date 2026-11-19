@@ -569,6 +569,7 @@ Config.Impound = {
     unowned       = {                 -- nobody's cars (street cars): towed away, a small payout for the officer
         enabled     = true,
         payout      = 150,
+        payFrom     = 'department',   -- 'department': the officer's department account pays (2.2.0); 'state': out of nowhere, as before
         cooldownSec = 120,            -- per officer
         perShift    = 10,             -- per officer, per clock-on
         ownerRange  = 60.0,           -- refused while the player who last drove it is this close

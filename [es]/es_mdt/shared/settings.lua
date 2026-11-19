@@ -60,7 +60,7 @@ do
         reasons = { 'Parking violation', 'Evidence / investigation', 'No insurance / unregistered', 'Abandoned', 'Driver arrested', 'Stolen vehicle recovered', 'Reckless driving', 'Other' },
         lots = { { key = 'es_mdt_impound', label = 'LS Impound Lot', coords = vector3(409.3, -1623.1, 29.3), heading = 230.0 } } })
     I.unowned = type(I.unowned) == 'table' and I.unowned or {}
-    for k, v in pairs({ enabled = true, payout = 150, cooldownSec = 120, perShift = 10, ownerRange = 60.0 }) do if I.unowned[k] == nil then I.unowned[k] = v end end
+    for k, v in pairs({ enabled = true, payout = 150, payFrom = 'department', cooldownSec = 120, perShift = 10, ownerRange = 60.0 }) do if I.unowned[k] == nil then I.unowned[k] = v end end
     fill('Texts', { enabled = true, sender = 'San Andreas Gov', loreKey = 'es_mdt_gov' })
 end
 local ROOT = setmetatable({ Suite = EsSuite, Dept = DEPT, Doj = DOJC }, {
@@ -417,6 +417,8 @@ Whip.configPage({
             { key = 'Impound.unowned.enabled', type = 'bool', label = 'Tow abandoned cars nobody owns (paid to the officer)', shownWhen = on('Impound.enabled'),
               help = 'Only a car with nobody in it, not a player\'s, and whoever drove it last not close by.' },
             { key = 'Impound.unowned.payout', type = 'int', min = 0, max = 5000, unit = '$', label = 'Paid per tow', shownWhen = on('Impound.unowned.enabled') },
+            { key = 'Impound.unowned.payFrom', type = 'enum', options = { { value = 'department', label = 'The officer\'s department account' }, { value = 'state', label = 'The state (no account)' } },
+              label = 'Tow pay comes from', shownWhen = on('Impound.unowned.enabled') },
             { key = 'Impound.unowned.cooldownSec', type = 'int', min = 0, max = 3600, unit = 's', label = 'An officer may tow once every', shownWhen = on('Impound.unowned.enabled') },
             { key = 'Impound.unowned.perShift', type = 'int', min = 0, max = 100, label = 'Paid tows per shift (per officer)', shownWhen = on('Impound.unowned.enabled') },
             { key = 'Impound.unowned.ownerRange', type = 'number', min = 0, max = 300, step = 5, unit = 'm', label = 'Refused while its last driver is this close',

@@ -323,9 +323,14 @@
         ${rt.edit ? `<div id="o-picker"></div><div class="row actions"><button class="btn accent" id="o-logo-save" disabled data-probe-press>Save logo</button><span class="hint" id="o-logo-hint">Pick, drop, paste or link a picture to see it here first</span></div>`
           : '<div class="logo-box" id="o-logo-box"><span class="hint">No logo</span></div><p class="hint">Only the department\'s leaders can change it.</p>'}
       </div>
+      ${rt.edit ? `<div class="card"><div class="card-title">Locations</div>
+        <p class="hint">Duty desk, armory, locker, garage, helipad and boat dock, with their peds and the map blip. Stations can be shared with other departments.</p>
+        <div class="row actions"><button class="btn" id="o-locations" data-probe-press>📍 Set up locations</button></div></div>` : ''}
       ${rt.admin ? `<div class="card danger-zone"><div class="card-title">Delete department</div><div class="row">
         <label class="switch"><input type="checkbox" id="o-alsojob"><span></span> Also delete its job, ranks and member list</label>
         <button class="btn danger" id="o-del" data-probe-press>Delete department</button></div></div>` : ''}`;
+    const loc = $('#o-locations');
+    if (loc) loc.onclick = (e) => busy(e.currentTarget, async () => { const r = await nui('jobsLocations', { jobId: d.jobId }); if (!r || !r.ok) said(r); });
     if (rt.edit) {
       const shortEl = $('#o-short'), nameEl = $('#o-name');
       const rules = rulesFor(shortEl, nameEl, d.id); live(rules);

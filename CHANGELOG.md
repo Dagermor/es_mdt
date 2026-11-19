@@ -1,5 +1,35 @@
 # Changelog
 
+## es_jobs 0.1.0 + es_mdt 2.2.0 (2026-11-19)
+
+**New resource: es_jobs (stations, duty, gear, pay and player-owned businesses).** It runs next to es_mdt and reads departments and ranks from it.
+
+- **Stations** (`/stations`, or Departments → Overview → *Set up locations*):
+  - One station can be shared by several departments and businesses. Blips can show to everyone, members, or no one.
+  - Spot types: duty, armory, locker, garage, helipad and boat dock. Impound, hospital and courtroom are listed as coming in later updates.
+  - Spots are placed with WHIP's ghost (PlacePoint). There is also *use my position* and teleport, and blocked parking spaces are flagged.
+  - Peds are chosen from a picture grid (defaults by department type) or a custom model. They spawn only near players, frozen and invincible.
+  - Every change keeps a backup: history, undo last save, restore deleted stations, export and import.
+  - Deleting a department removes it from its stations. A station left with no owners is kept in Deleted.
+- **On duty:**
+  - Clock on or off at the duty desk.
+  - The armory issues equipment free by rank.
+  - Fleet vehicles come by rank, one at a time, and are put back at the garage. They despawn on clock-off.
+  - Each player has a personal locker.
+- **Pay by rank:**
+  - Paid on an on-duty timer from the job's bank account. The default rises with rank level, and leaders can change it.
+  - When the account can't pay, the paycheck is logged as missed, and the owner and leaders are told (at most every 10 minutes).
+- **Businesses** (`/business`): player-owned jobs created like /departments.
+  - Name, short name, colour and logo (upload with live preview).
+  - Ranks and pay, staff (hire nearby, rank, let go), and a business bank account with a ledger.
+  - Admins create businesses, transfer owners and close them. Players can create one if `Business.playerCreate` is on.
+- Settings are in /whip → Jobs.
+- **es_mdt 2.2.0 (integration only):**
+  - Ticket, fine, impound, court and permit income tell es_jobs which department received it (event `es_mdt:server:deptIncome`), for the department ledger. Money still goes to the issuing officer's department as before.
+  - Tow pay for abandoned cars now comes from the officer's department account by default (/whip setting `Impound.unowned.payFrom`; `state` restores the old behaviour).
+  - Departments → Overview has a *Locations* card that opens the es_jobs station editor.
+- Tested: es_jobs server and client sims, all es_mdt sims, luac, the WHIP scanner (HIGH 0), and a browser UI run (18 checks, no page errors).
+
 ## es_mdt 2.1.2 (2026-11-19)
 
 - **Fix (the real cause behind 2.1.1): permission grants and mirrors now send whip_core only the permissions they add.** They used to send the rank's whole list, and whip_core refuses the whole update when a rank still holds a key the job no longer knows (on Divided RP: old `evidence_*` keys on LSPD Captain, Sergeant and Officer; whip_evidence uses rank levels, and whip_core drops such keys on any rank save). The 2.1.1 retry and the follow-up grant stay, so servers that ran 2.1.0 or 2.1.1 get the ticket and impound permissions on the next start.

@@ -69,7 +69,8 @@ function DOJ.deposit(amount, reason)
     local accts = d and WC:GetJobBankAccounts(d.jobId) or {}
     if not accts[1] then return false end
     local ok, why = WC:BankSystemDeposit(accts[1].accountId, amount, { reason = tostring(reason or 'Court'):sub(1, 120) })
-    if not ok then print(('^3[es_doj] deposit of $%d failed: %s^7'):format(amount, tostring(why))) end
+    if not ok then print(('^3[es_doj] deposit of $%d failed: %s^7'):format(amount, tostring(why)))
+    else TriggerEvent('es_mdt:server:deptIncome', d.jobId, amount, 'court', tostring(reason or 'Court'):sub(1, 120)) end   -- 2.2.0: es_jobs' ledger
     return ok
 end
 

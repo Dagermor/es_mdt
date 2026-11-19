@@ -607,13 +607,19 @@ local function autoWarrants()
 end
 
 --- 2.1.0: money for a paid fine goes to the issuing department's job account (Config.FineToDepartment)
+--- 2.2.0: money that went into a department's account, for es_jobs' Finances tab (a local server event: nothing moves)
+local function deptIncome(jobId, amount, kind, note, charId)
+    if jobId and amount and amount ~= 0 then TriggerEvent('es_mdt:server:deptIncome', jobId, amount, kind or 'fine', note, charId) end
+end
+
 local function fineToDept(fine, note)
     if not Config.FineToDepartment then return end
     local d = ED:GetDepartment(fine.deptId)
     local jaccts = d and WC:GetJobBankAccounts(d.jobId) or {}
     if jaccts[1] then
         local dok, dwhy = WC:BankSystemDeposit(jaccts[1].accountId, fine.amount, { reason = note or ('Fine #%d'):format(fine.id) })
-        if not dok then print(('^3[es_mdt] fine #%d paid but the department deposit failed: %s^7'):format(fine.id, tostring(dwhy))) end
+        if not dok then print(('^3[es_mdt] fine #%d paid but the department deposit failed: %s^7'):format(fine.id, tostring(dwhy)))
+        else deptIncome(d.jobId, fine.amount, fine.kind, note or ('Fine #%d'):format(fine.id), fine.charId) end
     end
 end
 
@@ -631,7 +637,8 @@ local function payFine(fine)
         local jaccts = d and WC:GetJobBankAccounts(d.jobId) or {}
         if jaccts[1] then
             local dok, dwhy = WC:BankSystemDeposit(jaccts[1].accountId, fine.amount, { reason = ('Fine #%d'):format(fine.id) })
-            if not dok then print(('^3[es_mdt] fine #%d paid but the department deposit failed: %s^7'):format(fine.id, tostring(dwhy))) end
+            if not dok then print(('^3[es_mdt] fine #%d paid but the department deposit failed: %s^7'):format(fine.id, tostring(dwhy)))
+            else deptIncome(d.jobId, fine.amount, fine.kind, ('Fine #%d%s'):format(fine.id, fine.reason and (': ' .. fine.reason) or ''), fine.charId) end
         else
             print(('^3[es_mdt] fine #%d paid; %s has no job account, so it went to the state^7'):format(fine.id, d and d.short or '?'))
         end
@@ -2319,7 +2326,9 @@ exports('MarkFinePaid', function(fineId, by, how)
     if Config.FineToDepartment then
         local d = ED:GetDepartment(f.deptId)
         local jaccts = d and WC:GetJobBankAccounts(d.jobId) or {}
-        if jaccts[1] then WC:BankSystemDeposit(jaccts[1].accountId, f.amount, { reason = ('Fine #%d (paid at %s)'):format(f.id, tostring(how or 'court'):sub(1, 40)) }) end
+        if jaccts[1] and WC:BankSystemDeposit(jaccts[1].accountId, f.amount, { reason = ('Fine #%d (paid at %s)'):format(f.id, tostring(how or 'court'):sub(1, 40)) }) then
+            deptIncome(d.jobId, f.amount, 'fine', ('Fine #%d (paid at %s)'):format(f.id, tostring(how or 'court'):sub(1, 40)), f.charId)
+        end
     end
     return true, f.amount
 end)
@@ -2446,7 +2455,7 @@ MDT = MDT or {}
 for k, v in pairs({ cb = cb, str = str, int = int, id = id, marks = marks, namesOf = namesOf, deptShort = deptShort, log = log,
     refresh = refresh, onlineByChar = onlineByChar, notifyChar = notifyChar, dutyNow = dutyNow, unitsAll = unitsAll,
     isHighCommand = isHighCommand, canSeeReport = canSeeReport, flagsOf = flagsOf, ctxOf = ctxOf,
-    issueFine = issueFine, payFine = payFine, fineToDept = fineToDept, closeAutoWarrant = closeAutoWarrant, holdersOf = holdersOf, need = need,
+    issueFine = issueFine, payFine = payFine, fineToDept = fineToDept, deptIncome = deptIncome, closeAutoWarrant = closeAutoWarrant, holdersOf = holdersOf, need = need,
     Teams = Teams, TeamOf = TeamOf, Units = Units, Panic = Panic, warrantBolosSoon = warrantBolosSoon, verOf = verOf }) do MDT[k] = v end
 
 Whip.register(function()

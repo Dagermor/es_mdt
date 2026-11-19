@@ -95,6 +95,15 @@ end
 
 RegisterNUICallback('close', function(_, cb) close() cb({ ok = true }) end)
 
+-- 2.2.0: "Set up locations": the job pack's station editor (es_jobs), on this department
+RegisterNUICallback('jobsLocations', function(d, cb)
+    if GetResourceState('es_jobs') ~= 'started' then return cb({ ok = false, why = 'The job pack (es_jobs) is not running on this server' }) end
+    close()
+    cb({ ok = true })
+    local jobId = type(d) == 'table' and tonumber(d.jobId) or nil
+    CreateThread(function() Wait(200) exports.es_jobs:OpenStations({ jobId = jobId }) end)
+end)
+
 RegisterNUICallback('reload', function(_, cb)
     CreateThread(function()
         local data, why = wc():Callback('es_departments:open')

@@ -271,7 +271,23 @@ local function towed(c, ent, v)
     local pay = math.max(0, math.floor(tonumber(U.payout) or 0))
     MySQL.insert.await('INSERT INTO `es_mdt_tows` (`officerCharId`,`deptId`,`plate`,`model`,`x`,`y`,`payout`) VALUES (?,?,?,?,?,?,?)',
         { c.charId, c.dept.id, v.plate, v.displayName or v.model, at.x, at.y, pay })
-    if pay > 0 and WC:GetCharId(c.source) == c.charId then WC:PayPlayer(c.source, pay, { method = 'bank', reason = 'Tow: abandoned vehicle ' .. tostring(v.plate or '') }) end
+    if pay > 0 and WC:GetCharId(c.source) == c.charId then
+        local why = 'Tow: abandoned vehicle ' .. tostring(v.plate or '')
+        if U.payFrom == 'state' then
+            WC:PayPlayer(c.source, pay, { method = 'bank', reason = why })
+        else
+            -- 2.2.0: from the officer's own department account (as their pay is); a short account pays nothing and says so
+            local jaccts = c.dept and c.dept.jobId and WC:GetJobBankAccounts(c.dept.jobId) or {}
+            local mine = WC:GetDefaultBankAccount({ charId = c.charId })
+            local okp = jaccts[1] and mine and (tonumber(jaccts[1].balance) or 0) >= pay
+                and WC:BankSystemTransfer(jaccts[1].accountId, mine.accountId, pay, { reason = why })
+            if okp then MDT.deptIncome(c.dept.jobId, -pay, 'tow', why, c.charId)
+            else
+                WC:NotifyPlayer(c.source, ('%s could not pay the $%d tow: its account is short'):format(c.dept.short or 'Your department', pay), 'warning', 8000)
+                pay = 0
+            end
+        end
+    end
     MDT.log(c, 'tow', ('%s %s $%d'):format(tostring(v.plate), tostring(v.model), pay))
     return { towed = true, payout = pay, left = cap - n - 1 }
 end
@@ -354,7 +370,7 @@ function MDT.impoundPay(p, iid, method)
         local okc = WC:CommitWithAction({ { query = [[INSERT INTO `es_mdt_fines` (`deptId`,`charId`,`amount`,`reason`,`status`,`issuedBy`,`paidAt`,`kind`,`impoundId`)
             VALUES (?,?,?,?, 'paid', ?, NOW(), 'impound', ?)]], values = { r.deptId, p.charId, amount, ('Impound fees: %s'):format(r.plate or ('#' .. r.id)), r.officerCharId, r.id } } }, { source = p.source })
         local fid = okc and MySQL.scalar.await("SELECT `id` FROM `es_mdt_fines` WHERE `impoundId` = ? AND `status` = 'paid' ORDER BY `id` DESC LIMIT 1", { r.id }) or nil
-        if fid then MDT.fineToDept({ id = fid, deptId = r.deptId, amount = amount }, ('Impound fees #%d %s'):format(r.id, r.plate or ''))
+        if fid then MDT.fineToDept({ id = fid, deptId = r.deptId, amount = amount, kind = 'impound', charId = p.charId }, ('Impound fees #%d %s'):format(r.id, r.plate or ''))
         else print(('^3[es_mdt] impound #%d: paid %d, but the payment record could not be written^7'):format(r.id, amount)) end
     end
     textOwner(r, ('Paid %s: your %s (%s) is released. Pick it up at %s.'):format(money(amount), r.vehicleLabel or 'vehicle', r.plate or '?',

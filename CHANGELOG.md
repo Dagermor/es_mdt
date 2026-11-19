@@ -1,5 +1,21 @@
 # Changelog
 
+## es_mdt 2.0.17 (2026-11-19)
+
+**Post-mortem reports on the MDT case, and one-tap copy for every code.** Made for whip_evidence 4.2.3 (LeSiiN), which adds a post-mortem report item to the body exam.
+
+- **Post-mortem card:** when the report item is uploaded to a case, the case's Evidence locker card opens with a "Post-mortem findings" panel, like the body menu in game.
+  - A **body overview**: a front figure with every hit drawn on its body part. Legend: a filled red dot is a bullet still inside, a red ring is a shot that went through, an orange slash is a stab or cut, a yellow diamond is blunt force, and a purple square is any other wound. A dashed yellow ring marks the fatal one. The hit parts are tinted.
+  - The **cause of death** in a red box, then three tiles: hits, bullets inside, and the time of death in each officer's own clock (exam time minus how long the body had been dead).
+  - Rows: wounds in total and per body part, shot from (under 2 m, 2–10 m or over 10 m), bullets inside and through, defence wounds, a weapon in hand, the body moved after death, and what was secured at the scene (photo, blood, GSR). Below that: examined by, when and where.
+  - **From this body:** bags taken from the same body (bullets, blood) are listed under it, with their codes. Tapping one jumps to its item, and those items carry a red "Body L1" tag.
+  - **Copy report as text** puts whip_evidence's full report text on the clipboard, ready to paste into an MDT report.
+- **Copy buttons** (a small copy icon) on codes: weapon serials, ballistics, prints, blood types, sole patterns, tread patterns, fibre codes, readable plates from crime scene photos, each item's ref and the case number. One click (or **A** on a controller, Enter on a keyboard) copies, a "Copied serial number: …" toast confirms it, and the button flashes green. This works in FiveM's in-game browser (hidden text box + copy command), with the browser clipboard as a fallback.
+- **Crime scene photos** list the bodies in frame (whip_evidence 4.2.3): "L1 Body · Gunshot ×3 · 4 m".
+- The report item is not shown twice: its item tile keeps a short "Cause of death" chip and leaves the long findings text to the panel.
+- The server passes only what the page draws: known wound types, body parts and ranges, with lengths capped. It never sends positions or entity ids.
+- Docs: [docs/whip_evidence_integration.md](docs/whip_evidence_integration.md) section 11 covers 4.2.3.
+
 ## es_mdt 2.0.16 (2026-11-19)
 
 **Ready for whip_evidence 4.2.2** (LeSiiN). Its API is unchanged, so 2.0.15 already works with it. This release tidies up what changed around it.

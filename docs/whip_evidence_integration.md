@@ -171,3 +171,16 @@ A mock stand-in for testing is in `test_resources/whip_evidence_mock/` (rename t
 - **Config on update:** his `config/config.lua` comes with `PoliceJobs = { 'police', 'bcso', 'sahp' }` and `ApiResources = {}`; set them to your department jobs and `{ 'es_mdt' }` again. Values saved in `/whip` (labs, lockers, rank levels) are kept in the database and still win over the file.
 - Note: 4.2.2's `fxmanifest.lua` still says `version '4.2.0'`.
 
+## 11. whip_evidence 4.2.3 (LeSiiN, 2026-11-19) — post-mortem reports, shown by es_mdt 2.0.17
+
+- **What is new in 4.2.3:**
+  - Examining a body now also gives a **post-mortem report** item: a bag with `kind = 'autopsy'`, marker `L#`, tested on "Body L#", custody "examined". It goes into a case like any other bag (Upload, or "Add evidence" in the MDT).
+  - Its case entry carries `report`, the full findings: wounds, wounds per body part, each hit's part and type (bullet inside or through, fatal), shot range, bullets, defence wounds, armed, moved, sex, ped or player, how long it had been dead, and the exam time and officer. `results` gets `cause` and `findings`.
+  - Bags taken from a body carry `body` (the body id), and bullets record the body part.
+  - Crime scene photos list the bodies in frame (`bodies`: `L1 · Body · Gunshot ×3 · 4 m`).
+  - New: the export `GetBodyReport(bodyId)` (allowed for `ApiResources`; it works while the body exists and for `BodyReportDays` after, default 30), the server event `whip_evidence:bodyExamined`, and its own table `whip_evidence_reports`.
+  - The fxmanifest now says 4.2.3.
+- **No breaking change for the MDT:** the same 8 exports, events, refs and custody format. 2.0.16 keeps working with it; 2.0.17 is what shows the new data.
+- **es_mdt 2.0.17:** the report needs no extra call. It comes with the item through Upload / GetCase and is saved in `es_mdt_wev_entries` like every entry, so the MDT still shows it when whip_evidence is stopped. The case page draws it as the post-mortem panel (see the CHANGELOG). Samples are matched to their body by `body`, or for older bags by marker `L#` plus "tested on Body L#". `GetBodyReport` and `bodyExamined` are not used yet.
+- **Config on update:** the same two lines as before (`PoliceJobs`, `ApiResources = { 'es_mdt' }`). The new `BodyReportDays = 30` can stay.
+

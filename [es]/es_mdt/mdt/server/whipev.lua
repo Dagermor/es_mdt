@@ -10,7 +10,8 @@ local CFG = Config.WhipEvidence or {}
 local RES = type(CFG.resource) == 'string' and CFG.resource or 'whip_evidence'
 local REASONS = { uploaded = true, taken = true, returned = true, closed = true, reopened = true, deleted = true }
 local BAG_KINDS = { casing = true, bullet = true, blood = true, fingerprint = true, vehicle_fragment = true, gsr = true, reference = true,
-    shoeprint = true, tyre_track = true, fiber = true, cleaned = true, serial = true }   -- 2.0.16: whip_evidence 4.2 bags
+    shoeprint = true, tyre_track = true, fiber = true, cleaned = true, serial = true,   -- 2.0.16: whip_evidence 4.2 bags
+    autopsy = true }   -- 2.0.17: whip_evidence 4.2.3 post-mortem report
 
 --- enabled = true / false / 'auto' (auto: on whenever the resource exists on the server)
 local function wanted()
@@ -148,6 +149,58 @@ local function lastStep(e)
     return best
 end
 
+-- 2.0.17: whip_evidence 4.2.3's post-mortem report (entry.report of a kind 'autopsy' bag), kept to what the page draws.
+-- `at` is their server-clock text and `age` the seconds dead at the exam: both turned into epoch times here (same clock).
+local WOUND = { gunshot = true, stab = true, blunt = true, vehicle = true, fall = true, burn = true, explosion = true, other = true }
+local PART = { head = true, torso = true, arms = true, legs = true }
+local RANGE = { close = true, short = true, far = true }
+local function str(v, n) return type(v) == 'string' and v:sub(1, n or 80) or nil end
+local function num(v) v = tonumber(v) return v and v == v and v or nil end
+local function woundList(t)
+    local out = {}
+    for _, x in ipairs(type(t) == 'table' and t or {}) do
+        if type(x) == 'table' and WOUND[x.w] then out[#out + 1] = { w = x.w, n = math.max(1, math.floor(num(x.n) or 1)) } end
+        if #out >= 8 then break end
+    end
+    return out
+end
+local function reportView(r)
+    if type(r) ~= 'table' then return nil end
+    local d = type(r.details) == 'table' and r.details or {}
+    local marks, byPart, ranges = {}, {}, {}
+    for _, m in ipairs(type(d.marks) == 'table' and d.marks or {}) do
+        if type(m) == 'table' and PART[m.p] and WOUND[m.w] then marks[#marks + 1] = { p = m.p, w = m.w, i = m.i == true or nil, f = m.f == true or nil } end
+        if #marks >= 24 then break end
+    end
+    for _, x in ipairs(type(d.byPart) == 'table' and d.byPart or {}) do
+        if type(x) == 'table' and PART[x.p] then byPart[#byPart + 1] = { p = x.p, w = woundList(x.w) } end
+    end
+    for _, x in ipairs(type(d.ranges) == 'table' and d.ranges or {}) do if RANGE[x] then ranges[#ranges + 1] = x end end
+    local at = stampOf(r.at)
+    local age = num(r.age)
+    local fatal = type(d.fatal) == 'table' and WOUND[d.fatal.w] and PART[d.fatal.p] and { w = d.fatal.w, p = d.fatal.p } or nil
+    return {
+        id = str(r.id, 32), no = num(r.no), kind = r.kind == 'player' and 'player' or 'ped',
+        title = str(r.title, 40), text = str(r.text, 4000),
+        examinedAt = at, examinedBy = str(r.examinedBy, 80), street = str(r.street, 120),
+        age = age, diedAt = (at and age) and (at - math.floor(age)) or nil,
+        wounds = woundList(r.wounds), bullets = math.floor(num(r.bullets) or 0),
+        photo = r.photo == true or (r.photo ~= nil and r.photo ~= false) or nil, blood = r.blood == true or nil, gsr = r.gsr == true or nil,
+        hits = math.floor(num(d.hits) or #marks), byPart = byPart, ranges = ranges, through = math.floor(num(d.through) or 0),
+        defense = d.defense == true or nil, armed = d.armed == true or nil, moved = num(d.moved), fatal = fatal,
+        sex = (d.sex == 'male' or d.sex == 'female') and d.sex or nil, marks = marks,
+    }
+end
+--- photo body rows { n = 'L1', t = 'Body', i = 'Gunshot ×2', d = 4 }
+local function bodyRows(t)
+    local out = {}
+    for _, b in ipairs(type(t) == 'table' and t or {}) do
+        if type(b) == 'table' and str(b.n, 8) then out[#out + 1] = { n = str(b.n, 8), t = str(b.t, 30), i = str(b.i, 120), d = num(b.d) } end
+        if #out >= 12 then break end
+    end
+    return #out > 0 and out or nil
+end
+
 --- Light view of an entry for the page (no pictures, results kept, custody split into steps)
 local function view(e, ref)
     e = type(e) == 'table' and e or {}
@@ -163,8 +216,10 @@ local function view(e, ref)
         cars = type(e.cars) == 'table' and e.cars or nil,
         serial = e.serial, caliber = e.caliber, ballistics = e.ballistics,
         custody = custody,
+        body = str(e.body, 32), report = kind == 'autopsy' and reportView(e.report) or nil, bodies = bodyRows(e.bodies),   -- 2.0.17
     }
 end
+MDT.wevView = view   -- 2.0.17: for the tests
 
 --- Everything the case page needs: saved entries, who has what out of the locker, whether their side closed it
 local function forCase(k)

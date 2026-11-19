@@ -14,7 +14,7 @@
   // ---------------------------------------------------------------- sound
   let ac = null;
   function beep(times, freq) {
-    const vol = R.s ? R.s.volume : 0.6; if (vol <= 0) return;
+    const vol = R.s ? R.s.volume : 0.6; if (vol <= 0 || (R.s && R.s.muted)) return;   // 2.0.11: muted in the pause menu / remote
     try {
       ac = ac || new (window.AudioContext || window.webkitAudioContext)();
       for (let i = 0; i < (times || 2); i++) {
@@ -60,8 +60,9 @@
   function place() {
     const el = $('#radar'); if (!el || !R.s) return;
     el.style.setProperty('--rs', R.s.scale || 1);
+    ['br', 'bl', 'tr', 'tl'].forEach((p) => el.classList.toggle('pos-' + p, (R.s.pos || 'br') === p && R.s.x == null));
     if (R.s.x != null && R.s.y != null) { el.style.left = (R.s.x * 100) + '%'; el.style.top = (R.s.y * 100) + '%'; el.style.right = 'auto'; el.style.bottom = 'auto'; }
-    else { el.style.left = ''; el.style.top = ''; el.style.right = ''; el.style.bottom = ''; }
+    else { el.style.left = ''; el.style.top = ''; el.style.right = ''; el.style.bottom = ''; }   // 2.0.11: a corner (pos-*)
   }
 
   // drag (only while the remote is open: that is when the game gives us the mouse)
@@ -73,7 +74,7 @@
   document.addEventListener('mousemove', (e) => {
     if (!drag) return; const el = $('#radar');
     const x = Math.max(0, Math.min(window.innerWidth - 40, e.clientX - drag.dx)), y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - drag.dy));
-    R.s.x = x / window.innerWidth; R.s.y = y / window.innerHeight; place(); el.style.right = 'auto';
+    R.s.x = x / window.innerWidth; R.s.y = y / window.innerHeight; R.s.pos = 'custom'; place(); el.style.right = 'auto';
   });
   document.addEventListener('mouseup', () => { if (!drag) return; drag = null; const el = $('#radar'); if (el) el.classList.remove('dragging'); save(); });
 
@@ -97,15 +98,15 @@
       <div class="rm-sec"><div class="rm-t">Fast limit</div>
         <div class="rm-row"><button class="rm-b sq" data-fast="-5">−</button><div class="rm-fast"><b id="rm-fast">${s.fast}</b> ${R.units}</div><button class="rm-b sq" data-fast="5">＋</button>
           <input type="range" min="10" max="200" step="1" value="${s.fast}" id="rm-fast-r"></div>
-        <div class="rm-row">${tog('beep', s.beep, 'Beep over the limit')}${tog('autoLock', s.autoLock, 'Auto-lock over the limit')}</div></div>
+        <div class="rm-row">${tog('beep', s.beep, 'Beep over the limit')}${s.autoLockAllowed !== false ? tog('autoLock', s.autoLock, 'Auto-lock over the limit') : ''}</div></div>
       <div class="rm-sec"><div class="rm-t">Display</div>
-        <div class="rm-row">${tog('shown', s.shown, 'Radar on')}${tog('plates', s.plates, 'Plate reader')}</div>
+        <div class="rm-row">${tog('shown', s.shown, 'Radar on')}${tog('plates', s.plates, 'Plate reader')}${tog('muted', s.muted, 'Mute')}</div>
         <label class="rm-sl"><span>Beep volume</span><input type="range" min="0" max="1" step="0.05" value="${s.volume}" data-sl="volume"><b>${Math.round(s.volume * 100)}%</b></label>
         <label class="rm-sl"><span>Size</span><input type="range" min="0.6" max="1.6" step="0.05" value="${s.scale}" data-sl="scale"><b>${Math.round(s.scale * 100)}%</b></label>
         <div class="rm-row"><span class="rm-hint">Drag the radar to move it.</span><button class="rm-b" data-rm="pos">Reset position</button><button class="rm-b" data-rm="test">♪ Test beep</button></div></div>
       <div class="rm-sec"><div class="rm-t">Plate hits <span class="rm-hint">· BOLO, stolen, owner warrant</span></div>
         ${R.hits.length ? R.hits.map((h) => `<div class="rm-hit"><span class="rd-pl sm">${esc(h.plate)}</span><span class="rm-why">${esc(h.text)}</span><button class="rm-b" data-open="${esc(h.plate)}">Open in MDT</button></div>`).join('') : '<div class="rm-hint">No hits yet this shift.</div>'}</div>
-      <div class="rm-keys">Keys (GTA Settings › Key Bindings › FiveM): radar on/off, remote, lock front/rear speed, lock front/rear plate, reset. <b>/radaropen</b> opens the last hit.</div>
+      <div class="rm-keys">Keys (GTA Settings › Key Bindings › FiveM): radar on/off, remote, lock front/rear speed, lock front/rear plate, reset. <b>/radaropen</b> opens the last hit. More in the pause menu: Settings › Server Settings › Radar, and in the MDT's Radar tab.</div>
     </div>`;
     const redraw = () => { remote(); place(); if (R.last) draw(R.last); save(); };
     $$('[data-tog]', el).forEach((b) => b.onclick = () => { const k = b.dataset.tog; if (k === 'front' || k === 'rear') s[k].on = !s[k].on; else s[k] = !s[k]; redraw(); });
@@ -119,7 +120,7 @@
       const k = b.dataset.rm;
       if (k === 'close') post('radarClose');
       else if (k === 'reset') post('radarReset');
-      else if (k === 'pos') { s.x = null; s.y = null; redraw(); }
+      else if (k === 'pos') { s.x = null; s.y = null; s.pos = 'br'; redraw(); }
       else if (k === 'test') beep(2, 1320);
     });
   }
@@ -140,7 +141,8 @@
     else if (m.action === 'radar') { if (R.shown && m.data) draw(m.data); }
     else if (m.action === 'radarHit') {
       if (m.hit) { R.hits.unshift(m.hit); R.hits = R.hits.slice(0, 8); }
-      beep(3, 880); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2400);
+      if (!R.s || R.s.hitSound !== false) beep(3, 880);
+      el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 2400);
       if (R.remote) remote();
     } else if (m.action === 'radarRemote') {
       R.remote = !!m.open; if (Array.isArray(m.hits)) R.hits = m.hits; if (m.closeKey) R.closeKey = m.closeKey;

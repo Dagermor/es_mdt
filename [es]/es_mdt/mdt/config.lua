@@ -442,15 +442,28 @@ Config.ReportTemplates = {
 }
 
 -- Police radar + plate reader (ALPR), in police vehicles, on duty only.
+-- 2.0.11: every value here is also in /whip > Settings > MDT > Radar (live). Each player sets their own volume, mute,
+-- size, position, units, auto-on, lock sound and speed alert in the pause menu: Settings > Server Settings > Radar.
 Config.Radar = {
-    units       = 'mph',            -- 'mph' or 'kmh'
-    lawTypes    = { police = true, sheriff = true, state = true },   -- department types that get it
-    classes     = { [18] = true },  -- vehicle classes (18 = emergency)
+    enabled     = true,             -- 2.0.11: false = no radar anywhere (the in-car panel and the MDT's Radar tab)
+    mdtTab      = true,             -- 2.0.11: the Radar tab in the MDT (live readout, controls, plate reads and hits)
+    units       = 'mph',            -- 'mph' or 'kmh' (the default; each player may pick their own)
+    lawTypeList = { 'police', 'sheriff', 'state' },   -- 2.0.11: department types that get it (see departments/config.lua Types)
+    lawTypes    = { police = true, sheriff = true, state = true },   -- (before 2.0.11; used only when lawTypeList is nil)
+    classList   = { 18 },           -- 2.0.11: vehicle classes it runs in (18 = emergency)
+    classes     = { [18] = true },  -- (before 2.0.11; used only when classList is nil)
     models      = {},               -- or these models too: { 'police', 'police2', 'sheriff' }
+    scanMs      = 250,              -- 2.0.11: how often it measures while moving (ms)
+    parkedScanMs = 500,             -- 2.0.11: ... and while parked
+    hitSound    = true,             -- 2.0.11: the alarm on a plate hit (BOLO / stolen / warrant)
+    autoLockAllowed = true,         -- 2.0.11: players may turn on auto-lock over their speed alert
+    keepHitsDays = 30,              -- 2.0.11: plate hits are kept this many days (0 = forever)
+    historyLimit = 50,              -- 2.0.11: plate hits listed in the MDT's Radar tab
+    recentReads = 25,               -- 2.0.11: plates each officer's Radar tab remembers this shift (on their PC only)
     range       = 110.0,            -- metres each antenna sees
     angle       = 18.0,             -- half-width of each antenna's beam, degrees
     plateRange  = 30.0,             -- metres the plate cameras read
-    fastLimit   = 70,               -- default fast-limit (in the units above)
+    fastLimit   = 70,               -- default speed alert (fast limit), in the units above; each player may set their own
     keys = {                        -- defaults; each player can rebind in GTA Settings > Key Bindings > FiveM
         toggle     = 'F5',          -- show / hide the radar
         remote     = 'F7',          -- the remote (settings, locks, last plate hits)
@@ -461,7 +474,7 @@ Config.Radar = {
         reset      = 'NUMPAD0',     -- clear every lock
     },
     -- plate checks: what counts as a hit (unregistered = plates with no owner on file: every NPC car)
-    hits = { bolo = 'high', stolen = 'high', warrant = 'high', unregistered = 'low' },   -- 'high' alert, 'low' amber only, false off
+    hits = { bolo = 'high', stolen = 'high', warrant = 'high', unregistered = 'low' },   -- 'high' alert, 'low' amber only, 'off' (or false) off
     recheckSec  = 60,               -- a plate already checked is not asked again for this long
 }
 

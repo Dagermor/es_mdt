@@ -1,5 +1,35 @@
 # Changelog
 
+## es_mdt 2.0.11 (2026-11-18)
+
+**The police radar and plate reader are now a Radar tab in the MDT, with an admin Radar group in `/whip` → Settings → MDT and each player's own radar settings in the pause menu.** See [Radar tab](README.md#radar-tab).
+
+- **Radar tab in the MDT** (police, sheriff and state police, plus staff; an admin can hide it):
+  - **Status at a glance:** *Live*, *Off*, *Not in a police vehicle* or *Go on duty to use it*, and one switch to turn the radar on or off.
+  - **Live readout:** your speed, and each antenna's target and fast speeds. An antenna glows red over your speed alert. Each camera shows its plate in red (hit), amber (note) or "✓ Clear". It is the same readout the in-car panel gets, sent only when something changed, so the tab costs nothing extra.
+  - **Controls:** each antenna on or off and Same / Opposite / Both. Lock or unlock speed and plate, clear all locks, the speed alert (− / + / slider), beep, auto-lock, plate reader and mute.
+  - **Read this shift:** every plate your reader read (newest first, on your own PC, 25 by default) with its hit or note, model and owner, which antenna and when. Each has **Look up** (Vehicles), **⚑ BOLO** (form filled with the plate and model), **Owner** (their profile) and **⌖ Map**.
+  - **Map** opens the Live map on a pin where the plate was read, with Waypoint, Vehicle and Remove the pin. Without the Live map it sets a waypoint instead.
+  - **Plate hits:** every BOLO, stolen and warrant read on the server, from any officer, with who read it, when and where. *Everyone* or *Mine*.
+  - **Check a plate:** type any plate for its owner, model and hits, with the same buttons.
+  - The tab tells the game when it is open; plate reads are only sent while it is.
+- **Radar group in `/whip` → Settings → MDT** (live on Apply, **Reset** goes back to `config.lua`):
+  - Radar on or off for the whole server, the Radar tab on or off.
+  - Which department types and vehicle classes (and extra models) get it.
+  - The default speed unit and speed alert.
+  - Range, beam width, plate camera range, how often it measures (moving and parked), and how soon a plate is checked again.
+  - What counts as a hit for a BOLO, stolen car, owner with a warrant and unregistered car: *Alert*, *Amber only* or *Ignore*.
+  - Plate-hit alarm sound, whether players may use auto-lock, how long plate hits are kept (30 days by default, 0 = forever, cleaned hourly), how many show in the tab, and how many reads each officer's tab remembers.
+  - **Commands and keys (restart)** gains the radar on / off and remote keys.
+- **Each player's own radar settings** in the pause menu → Settings → Server Settings → **Radar** (kept on their PC, the same values as the remote and the tab):
+  - Turn the radar on when getting into a police vehicle.
+  - Volume, mute, lock sound, and beep over the speed alert.
+  - Their own speed alert. Until they pick one, it follows the server's.
+  - Speed unit (the server's, mph or km/h).
+  - Panel size (60–160 %) and position: a corner, or wherever they dragged it.
+- **Remote (F7):** gains Mute and hides auto-lock when an admin turned it off.
+- **Upgrading:** an older `config.lua` (`lawTypes` / `classes` maps, `hits = false`) still works. The new keys fill in with their defaults.
+
 ## es_mdt 2.0.10 (2026-11-18)
 
 **The simple department and DOJ settings move into `/whip` → Settings → MDT, changed live. Plus a performance pass: less work every frame, fewer lookups and smaller network updates.** See [Changing settings live](README.md#changing-settings-live) and [Performance](README.md#performance).

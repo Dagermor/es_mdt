@@ -899,7 +899,7 @@ local function checkPlate(plate)
     local hit = PlateCache[key]
     if hit and now() - hit.at < (RAD.recheckSec or 60) then return hit.res end
     local lv = RAD.hits or {}
-    local function lvl(k, def) if lv[k] == nil then return def end return lv[k] end
+    local function lvl(k, def) if lv[k] == nil then return def end return lv[k] end   -- 'off' / false: not kept below
     local res = { plate = key, hits = {} }
     local v = MySQL.single.await([[SELECT v.`vehicleId`, v.`plate`, v.`ownerCharId`, COALESCE(k.`displayName`, v.`model`) AS `label`, n.`flags`
         FROM `vehicles` v LEFT JOIN `vehicle_catalog` k ON k.`model` = v.`model` LEFT JOIN `es_mdt_vehicle_notes` n ON n.`vehicleId` = v.`vehicleId`
@@ -911,7 +911,7 @@ local function checkPlate(plate)
         res.hits[#res.hits + 1] = { kind = 'bolo', level = lvl('bolo', 'high'), text = 'BOLO: ' .. (b.title or ('#' .. b.id)) }
     end
     if v then
-        res.vehicleId, res.label = v.vehicleId, v.label
+        res.vehicleId, res.label, res.ownerCharId = v.vehicleId, v.label, v.ownerCharId   -- 2.0.11: the Radar tab's Profile button
         for _, f in ipairs(MDT.flagsOf(v.flags)) do
             if tostring(f):lower() == 'stolen' then res.hits[#res.hits + 1] = { kind = 'stolen', level = lvl('stolen', 'high'), text = 'Reported stolen' } end
         end
@@ -954,8 +954,19 @@ local function plateSeen(charId, res, pos)
 end
 
 --- On duty in a police / sheriff / state department (the radar's rule)
+--- 2.0.11: the department types that get the radar (Config.Radar.lawTypeList, read live; lawTypes before 2.0.11)
+local function radarTypes()
+    local list = RAD.lawTypeList
+    if type(list) == 'table' then
+        local set = {}
+        for _, t in ipairs(list) do set[t] = true end
+        return set
+    end
+    return RAD.lawTypes or { police = true, sheriff = true, state = true }
+end
+MDT.radarTypes = radarTypes
 local function lawOnDuty(source)
-    local types = RAD.lawTypes or { police = true, sheriff = true, state = true }
+    local types = radarTypes()
     for _, d in ipairs(ED:GetPlayerDepartments(source) or {}) do
         if d.onDuty and types[d.type] then return true end
     end
@@ -1768,10 +1779,11 @@ function MDT.registerOps()
 
     -- the radar may run here (law department, on duty)
     Whip.core:SecureCallback('es_mdt:radarAllowed', { rateLimit = 2000, burst = 3, sheet = 'light' }, function(source)
-        return lawOnDuty(source)
+        return RAD.enabled ~= false and lawOnDuty(source)
     end)
     Whip.core:SecureCallback('es_mdt:radarPlates', { rateLimit = 400, burst = 6, sheet = 'light', params = { { 'd', 'any' } } }, function(source, _, d)
         d = type(d) == 'table' and d or {}
+        if RAD.enabled == false then return false, 'The radar is off' end
         if not lawOnDuty(source) then return false, 'Off duty' end
         local cid = WC:GetCharId(source)
         local pos = coordsOf(source)
@@ -1787,6 +1799,42 @@ function MDT.registerOps()
             end
         end
         return out
+    end)
+
+    -- 2.0.11: the Radar tab's plate hits (BOLO / stolen / warrant reads logged by every reader): the newest first, with who
+    -- read it and where. For law departments (Config.Radar.lawTypeList) and admins, on or off duty (the MDT's own rights).
+    cb('radarHistory', { rate = 800, burst = 4 }, function(c, d)
+        if RAD.enabled == false or RAD.mdtTab == false then return false, 'The radar tab is off on this server' end
+        if not (c.staff or (c.dept and radarTypes()[c.dept.type])) then return false, 'The radar is for police, sheriff and state police' end
+        local limit = math.max(10, math.min(200, math.floor(tonumber(RAD.historyLimit) or 50)))
+        local where, args = '', {}
+        if d.mine then where = ' WHERE `charId` = ?' args[1] = c.charId end
+        local plate = plateKey(d.plate or '')
+        if plate ~= '' then
+            where = where .. (where == '' and ' WHERE' or ' AND') .. ' `plate` = ?'
+            args[#args + 1] = plate
+        end
+        args[#args + 1] = limit
+        local rows = MySQL.query.await('SELECT `id`,`plate`,`kinds`,`detail`,`charId`,`x`,`y`,UNIX_TIMESTAMP(`createdAt`) AS `at` FROM `es_mdt_plate_hits`'
+            .. where .. ' ORDER BY `id` DESC LIMIT ?', args) or {}
+        local ids = {}
+        for _, r in ipairs(rows) do if r.charId then ids[#ids + 1] = r.charId end end
+        local names = MDT.namesOf(ids)
+        for _, r in ipairs(rows) do
+            r.by = r.charId and (names[r.charId] or ('#' .. r.charId)) or nil
+            r.mine = r.charId == c.charId
+            r.at = tonumber(r.at)
+            r.charId = nil
+        end
+        return { hits = rows, limit = limit, keepDays = tonumber(RAD.keepHitsDays) or 30 }
+    end)
+    -- 2.0.11: one plate, asked from the Radar tab (owner, model, its hits), the same check the reader makes
+    cb('radarPlate', { rate = 500, burst = 4 }, function(c, d)
+        if RAD.enabled == false then return false, 'The radar is off on this server' end
+        if not (c.staff or (c.dept and radarTypes()[c.dept.type])) then return false, 'The radar is for police, sheriff and state police' end
+        local res = checkPlate(type(d.plate) == 'string' and d.plate or '')
+        if not res then return false, 'No plate' end
+        return res
     end)
 
     -- dispatch board
@@ -2260,6 +2308,7 @@ function MDT.registerOps()
     -- 2.0.4: the auto-close sweep (silent; see autoCloseSweep), and the caches' clean-up every 5 minutes
     CreateThread(function()
         local lastClean = now()
+        local lastHits = now() - 3300   -- 2.0.11: the first plate-hit clean-up 5 minutes after start
         while true do
             Wait(math.max(15, tonumber(DSP.sweepSeconds) or 60) * 1000)   -- 2.0.8: read each round (live settings)
             local ok, err = pcall(autoCloseSweep)
@@ -2267,6 +2316,15 @@ function MDT.registerOps()
             ok, err = pcall(escalateSweep)   -- 2.0.6: after the auto-close (a call closing now is not re-alerted)
             if not ok then print(('^3[es_mdt] escalation sweep failed: %s^7'):format(tostring(err))) end
             local t = now()
+            if t - lastHits >= 3600 then   -- 2.0.11: plate hits older than Config.Radar.keepHitsDays (0 = kept), once an hour
+                lastHits = t
+                local days = math.floor(tonumber(RAD.keepHitsDays) or 30)
+                if days > 0 then
+                    pcall(function()
+                        MySQL.update.await('DELETE FROM `es_mdt_plate_hits` WHERE `createdAt` < (NOW() - INTERVAL ? DAY) LIMIT 5000', { days })
+                    end)
+                end
+            end
             if t - lastClean >= 300 then
                 lastClean = t
                 for k, v in pairs(HitSeen) do if v < t - 600 then HitSeen[k] = nil end end

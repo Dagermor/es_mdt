@@ -142,6 +142,8 @@
     { key: 'dispatch', label: 'Dispatch', ico: '☎' },
     { key: 'units', label: 'Active units', ico: '◉' },
     { key: 'livemap', label: 'Live map', ico: '⌖', show: () => (S.ctx.onDuty || S.ctx.staff) && ((S.ctx.config.liveMap || {}).enabled !== false || S.ctx.staff) },
+    // 2.0.11: the in-car radar and plate reader (police, sheriff and state police, or staff; an admin can hide the tab)
+    { key: 'radar', label: 'Radar', ico: '📡', show: () => { const r = (S.ctx.config || {}).radar; return !!(r && r.enabled !== false && r.tab !== false && (r.law || S.ctx.staff)); } },
     { key: 'arrest', label: 'Process arrest', ico: '⛓', show: () => !!P().mdt_reports_write },
     { key: 'bolos', label: 'BOLOs', ico: '⚑' },
     { key: 'jail', label: 'Jail', ico: '▥' },
@@ -1484,7 +1486,7 @@
 
   // ---------------------------------------------------------------- 1.3.0: the toolbox ops.js builds on
   window.MDT = { S, $, $$, esc, money, call, post, toast, said, busy, ago, date, dateTime, modal, confirmBox, modalOpen, personPicker, pill, empty,
-    can, P, RO, go, VIEWS, HOOK, watchEditing: (k, i, a, b) => watchEditing(k, i, a, b), dur, hours, isoDay, certBadges: (l, s) => certBadges(l, s), ccv, drawer: (h, f) => drawer(h, f), typeLabel, ridesCard, rideForm, ftoRecs, tabBadge, loadBadges, calDate: (t) => calDate(t), warrantForm, statusOf, renderFrame, setBadge, applyBadges, loadBadges, penal, serialTag, queueRefresh, logoOf };
+    can, P, RO, go, VIEWS, HOOK, watchEditing: (k, i, a, b) => watchEditing(k, i, a, b), dur, hours, isoDay, certBadges: (l, s) => certBadges(l, s), ccv, drawer: (h, f) => drawer(h, f), typeLabel, ridesCard, rideForm, ftoRecs, boloForm: (a, b) => boloForm(a, b), tabBadge, loadBadges, calDate: (t) => calDate(t), warrantForm, statusOf, renderFrame, setBadge, applyBadges, loadBadges, penal, serialTag, queueRefresh, logoOf };
 
   // ---------------------------------------------------------------- global search (Ctrl+K)
   let gsT = null, gsSeq = 0;
@@ -1588,6 +1590,7 @@
       if (S.view === 'vehicles') return;
       if (S.view === 'units' && S.unitsMode === 'map') return;
       if (S.view === 'livemap') return;
+      if (S.view === 'radar') return;
       if (S.view === 'arrest') return;
       if (S.view === 'dispatch' && HOOK.dispatchRefresh) { HOOK.dispatchRefresh(); return; }
       if (S.view === 'weapons') { weaponSearch(); if (!$('#w-detail')) return; if (S.wSerial) weaponDetail(S.wSerial, true); else weaponOverview(true); return; }

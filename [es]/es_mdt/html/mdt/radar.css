@@ -2,6 +2,10 @@
 #radar { position: fixed; right: 28px; bottom: 210px; z-index: 5; --rs: 1; transform: scale(var(--rs)); transform-origin: 100% 100%;
   font-family: var(--ui-font, system-ui); color: #e8edf5; user-select: none; pointer-events: none; }
 #radar[style*="left"] { transform-origin: 0 0; }
+/* 2.0.11: the corner each player picks (pause menu: Radar panel position) */
+#radar.pos-bl { right: auto; left: 28px; transform-origin: 0 100%; }
+#radar.pos-tr { bottom: auto; top: 96px; transform-origin: 100% 0; }
+#radar.pos-tl { bottom: auto; top: 96px; right: auto; left: 28px; transform-origin: 0 0; }
 #radar.editing { pointer-events: auto; cursor: move; outline: 2px dashed rgba(96,165,250,.7); outline-offset: 4px; border-radius: 14px; }
 #radar.dragging { opacity: .85; }
 .rd-body { display: flex; gap: 10px; padding: 10px 12px; border-radius: 14px 14px 0 0; background: linear-gradient(180deg, rgba(22,26,34,.94), rgba(10,12,16,.94));

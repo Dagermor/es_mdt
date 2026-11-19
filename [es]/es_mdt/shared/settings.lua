@@ -14,6 +14,27 @@ local DEPT = (ESPART('departments') or {}).Config
 local DOJC = (ESPART('doj') or {}).Config
 -- a value config.lua leaves nil has no default to capture: give it its "off" value (0 = the top rank, as nil was)
 if DEPT and DEPT.Health and DEPT.Health.headLevel == nil then DEPT.Health.headLevel = 0 end
+-- 2.0.11: the radar's settings. A config.lua from before 2.0.11 has none of the new keys: give them the values the radar
+-- used before, so the page has a default for each and nothing changes until an admin does.
+do
+    Config.Radar = Config.Radar or {}
+    local RC = Config.Radar
+    local function setOf(t) local o = {} for k, v in pairs(type(t) == 'table' and t or {}) do if v == true then o[#o + 1] = k end end table.sort(o, function(a, b) return tostring(a) < tostring(b) end) return o end
+    if RC.enabled == nil then RC.enabled = true end
+    if RC.mdtTab == nil then RC.mdtTab = true end
+    if RC.units ~= 'kmh' then RC.units = 'mph' end
+    if RC.lawTypeList == nil then RC.lawTypeList = RC.lawTypes and setOf(RC.lawTypes) or { 'police', 'sheriff', 'state' } end
+    if RC.classList == nil then RC.classList = RC.classes and setOf(RC.classes) or { 18 } end
+    RC.models = RC.models or {}
+    local defaults = { range = 110.0, angle = 18.0, plateRange = 30.0, fastLimit = 70, recheckSec = 60, scanMs = 250, parkedScanMs = 500,
+        hitSound = true, autoLockAllowed = true, keepHitsDays = 30, historyLimit = 50, recentReads = 25 }
+    for k, v in pairs(defaults) do if RC[k] == nil then RC[k] = v end end
+    RC.hits = RC.hits or {}
+    for k, v in pairs({ bolo = 'high', stolen = 'high', warrant = 'high', unregistered = 'low' }) do
+        if RC.hits[k] == nil then RC.hits[k] = v elseif RC.hits[k] == false then RC.hits[k] = 'off' end
+    end
+    RC.keys = RC.keys or {}
+end
 local ROOT = setmetatable({ Suite = EsSuite, Dept = DEPT, Doj = DOJC }, {
     __index = function(_, k) return Config[k] end,
     __newindex = function(_, k, v) Config[k] = v end,
@@ -168,6 +189,41 @@ Whip.configPage({
             { key = D .. 'follow.arriveDistance', type = 'int', min = 5, max = 300, unit = 'm', label = 'A responding unit has arrived within',
               shownWhen = on(D .. 'follow.responders') },
         } },
+        { id = 'radar', label = 'Radar', settings = {
+            { key = 'Radar.enabled', type = 'bool', label = 'Police radar and plate reader',
+              help = 'Off: no radar anywhere, in the car or in the MDT.' },
+            { key = 'Radar.mdtTab', type = 'bool', label = 'Radar tab in the MDT', help = 'Live readout, controls, plate reads and hits.',
+              shownWhen = on('Radar.enabled') },
+            { key = 'Radar.lawTypeList', type = 'list', item = { type = 'enum', options = {
+                { value = 'police', label = 'Police' }, { value = 'sheriff', label = 'Sheriff' }, { value = 'state', label = 'State Police / Rangers' },
+                { value = 'ems', label = 'EMS / Fire' }, { value = 'doj', label = 'Department of Justice' } } },
+              label = 'Department types that may use it', help = 'On duty in one of these. Commas between, e.g. police, sheriff, state.',
+              shownWhen = on('Radar.enabled') },
+            { key = 'Radar.classList', type = 'list', item = { type = 'int', min = 0, max = 22 }, label = 'In these vehicle classes',
+              help = 'GTA vehicle classes, commas between. 18 = emergency, 19 = military, 15 = helicopters.', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.models', type = 'list', item = { type = 'string', maxLen = 32 }, label = 'And these vehicle models',
+              help = 'Spawn names, commas between, e.g. police, police2, sheriff. Empty = classes only.', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.units', type = 'enum', label = 'Speed unit (default)', options = { { value = 'mph', label = 'mph' }, { value = 'kmh', label = 'km/h' } },
+              help = 'Each player may pick their own in the pause menu.', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.fastLimit', type = 'int', min = 5, max = 250, label = 'Speed alert (default)',
+              help = 'Beeps over this speed. Each player may set their own.', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.range', type = 'number', min = 20, max = 300, step = 5, unit = 'm', label = 'Each antenna sees', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.angle', type = 'number', min = 5, max = 45, step = 1, unit = '°', label = 'Beam half-width', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.plateRange', type = 'number', min = 5, max = 80, step = 1, unit = 'm', label = 'Plate cameras read up to', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.scanMs', type = 'int', min = 100, max = 2000, step = 50, unit = 'ms', label = 'Measure every (moving)',
+              help = 'Lower is smoother, higher is lighter.', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.parkedScanMs', type = 'int', min = 100, max = 5000, step = 50, unit = 'ms', label = 'Measure every (parked)', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.recheckSec', type = 'int', min = 10, max = 3600, unit = 's', label = 'Check the same plate again after', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.hits.bolo', type = 'enum', label = 'Plate with an active BOLO', options = { { value = 'high', label = 'Alert (red, sound)' }, { value = 'low', label = 'Amber only' }, { value = 'off', label = 'Ignore' } }, shownWhen = on('Radar.enabled') },
+            { key = 'Radar.hits.stolen', type = 'enum', label = 'Reported stolen', options = { { value = 'high', label = 'Alert (red, sound)' }, { value = 'low', label = 'Amber only' }, { value = 'off', label = 'Ignore' } }, shownWhen = on('Radar.enabled') },
+            { key = 'Radar.hits.warrant', type = 'enum', label = 'Owner has an active warrant', options = { { value = 'high', label = 'Alert (red, sound)' }, { value = 'low', label = 'Amber only' }, { value = 'off', label = 'Ignore' } }, shownWhen = on('Radar.enabled') },
+            { key = 'Radar.hits.unregistered', type = 'enum', label = 'Not registered (every NPC car)', options = { { value = 'high', label = 'Alert (red, sound)' }, { value = 'low', label = 'Amber only' }, { value = 'off', label = 'Ignore' } }, shownWhen = on('Radar.enabled') },
+            { key = 'Radar.hitSound', type = 'bool', label = 'Sound the alarm on a plate hit', help = 'Players can still mute the radar for themselves.', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.autoLockAllowed', type = 'bool', label = 'Players may use auto-lock over their speed alert', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.keepHitsDays', type = 'int', min = 0, max = 3650, unit = 'days', label = 'Keep plate hits for', help = '0 = forever. Cleaned once an hour.', shownWhen = on('Radar.enabled') },
+            { key = 'Radar.historyLimit', type = 'int', min = 10, max = 200, label = 'Plate hits listed in the Radar tab', shownWhen = on('Radar.mdtTab') },
+            { key = 'Radar.recentReads', type = 'int', min = 5, max = 100, label = 'Plates each officer\'s Radar tab remembers', help = 'This shift, on their own PC.', shownWhen = on('Radar.mdtTab') },
+        } },
         { id = 'livemap', label = 'Live map', settings = {
             { key = 'LiveMap.enabled', type = 'bool', label = 'Live map tab in the MDT', help = 'Admins always have it.' },
             { key = 'LiveMap.units', type = 'enum', label = 'Officers see the units of', options = {
@@ -276,6 +332,8 @@ Whip.configPage({
             restart({ key = D .. 'board.command', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'Call board command' }),
             restart({ key = D .. 'board.key', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a key name, e.g. O',
               label = 'Call board key (default)', help = 'A key change reaches only players who never rebound it (FiveM keeps their own).' }),
+            restart({ key = 'Radar.keys.toggle', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a key name, e.g. F5', label = 'Radar on / off key (default)' }),
+            restart({ key = 'Radar.keys.remote', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a key name, e.g. F7', label = 'Radar remote key (default)' }),
             restart({ key = 'Dept.Command', type = 'string', maxLen = 32, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'Departments command' }),
             restart({ key = 'Doj.Command', type = 'string', maxLen = 32, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'DOJ tablet command' }),
             restart({ key = 'Doj.Key', type = 'string', maxLen = 20, minLen = 0, nullable = true, pattern = '^[%w_]*$', patternWhy = 'a key name, e.g. F7',

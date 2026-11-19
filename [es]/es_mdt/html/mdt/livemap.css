@@ -40,6 +40,11 @@
 .lp-call.p1 .lp-m, .lp-call.crit .lp-m, .lp-call.panic .lp-m { animation: lmPulse 1.1s ease-out infinite; }
 .lp-call.mine .lp-l { background: var(--ui-accent); color: var(--ui-on-accent, #0b1220); }
 .lp-bolo .lp-m { background: #7c3aed; border: 2px solid #fff; }
+/* 2.0.11: a plate read opened from the Radar tab */
+.lp-read { z-index: 4; }
+.lp-read .lp-m { background: #0ea5e9; border: 2px solid #fff; animation: lmRead 1.6s ease-out infinite; }
+.lm-ico.read { background: #0ea5e9; color: #fff; }
+@keyframes lmRead { 0% { box-shadow: 0 0 0 0 rgba(14,165,233,.7); } 100% { box-shadow: 0 0 0 18px rgba(14,165,233,0); } }
 @keyframes lmPulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.75); } 100% { box-shadow: 0 0 0 16px rgba(239,68,68,0); } }
 
 /* overlays */

@@ -370,6 +370,13 @@ local function openData(c)
             weaponTypes = weaponTypes(), licenseTypes = W.licenseTypes or { 'Firearm' }, boloOnStolen = W.boloOnStolen ~= false,
             outcomes = MDT.outcomeList and MDT.outcomeList() or {}, mapRefreshMs = Config.MapRefreshMs or 3000,
             liveMap = MDT.liveMapPage and MDT.liveMapPage() or nil,   -- 2.0.9
+            radar = (function()   -- 2.0.11: the Radar tab (shown to law departments and admins)
+                local R = Config.Radar or {}
+                local types = MDT.radarTypes and MDT.radarTypes() or {}
+                return { enabled = R.enabled ~= false, tab = R.enabled ~= false and R.mdtTab ~= false, law = types[d.type] == true,
+                    units = R.units == 'kmh' and 'kmh' or 'mph', fastLimit = tonumber(R.fastLimit) or 70, autoLock = R.autoLockAllowed ~= false,
+                    keepDays = tonumber(R.keepHitsDays) or 30 }
+            end)(),
             panicKey = (Config.Panic or {}).key or '', panicCommand = (Config.Panic or {}).command or 'panic',
             reportTemplates = Config.ReportTemplates or {}, mugshotRange = (Config.Mugshots or {}).range or 6,
             esEvidence = GetResourceState('es_evidence') == 'started', devTools = EsSuite.DevTools == true },   -- 1.11.1: es_evidence parts hidden when it is off

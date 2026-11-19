@@ -22,6 +22,8 @@
     if (owed) alerts.push([d.fees.fees.some((f) => f.dueAt && f.dueAt < Date.now() / 1000) ? 'bad' : 'warn', '$', `You owe ${money(owed)}`, 'Unpaid court fines become a warrant when they are overdue.', 'pay']);
     (d.subpoenas || []).forEach((s) => alerts.push(['bad', '✉', `Subpoena in ${s.number}: ${s.kind === 'documents' ? 'produce documents' : 'appear in court'}`, (s.startsAt ? dateTime(s.startsAt) + (s.room ? ' · ' + s.room : '') + ' · ' : '') + (s.details || ''), 'mycases']));
     if (d.service) alerts.push(['warn', '🧹', `${d.service} community service task${d.service === 1 ? '' : 's'} left`, 'Your spot is marked on the map. Go there and press E.', null]);
+    const tk = d.tk || {};
+    if (tk.impounded) alerts.push(['bad', '⛍', `${tk.impounded} of your vehicles ${tk.impounded === 1 ? 'is' : 'are'} impounded`, 'See what it costs to get it back and pay for it.', 'pimpound']);
     if (nextH) alerts.push(['', '▦', `Court: ${nextH.number} ${inTime(nextH.next)}`, dateTime(nextH.next) + ' at the ' + (d.courthouse || 'courthouse'), 'pcase', nextH.id]);
     const tile = (view, ico, title, sub) => `<div class="tile" data-go="${view}"><span class="t-ico">${ico}</span><b>${title}</b><span>${sub}</span></div>`;
     h.innerHTML = `<div class="hero"><div style="font-size:42px">⚖</div><div class="flex1"><h1>Welcome, ${esc(d.me.name)}</h1><p>Superior Court of San Andreas · your cases, bills and requests in one place.${S.extra && S.extra.desk ? ' You are at the clerk window.' : ''}</p></div></div>
@@ -29,6 +31,8 @@
       <div class="tiles">
         ${tile('mycases', '⚖', 'My cases', open.length ? `${open.length} open` : 'Cases you are part of')}
         ${tile('pay', '$', 'Payments', owed ? money(owed) + ' owed' : 'Fines, fees and bail · pay for someone')}
+        ${tile('ptickets', '✎', 'My tickets', tk.unpaid ? tk.unpaid + ' to pay' + (tk.contested ? ' · ' + tk.contested + ' contested' : '') : 'Police tickets · contest an unsigned one')}
+        ${tile('pimpound', 'Ⓟ', 'Impounded vehicles', tk.impounded ? tk.impounded + ' at the lot' : 'Get an impounded car back')}
         ${tile('petitions', '✎', 'Petitions', 'Name change, business license, expungement, lawsuit')}
         ${tile('lawyers', '⚑', 'Lawyers', d.lawyers.length ? 'Your lawyer: ' + esc(d.lawyers[0].name || '') : 'Hire one or ask for a public defender')}
         ${tile('records', '⌕', 'Public records', 'Cases, businesses, attorneys')}
@@ -127,7 +131,8 @@
   const billRows = (b, other) => {
     const rows = b.fees.map((f) => `<div class="bill"><span class="a-ico" style="font-size:20px">${f.kind === 'bail' ? '⛓' : '⚖'}</span><div class="li-main"><b>${esc(f.label)}${f.number ? ' · ' + esc(f.number) : ''}</b><span class="hint">${esc(f.reason || '')}${f.dueAt ? ' · due ' + date(f.dueAt) : ''}${f.test ? ' · test' : ''}</span></div>
       ${f.dueAt && f.dueAt < Date.now() / 1000 ? pill('Overdue', 'bad') : ''}<span class="amt">${money(f.amount)}</span><button class="btn gold" data-pay="${f.id}">Pay</button></div>`)
-      .concat(b.fines.map((f) => `<div class="bill"><span class="a-ico" style="font-size:20px">🚓</span><div class="li-main"><b>Police fine #${f.id}${f.dept ? ' · ' + esc(f.dept) : ''}</b><span class="hint">${esc(f.reason || '')} · ${date(f.createdAt)}</span></div><span class="amt">${money(f.amount)}</span><button class="btn gold" data-fine="${f.id}">Pay</button></div>`));
+      .concat(b.fines.map((f) => `<div class="bill"><span class="a-ico" style="font-size:20px">${f.ticketId ? '✎' : f.kind === 'impound' ? '⛍' : '🚓'}</span><div class="li-main"><b>${f.ticketId ? esc(f.reason || 'Police ticket') : 'Police fine #' + f.id}${f.dept ? ' · ' + esc(f.dept) : ''}</b><span class="hint">${f.ticketId ? '' : esc(f.reason || '') + ' · '}${date(f.createdAt)}${f.dueAt ? ' · due ' + date(f.dueAt) : ''}</span></div>
+        ${f.contested ? pill('Contested · paused', 'warn') : f.dueAt && f.dueAt < Date.now() / 1000 ? pill('Overdue', 'bad') : ''}<span class="amt">${money(f.amount)}</span>${f.contested ? '' : `<button class="btn gold" data-fine="${f.id}">Pay</button>`}</div>`));
     return rows.length ? rows.join('') : empty(other ? 'They owe nothing' : 'You owe nothing. Nice.', '✓');
   };
   views.pay = async (h, arg, alive) => {

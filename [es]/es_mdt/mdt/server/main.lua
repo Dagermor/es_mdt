@@ -17,7 +17,9 @@ local dutyDrop   -- 2.0.10: drops the 1 s on-duty list (set below, used by the j
 
 local PERMS = { 'mdt_view', 'mdt_reports_write', 'mdt_reports_delete', 'warrants_request', 'warrants_issue', 'fines_issue',
     'bolo_manage', 'fto_train', 'fto_manage', 'loa_manage', 'canHire', 'canFire', 'canPromote', 'canDemote', 'canManage',
-    'weapons_register', 'weapons_manage', 'licenses_manage', 'announce', 'evidence_collect', 'evidence_lab', 'evidence_manage', 'cases_create', 'cases_close', 'jail_cuff', 'jail_manage', 'personnel_manage', 'permits_manage' }
+    'weapons_register', 'weapons_manage', 'licenses_manage', 'announce', 'evidence_collect', 'evidence_lab', 'evidence_manage', 'cases_create', 'cases_close', 'jail_cuff', 'jail_manage', 'personnel_manage', 'permits_manage',
+    -- 2.1.0: roadside tickets and impound (added to every law department's permission list by departments/server/main.lua)
+    'tickets_issue', 'impound_vehicle', 'impound_hold', 'impound_override', 'impound_lot' }
 
 -- ---------------------------------------------------------------- helpers
 
@@ -589,7 +591,7 @@ local function autoWarrants()
     if days > 0 then
         local rows = MySQL.query.await([[SELECT f.`id`, f.`deptId`, f.`charId`, f.`reportId`, f.`amount`, f.`issuedBy` FROM `es_mdt_fines` f
             LEFT JOIN `es_mdt_warrants` w ON w.`fineId` = f.`id`
-            WHERE f.`status` = 'unpaid' AND f.`createdAt` < NOW() - INTERVAL ? DAY AND w.`id` IS NULL LIMIT 200]], { days }) or {}
+            WHERE f.`status` = 'unpaid' AND f.`contested` = 0 AND COALESCE(f.`dueAt`, f.`createdAt`) < NOW() - INTERVAL ? DAY AND w.`id` IS NULL LIMIT 200]], { days }) or {}
         for _, f in ipairs(rows) do
             local reason = ('Failure to pay: $%d (%s)'):format(f.amount, f.reportId and ('Report #' .. f.reportId) or 'Direct fine')
             local wid = MySQL.insert.await([[INSERT IGNORE INTO `es_mdt_warrants` (`deptId`,`charId`,`reportId`,`reason`,`status`,`requestedBy`,`fineId`,`auto`)
@@ -604,6 +606,17 @@ local function autoWarrants()
     if not okb then print(('^3[es_mdt] warrant BOLOs: %s^7'):format(tostring(errb))) end
 end
 
+--- 2.1.0: money for a paid fine goes to the issuing department's job account (Config.FineToDepartment)
+local function fineToDept(fine, note)
+    if not Config.FineToDepartment then return end
+    local d = ED:GetDepartment(fine.deptId)
+    local jaccts = d and WC:GetJobBankAccounts(d.jobId) or {}
+    if jaccts[1] then
+        local dok, dwhy = WC:BankSystemDeposit(jaccts[1].accountId, fine.amount, { reason = note or ('Fine #%d'):format(fine.id) })
+        if not dok then print(('^3[es_mdt] fine #%d paid but the department deposit failed: %s^7'):format(fine.id, tostring(dwhy))) end
+    end
+end
+
 local function payFine(fine)
     local acct = WC:GetDefaultBankAccount({ charId = fine.charId })
     if not acct then return false, 'They have no bank account' end
@@ -612,6 +625,7 @@ local function payFine(fine)
     MySQL.update.await("UPDATE `es_mdt_fines` SET `status` = 'paid', `paidAt` = NOW() WHERE `id` = ?", { fine.id })
     closeAutoWarrant(fine.id, 'served')
     refresh('fines')
+    if MDT.onFinePaid then pcall(MDT.onFinePaid, fine.id, 'bank') end   -- 2.1.0: a ticket's / impound's own bookkeeping, the owner's text
     if Config.FineToDepartment then
         local d = ED:GetDepartment(fine.deptId)
         local jaccts = d and WC:GetJobBankAccounts(d.jobId) or {}
@@ -628,11 +642,23 @@ local function payFine(fine)
     return true
 end
 
-local function issueFine(c, charId, amount, reason, reportId)
+--- extra (2.1.0): { kind = 'citation'|'parking'|'impound', ticketId, impoundId, quiet } for tickets.lua / impound.lua
+local function issueFine(c, charId, amount, reason, reportId, extra)
+    extra = extra or {}
     if amount < 1 then return false, 'No fine to issue' end
-    local fid = MySQL.insert.await([[INSERT INTO `es_mdt_fines` (`deptId`,`charId`,`reportId`,`amount`,`reason`,`issuedBy`)
-        VALUES (?,?,NULLIF(?,0),?,?,?)]], { c.dept.id, charId, reportId or 0, amount, reason, c.charId })
+    local inv = type(Config.Invoices) == 'table' and Config.Invoices.enabled ~= false
+    local due = inv and math.max(0, math.floor(tonumber(Config.Invoices.dueDays) or 3)) or 0
+    local fid = MySQL.insert.await([[INSERT INTO `es_mdt_fines` (`deptId`,`charId`,`reportId`,`amount`,`reason`,`issuedBy`,`kind`,`ticketId`,`impoundId`,`dueAt`)
+        VALUES (?,?,NULLIF(?,0),?,?,?,?,?,?,IF(? = 1, NOW() + INTERVAL ? DAY, NULL))]],
+        { c.dept.id, charId, reportId or 0, amount, reason, c.charId, extra.kind or 'fine', extra.ticketId, extra.impoundId, inv and 1 or 0, due })
     if not fid then return false, reportId and 'That person was already fined on this report' or 'Could not save the fine' end
+    -- 2.1.0: an invoice. Nothing is taken now: they pay in the court portal by the due day, or it is taken from their bank then.
+    if inv then
+        log(c, 'fine', ('#%d char %d $%d invoice, due in %d day(s)'):format(fid, charId, amount, due))
+        refresh('fines')
+        if MDT.onInvoice and not extra.quiet then pcall(MDT.onInvoice, fid) end
+        return { id = fid, paid = false, invoice = true, dueDays = due }
+    end
     local paid, why = payFine({ id = fid, deptId = c.dept.id, charId = charId, amount = amount, reason = reason })
     log(c, 'fine', ('#%d char %d $%d %s'):format(fid, charId, amount, paid and 'paid' or ('unpaid: ' .. tostring(why))))
     refresh('fines')
@@ -755,6 +781,10 @@ local function todoOf(c)
         local r = MySQL.single.await("SELECT COUNT(*) AS `n` FROM `es_mdt_permit_apps` WHERE `status` = 'pending'")
         todo.permits = r and tonumber(r.n) or 0
     end
+    -- 2.1.0: contests of my tickets waiting for my statement
+    local okt, nt = pcall(MySQL.scalar.await, [[SELECT COUNT(*) FROM `es_mdt_ticket_contests` k JOIN `es_mdt_tickets` t ON t.`id` = k.`ticketId`
+        WHERE k.`status` = 'open' AND k.`statement` IS NULL AND t.`officerCharId` = ?]], { c.charId })
+    todo.statements = okt and tonumber(nt) or 0
     if c.perms.canPromote then todo.recs = #(ED:GetRecommendations(c.dept.id, 'pending') or {}) end
     if c.perms.fto_train or c.perms.fto_manage then
         local q = ED:GetTrainees(c.dept.id) or {}
@@ -2285,6 +2315,7 @@ exports('MarkFinePaid', function(fineId, by, how)
     if (tonumber(n) or 0) < 1 then return false, 'That fine was just paid' end
     closeAutoWarrant(f.id, 'served')
     refresh('fines')
+    if MDT.onFinePaid then pcall(MDT.onFinePaid, f.id, how) end
     if Config.FineToDepartment then
         local d = ED:GetDepartment(f.deptId)
         local jaccts = d and WC:GetJobBankAccounts(d.jobId) or {}
@@ -2415,6 +2446,7 @@ MDT = MDT or {}
 for k, v in pairs({ cb = cb, str = str, int = int, id = id, marks = marks, namesOf = namesOf, deptShort = deptShort, log = log,
     refresh = refresh, onlineByChar = onlineByChar, notifyChar = notifyChar, dutyNow = dutyNow, unitsAll = unitsAll,
     isHighCommand = isHighCommand, canSeeReport = canSeeReport, flagsOf = flagsOf, ctxOf = ctxOf,
+    issueFine = issueFine, payFine = payFine, fineToDept = fineToDept, closeAutoWarrant = closeAutoWarrant, holdersOf = holdersOf, need = need,
     Teams = Teams, TeamOf = TeamOf, Units = Units, Panic = Panic, warrantBolosSoon = warrantBolosSoon, verOf = verOf }) do MDT[k] = v end
 
 Whip.register(function()
@@ -2435,6 +2467,12 @@ Whip.register(function()
     if MDT.registerCases then MDT.registerCases()
     else print('^1[es_mdt] server/cases.lua is not loaded: Cases are OFF. Run `refresh` then `ensure es_mdt`.^7') end
     if MDT.registerWhipEv and MDT.registerCases then MDT.registerWhipEv() end   -- 1.11.0: optional whip_evidence locker
+    -- 2.1.0: owner texts, roadside tickets / invoices / contests, impound
+    if MDT.registerTexts then MDT.registerTexts() end
+    if MDT.registerTickets then MDT.registerTickets()
+    else print('^1[es_mdt] server/tickets.lua is not loaded: tickets and invoices are OFF. Run `refresh` then `ensure es_mdt`.^7') end
+    if MDT.registerImpound then MDT.registerImpound()
+    else print('^1[es_mdt] server/impound.lua is not loaded: impound is OFF. Run `refresh` then `ensure es_mdt`.^7') end
     -- automatic "failure to pay" warrants: on start, then every few minutes
     CreateThread(function()
         Wait(20000)

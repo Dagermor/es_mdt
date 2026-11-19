@@ -72,9 +72,11 @@ for _, n in ipairs({ 'people', 'person', 'roll', 'rollImage', 'recordSeal', 'fee
     'permitCheck', 'permitDecide', 'activity', 'bar', 'barIssue', 'barAct', 'clients', 'clientAdd', 'clientEnd', 'cases', 'case', 'reportLookup',
     'caseCreate', 'caseUpdate', 'caseCharges', 'hearingSave', 'hearingAct', 'transcript', 'transcriptAdd', 'filingSave', 'filingImage', 'evidenceImage',
     'filingRule', 'pleaOffer', 'pleaAct', 'verdict', 'sentence', 'caseClose', 'caseReopen', 'bail', 'appealFile', 'appealRule', 'caseSeal',
-    'subpoenaSave', 'subpoenaAct', 'benchWarrant', 'warrants', 'warrant', 'warrantDecide', 'warrantIssue', 'warrantRecall' }) do TABLET[n] = true end
+    'subpoenaSave', 'subpoenaAct', 'benchWarrant', 'warrants', 'warrant', 'warrantDecide', 'warrantIssue', 'warrantRecall',
+    'contests', 'contestRule' }) do TABLET[n] = true end   -- 2.1.0: ticket contests
 for _, n in ipairs({ 'home', 'case', 'filingImage', 'noticeRead', 'pay', 'payFine', 'people', 'billsFor', 'plea', 'petition', 'myRecords', 'civil',
-    'appeal', 'lawyers', 'hire', 'fire', 'publicDefender', 'records' }) do PUB[n] = true end
+    'appeal', 'lawyers', 'hire', 'fire', 'publicDefender', 'records',
+    'tickets', 'contest', 'impounds', 'impoundPay' }) do PUB[n] = true end   -- 2.1.0: tickets, contests, impounded vehicles
 
 RegisterNUICallback('call', function(d, cb)
     local name = type(d) == 'table' and d.name

@@ -62,6 +62,8 @@ function DOJ.payMdtFine(payer, fineId, method)
     if GetResourceState('es_mdt') ~= 'started' then return false, 'The MDT is not running' end
     local f = MySQL.single.await("SELECT `id`,`charId`,`amount`,`status` FROM `es_mdt_fines` WHERE `id` = ?", { id(fineId) or 0 })
     if not f or f.status ~= 'unpaid' then return false, 'That fine is not owing' end
+    -- 2.1.0: a contested ticket waits for the judge (the payment is paused)
+    if MySQL.scalar.await('SELECT `contested` FROM `es_mdt_fines` WHERE `id` = ?', { f.id }) == 1 then return false, 'That ticket is contested: wait for the ruling' end
     local receipt, why = WC:ChargePlayer(payer.source, f.amount, { method = method == 'cash' and 'cash' or 'bank', reason = ('Police fine #%d (paid at court)'):format(f.id) })
     if not receipt then return false, why end
     local ok, err = exports.es_mdt:MarkFinePaid(f.id, payer.charId, 'court')
@@ -79,7 +81,8 @@ function DOJ.billsOf(cid)
         f.test = f.test == 1
         if f.kind == 'bail' then f.bond = math.ceil(f.amount * ((Config.Bail or {}).bondPercent or 10) / 100) end
     end
-    local fines = GetResourceState('es_mdt') == 'started' and MySQL.query.await([[SELECT f.`id`,f.`amount`,f.`reason`,f.`reportId`,d.`short` AS `dept`,UNIX_TIMESTAMP(f.`createdAt`) AS `createdAt`
+    local fines = GetResourceState('es_mdt') == 'started' and MySQL.query.await([[SELECT f.`id`,f.`amount`,f.`reason`,f.`reportId`,d.`short` AS `dept`,UNIX_TIMESTAMP(f.`createdAt`) AS `createdAt`,
+        f.`kind`,f.`ticketId`,f.`contested`,UNIX_TIMESTAMP(f.`dueAt`) AS `dueAt`
         FROM `es_mdt_fines` f LEFT JOIN `es_departments` d ON d.`id` = f.`deptId` WHERE f.`charId` = ? AND f.`status` = 'unpaid' ORDER BY f.`id`]], { cid }) or {}
     local paid = MySQL.query.await([[SELECT `id`,`kind`,`amount`,`reason`,`status`,`method`,UNIX_TIMESTAMP(`paidAt`) AS `paidAt` FROM `es_doj_fees`
         WHERE `charId` = ? AND `status` IN ('paid','refunded') ORDER BY `paidAt` DESC LIMIT 15]], { cid }) or {}

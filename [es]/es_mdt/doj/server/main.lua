@@ -58,6 +58,7 @@ Whip.register(function()
     DOJ.registerBar()
     DOJ.registerAdmin()
     DOJ.registerPortal()
+    if DOJ.registerContests then DOJ.registerContests() end   -- 2.1.0
     DOJ.registerTest()
 
     -- the courthouse on everyone's map

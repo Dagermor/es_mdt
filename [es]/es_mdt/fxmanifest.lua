@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.0.17'
+version '2.1.0'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -25,6 +25,7 @@ shared_scripts {
     'doj/config.lua',
     'mdt/shared/speed.lua',        -- 2.0.8: the speeding alert's limit (both sides)
     'shared/settings.lua',         -- 2.0.8: /whip > Settings > MDT (after every config: saved values are written over them)
+    'shared/perms.lua',            -- 2.1.0: the ticket and impound permissions on every law department's ranks
 }
 
 server_scripts {
@@ -48,6 +49,9 @@ server_scripts {
     'mdt/server/whipev.lua',
     'mdt/server/officer.lua',
     'mdt/server/permits.lua',
+    'mdt/server/texts.lua',        -- 2.1.0: texts to owners (whip_phone) + court portal notices
+    'mdt/server/tickets.lua',      -- 2.1.0: roadside tickets, invoices, contests
+    'mdt/server/impound.lua',      -- 2.1.0: impound, holds, the lot, tows
     'mdt/server/testdata.lua',
     'mdt/server/main.lua',
     'doj/server/tables.lua',
@@ -60,6 +64,7 @@ server_scripts {
     'doj/server/bar.lua',
     'doj/server/admin.lua',
     'doj/server/civ.lua',
+    'doj/server/contests.lua',     -- 2.1.0: ticket contests (judges), tickets and impounds in /court
     'doj/server/test.lua',
     'doj/server/main.lua',
 }
@@ -70,6 +75,7 @@ client_scripts {
     'mdt/client/ops.lua',
     'mdt/client/radar.lua',
     'mdt/client/permits.lua',
+    'mdt/client/roadside.lua',     -- 2.1.0: /ticket, /mdtimpound, signing, the paper ticket
     'doj/client/main.lua',
     'client/ui.lua',               -- 2.0.2: each player's display size (KVP), /mdtscale
     'client/pad.lua',              -- 2.0.13: controller support (WHIP's pad buttons, Whip.padScreen, the on-screen keyboard)
@@ -109,6 +115,11 @@ files {
     'html/mdt/training.js',
     'html/mdt/whipev.css',
     'html/mdt/whipev.js',
+    'html/mdt/roadside.css',  -- 2.1.0: the roadside ticket / impound forms, signing, the paper ticket
+    'html/mdt/roadside.js',
+    'html/mdt/tickets.css',   -- 2.1.0: MDT tabs Tickets and Impound lot, the vehicle page's impound
+    'html/mdt/tickets.js',
+    'html/img/items/*.webp',  -- 2.1.0: the paper ticket item's picture
     'html/mdt/img/*',         -- 2.0.9: the map picture (img/map.webp, or your own: Config.LiveMap.image)
     'html/departments/app.css',
     'html/departments/app.js',
@@ -121,5 +132,6 @@ files {
     'html/doj/index.html',
     'html/doj/office.js',
     'html/doj/portal.js',
+    'html/doj/tickets.js',    -- 2.1.0: ticket contests (tablet), my tickets and impounded vehicles (portal)
     'html/doj/upload.js',
 }

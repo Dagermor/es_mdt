@@ -27,6 +27,14 @@ function DOJ.registerAdmin()
         if c.r.permits and GetResourceState('es_mdt') == 'started' then
             k.permits = n("SELECT COUNT(*) FROM `es_mdt_permit_apps` WHERE `status` = 'pending'")
         end
+        -- 2.1.0: ticket contests waiting for a ruling (and the ones about to lapse)
+        if c.r.judge or c.r.clerk or c.r.cases then
+            local okc = pcall(function()
+                k.contests = n("SELECT COUNT(*) FROM `es_mdt_ticket_contests` WHERE `status` = 'open'")
+                k.contestsSoon = n("SELECT COUNT(*) FROM `es_mdt_ticket_contests` WHERE `status` = 'open' AND `lapseAt` <= NOW() + INTERVAL 1 DAY")
+            end)
+            if not okc then k.contests = 0 end
+        end
         k.owed = n("SELECT COALESCE(SUM(`amount`),0) FROM `es_doj_fees` WHERE `status` = 'unpaid' AND `kind` <> 'bail' AND `test` = 0")
         out.hearings = MySQL.query.await([[SELECT h.`id`,h.`caseId`,h.`kind`,h.`title`,UNIX_TIMESTAMP(h.`startsAt`) AS `startsAt`,h.`minutes`,h.`room`,h.`judgeCharId`,k.`number`
             FROM `es_doj_hearings` h LEFT JOIN `es_doj_cases` k ON k.`id` = h.`caseId`

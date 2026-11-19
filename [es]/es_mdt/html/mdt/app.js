@@ -144,6 +144,8 @@
     { key: 'livemap', label: 'Live map', ico: '⌖', show: () => (S.ctx.onDuty || S.ctx.staff) && ((S.ctx.config.liveMap || {}).enabled !== false || S.ctx.staff) },
     { key: 'arrest', label: 'Process arrest', ico: '⛓', show: () => !!P().mdt_reports_write },
     { key: 'bolos', label: 'BOLOs', ico: '⚑' },
+    { key: 'tickets', label: 'Tickets', ico: '✎' },          // 2.1.0 (tickets.js)
+    { key: 'impound', label: 'Impound lot', ico: 'Ⓟ' },
     { key: 'jail', label: 'Jail', ico: '▥' },
     { head: 'Records' },
     { key: 'people', label: 'People', ico: '☺' },
@@ -195,6 +197,7 @@
     setBadge('units', t.invites || 0, 'accent');
     setBadge('dispatch', t.calls || 0, 'bad');
     setBadge('permits', t.permits || 0, 'warn');
+    setBadge('tickets', t.statements || 0, 'warn');   // 2.1.0: contests waiting for my statement
   }
   async function loadBadges() {
     const r = await call('badges');
@@ -501,6 +504,7 @@
     const r = await call('vehicle', { vehicleId });
     if (!$('#v-detail')) return;
     if (!r.ok) { box.innerHTML = empty(r.why); return; }
+    if (!S.ctx) return;   // 2.1.0: closed while it loaded
     const x = r.data, flagsAll = S.ctx.config.vehicleFlags || [];
     box.innerHTML = `<div class="prof-head${(x.bolos || []).length ? ' wanted' : ''}">
         <div class="plate big">${esc(x.plate)}</div>
@@ -519,6 +523,7 @@
       said(await call('vehicleSave', { vehicleId: x.vehicleId, notes: $('#vf-notes').value, flags: $$('.chips input:checked', box).map((i) => i.value) }), 'Saved');
     });
     if ($('#va-bolo')) $('#va-bolo').onclick = () => boloForm({ kind: 'vehicle', plate: x.plate }, () => vehicleDetail(x.vehicleId));
+    if (HOOK.vehicle) HOOK.vehicle(box, x, () => vehicleDetail(x.vehicleId));   // 2.1.0: impound + tickets (tickets.js)
   }
 
   // ---------------------------------------------------------------- weapons
@@ -1574,6 +1579,7 @@
     bolos: ['bolos', 'dashboard', 'people', 'vehicles', 'weapons'], people: ['people'], calls: ['dispatch', 'dashboard'], announce: ['dashboard'], weapons: ['weapons', 'people'], loa: ['leave', 'department', 'dashboard', 'stats'], training: ['training', 'dashboard'],
     evidence: ['evidence', 'cases', 'reports'], cases: ['cases', 'reports'], personnel: ['officer', 'department'],
     permits: ['permits', 'dashboard', 'people', 'weapons'],
+    tickets: ['tickets', 'people'], impound: ['impound'],   // 2.1.0
   };
   let rfT = null; const rfWhat = new Set();
   function queueRefresh(what) {

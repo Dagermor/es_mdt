@@ -2,13 +2,13 @@
 
 One resource for police, sheriff, state police, rangers, EMS and the courts on a [WHIP](https://whipfx.net) FiveM server:
 
-- **MDT** (`/mdt`, F6): dispatch, reports, warrants, BOLOs, fines, cases, evidence, weapons registry, firearm permits, a radar and plate reader, FTO, and personnel.
+- **MDT** (`/mdt`, F6): dispatch, reports, warrants, BOLOs, fines as invoices, roadside tickets, impound, cases, evidence, weapons registry, firearm permits, a radar and plate reader, FTO, and personnel.
 - **Departments** (`/departments`): departments, logos, ranks, permissions, rosters, duty time, leave, certifications, and department health.
 - **DOJ** (`/doj` tablet, `/court` portal): court cases, hearings, judge-signed warrants, verdicts and sentences, bail, pleas, appeals, a clerk desk, the bar and attorneys, petitions, and records.
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.17).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.1.0).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -24,6 +24,10 @@ All screenshots use made-up test data.
 | ![FTO file](docs/images/07c_mdt_fto_file.png) Trainee file | ![DOR](docs/images/07d_mdt_fto_write_dor.png) Daily observation report |
 | ![Health](docs/images/05_departments_health.png) Department health | ![Roster](docs/images/05b_departments_roster.png) Roster |
 | ![Ranks](docs/images/05c_departments_ranks.png) Ranks and permissions | ![DOJ case](docs/images/04_doj_case.png) DOJ court case |
+| ![Roadside ticket](docs/images/23_01_roadside_ticket.png) Roadside ticket (/ticket): people close by, penal-code charges | ![Sign prompt](docs/images/23_04_sign_prompt.png) The recipient signs or refuses (countdown) |
+| ![Street impound](docs/images/23_06_street_impound.png) /mdtimpound: stolen and BOLO warnings, hold, photo preview, the bill | ![Impound lot](docs/images/23_10_mdt_impound_lot.png) MDT Impound lot: holds, what each owes |
+| ![Ticket contest](docs/images/23_09_mdt_ticket_contest.png) A contested ticket: the officer's statement | ![DOJ contests](docs/images/23_16_doj_contests.png) DOJ tablet: Ticket contests (lapsing soon in red) |
+| ![Portal impound](docs/images/23_21_portal_impound.png) /court: pay and get an impounded car back | ![Portal payments](docs/images/23_22_portal_payments.png) /court Payments: tickets as invoices with due dates |
 | ![DOJ money](docs/images/04b_doj_money.png) DOJ fees, bail and fines | ![Urgent announcement](docs/images/11_urgent_announcement.png) Urgent announcement |
 | ![Close a call](docs/images/11_outcome_picker.png) Closing a call: pick the outcome | ![Call history](docs/images/11_history_badges.png) Call history with outcome badges |
 | ![Critical call](docs/images/13_critical_card.png) A critical call (alarm until acknowledged) | ![Call board](docs/images/13_call_board.png) The quick call board (O) |
@@ -96,6 +100,8 @@ The old names keep working: `exports.es_departments:*`, `exports.es_doj:*`, the 
 | `/backup` | (none) | officers on duty | request backup: on your call it joins that call (2.0.15), on no call it is its own call at your position |
 | `/callboard` | O | units on duty | the quick call board: active calls, Respond / Waypoint / Leave / Ack alarm (2.0.7) |
 | `/mdtvolume <0-100\|mute\|unmute>` | | everyone | your own dispatch alert volume (also in the **Aa** popover) (2.0.7) |
+| `/ticket` | controller button (choose a slot) | officers with "write tickets" | roadside citation, parking ticket or warning (2.1.0) |
+| `/mdtimpound` | controller button (choose a slot) | officers with "impound" | impound the car you stand by, or tow an abandoned one (2.1.0) |
 | `/permit` | | everyone | firearm permit application |
 | `/mdtscale <percent>` | | everyone | display size of the MDT, Departments and DOJ pages, e.g. `/mdtscale 120`, `/mdtscale reset` |
 | radar keys | (none) | police in a vehicle | radar and plate reader (Settings → Key Bindings → FiveM) |
@@ -414,6 +420,16 @@ Prefer events? Use `TriggerEvent('es_mdt:jail:reportRelease', charId, info)` and
 
 `exports.es_mdt:JailSend(info)`, `exports.es_mdt:JailRelease(charId, byCharId, reason)` and `exports.es_mdt:JailIsJailed(charId)` all go through whichever provider is active.
 
+## Tickets, invoices, contests and impound (2.1.0)
+
+- **Roadside tickets** (`/ticket`): citations, parking tickets and warnings for people and vehicles close by. Charges come from the penal code. The recipient signs or refuses; refusing, no answer or logging off files it unsigned. Both sides get a paper ticket item.
+- **Every fine is an invoice**, due in 3 days. Pay in `/court` → Payments; the bank is charged on the due day. The unpaid-fine warrant counts from the due date.
+- **Contests:** an unsigned ticket can be contested in `/court`, which pauses the deadline. The officer files a statement and a judge dismisses, reduces or upholds it. With no ruling in 5 days it is dismissed. Turn contests off (`Tickets.contests`) and tickets must simply be paid.
+- **Impound** from the MDT vehicle page (a garaged car is taken now; a car that is out is marked until it is stored) or `/mdtimpound` on the street. Holds can be N days or until released; ending one early is a logged override. Storage is charged daily with a cap. There is a lot view, owners pay in `/court`, impounding closes the BOLO, and abandoned cars nobody owns are towed for an officer payout.
+- **Texts** to owners and recipients via whip_phone, queued while they are offline, with a copy in `/court` → Notices.
+
+Everything is in `/whip` → Settings → MDT (Tickets, Fines and invoices, Impound, Owner texts), and the permissions are in `/departments` → Ranks. Full guide, exports and events: [docs/tickets_impound.md](docs/tickets_impound.md).
+
 ## whip_evidence integration
 
 With [whip_evidence](docs/whip_evidence_integration.md) installed, the MDT finds it by itself (`Config.WhipEvidence.enabled = 'auto'`). Set `Config.ApiResources = { 'es_mdt' }` in whip_evidence's config, and list your department job names in its `PoliceJobs` (do it again after each whip_evidence update: its config file comes with `ApiResources = {}`). Checked with whip_evidence **4.2.3** (es_mdt 2.0.17: post-mortem reports and copy buttons). The bridge provides:
@@ -433,7 +449,7 @@ The details are in [docs/whip_evidence_integration.md](docs/whip_evidence_integr
 `exports.es_mdt:*` (also available under `exports.es_departments:*` and `exports.es_doj:*`):
 
 - **Departments:** `HasPerm(source, perm)`, `GetDepartments()`, `GetDepartment(id)`, `GetPlayerDepartments(source)`, `GetActiveDepartment(source)`, `GetRoster(id)`, `GetOnDuty(id)`, `IsStaff(source)`, `GetLogo(id)`, `GetDutySeconds(charId)`, `HasCert(charId, cert)`, …
-- **MDT:** `AddCall(call)`, `NotifyDispatch(title, message, coords, priority, sourceLabel)`, `CloseCall(id, outcome)`, `TestCall(kind, priority)` (see [Dispatch API](#dispatch-api)), `ShotsFired(coords, opts)`, `VehicleTheft(coords, plate, model, opts)` (2.0.6), `Alert(name, data)`, `StoreRobbery`, `BankRobbery`, `JewelryRobbery`, `HouseRobbery`, `DrugSale`, `Explosion`, `Fight`, `SuspiciousActivity`, `Carjacking`, `LinkCall(callId, kind, id)` (2.0.7, see [Dispatch: alerts, critical calls and the call board](#dispatch-alerts-critical-calls-and-the-call-board)), `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, …
+- **MDT:** `AddCall(call)`, `NotifyDispatch(title, message, coords, priority, sourceLabel)`, `CloseCall(id, outcome)`, `TestCall(kind, priority)` (see [Dispatch API](#dispatch-api)), `ShotsFired(coords, opts)`, `VehicleTheft(coords, plate, model, opts)` (2.0.6), `Alert(name, data)`, `StoreRobbery`, `BankRobbery`, `JewelryRobbery`, `HouseRobbery`, `DrugSale`, `Explosion`, `Fight`, `SuspiciousActivity`, `Carjacking`, `LinkCall(callId, kind, id)` (2.0.7, see [Dispatch: alerts, critical calls and the call board](#dispatch-alerts-critical-calls-and-the-call-board)), `GetActiveWarrants(charId)`, `IssueWarrant(...)`, `EscapeWarrant(...)`, `ServeEscapeWarrants(charId)`, `HasActiveBolo(...)`, `CheckPlate(plate)`, `GetUnpaidFines(charId)`, `GetWeaponBySerial(serial)`, `GetPermitStatus(charId)`, `OpenTablet(source)`, `GetTickets(charId)`, `GetTicket(id)`, `GetInvoices(charId)`, `IsImpounded(vehicleId)`, `GetImpounds(charId)` (2.1.0, events in [docs/tickets_impound.md](docs/tickets_impound.md#8-hooks-for-other-scripts-server-side)), …
 - **DOJ:** `GetCourtMarks(charId)`, `GetRecordSummary(charId)`, `WarrantsNeedJudge()`, …
 
 ## Dispatch API
@@ -576,6 +592,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.1.0:** in Lua tests against the real es_mdt code (tk210, 86 checks): invoices (due in 3 days, nothing charged at issue, the old behaviour when turned off); texts (the government number made once, phone_messages rows, a push only when online, the queue while offline, the portal copy, skipped without whip_phone); roadside tickets (penal-code prices, no felonies, the sign prompt only for the recipient, signed / refused / logged off / timed out, warnings with no fine, distance checks); contests (unsigned only, needs a reason, off when turned off, the deadline paused, reduce, uphold, lapse); impound (storage capped, holds, an override needs the permission and a reason, the owner pays only after a hold, a double payment is refused and refunded, the history kept). A database test on a scratch MariaDB database (fresh, an old 1.x shape and a 2.0.4 install) covers the new tables and the `002_invoices` migration. In browser tests (Chrome, 64 checks): the roadside ticket, parking and sign prompt, the paper, the street impound with its live photo preview, the tow, MDT Tickets, Impound lot, hold override, release and vehicle page, controller rings, the DOJ Ticket contests and ruling, and /court My tickets, contest, Impounded vehicles and Payments, with no page errors. All 24 earlier test files still pass.
 - **Tested for 2.0.17:** against the real whip_evidence 4.2.3 code (read, not changed). In Lua tests against the real es_mdt code: the post-mortem report is cleaned up for the page (unknown wound types, body parts and ranges are dropped, counts are fixed and text is capped; positions and entity ids are not sent); the time of death is the exam time minus the age; a broken or missing report does not error; only report items carry one; photo body rows are passed and junk rows dropped. In browser tests (Chrome): the post-mortem card (figure with 3 marks that do not overlap and 1 fatal ring, the cause, the tiles, every row), samples grouped under the body with the jump to their item, and the real clipboard. Copying works by click (execCommand), through the Clipboard API fallback when execCommand is refused, by Enter on the keyboard and by A on a controller, with the "Copied" toast. Unreadable plates are not copy buttons. No page errors. All 22 earlier test files still pass.
 - **Tested for 2.0.16:** against the real whip_evidence 4.2.2 code (read, not changed): every export, event, field and whip_core call it uses is present on the live server. In Lua tests against the real es_mdt code: "Open locker" shows whip_evidence's own reason and a clear "cancelled" text when its 1 s bar is cancelled, still refused off duty; `/departments` hides the two whip_evidence switches with 4.1+ (shown with 4.0 or without whip_evidence), and saving a rank keeps what they held (a forged tick is ignored). In browser tests: the case's Evidence locker card with shoe print, tyre track, fibre, cleaned spot and serial report entries (labels, icons, the amber "Partly readable" chip, no raw field names) and the rank editor note, with no page errors. All 21 earlier test files still pass.
 - **Tested for 2.0.15:** in Lua tests against the real server code: backup on a call merges into it (no new call), the priority rules (never lowered, the urgent priority on a panic), who and when, the timeline note, the re-alert to the routed units only (never the asker, never EMS) with nothing private in it, the call keeping its spot and circle, the following marker (moves with the officer, not the call), responder markers as before, the cooldown, asking again, closing, the asker going off duty, backup with no call, and `merge = false`. The client re-alert (card, banner, P1 sound) is also covered. In browser tests: the Dispatch badge and banner (local time), the call card, the call board and the Live map marker with its line, with no page errors.

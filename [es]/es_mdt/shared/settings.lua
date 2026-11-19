@@ -45,6 +45,24 @@ do
 end
 -- 2.0.15: backup asked on a call goes onto that call (an older config.lua has no `merge`)
 if type(Config.Dispatch) == 'table' and type(Config.Dispatch.backup) == 'table' and Config.Dispatch.backup.merge == nil then Config.Dispatch.backup.merge = true end
+-- 2.1.0: tickets, invoices, impound, texts. A config.lua from before 2.1.0 has none of them: the 2.1.0 defaults.
+do
+    local function fill(name, defaults)
+        Config[name] = type(Config[name]) == 'table' and Config[name] or {}
+        for k, v in pairs(defaults) do if Config[name][k] == nil then Config[name][k] = v end end
+        return Config[name]
+    end
+    fill('Invoices', { enabled = true, dueDays = 3, autoCollect = true, reminderHours = 24, checkMinutes = 5 })
+    fill('Tickets', { enabled = true, command = 'ticket', range = 12.0, categories = { 'infraction', 'misdemeanor' }, maxCharges = 6, signSeconds = 45,
+        paper = true, contests = true, statementDays = 2, contestLapseDays = 5, contestWarnDays = 1 })
+    local I = fill('Impound', { enabled = true, command = 'mdtimpound', range = 8.0, fee = 500, maxFee = 5000, dailyFee = 100, storageCap = 1500,
+        releaseTo = 'lot', maxHoldDays = 30, photoHosts = {}, resolveBolos = true,
+        reasons = { 'Parking violation', 'Evidence / investigation', 'No insurance / unregistered', 'Abandoned', 'Driver arrested', 'Stolen vehicle recovered', 'Reckless driving', 'Other' },
+        lots = { { key = 'es_mdt_impound', label = 'LS Impound Lot', coords = vector3(409.3, -1623.1, 29.3), heading = 230.0 } } })
+    I.unowned = type(I.unowned) == 'table' and I.unowned or {}
+    for k, v in pairs({ enabled = true, payout = 150, cooldownSec = 120, perShift = 10, ownerRange = 60.0 }) do if I.unowned[k] == nil then I.unowned[k] = v end end
+    fill('Texts', { enabled = true, sender = 'San Andreas Gov', loreKey = 'es_mdt_gov' })
+end
 local ROOT = setmetatable({ Suite = EsSuite, Dept = DEPT, Doj = DOJC }, {
     __index = function(_, k) return Config[k] end,
     __newindex = function(_, k, v) Config[k] = v end,
@@ -172,7 +190,7 @@ Whip.configPage({
             { key = 'OffDutyReadOnly', type = 'bool', label = 'Off duty: the MDT is read-only' },
             { key = 'FineMax', type = 'int', min = 0, max = 100000000, unit = '$', label = 'Largest fine' },
             { key = 'UnpaidFineWarrantDays', type = 'int', min = 0, max = 365, unit = 'days', label = 'Unpaid fine becomes a warrant after',
-              help = '"Failure to pay". 0 = never.' },
+              help = '"Failure to pay". 0 = never. 2.1.0: counted from an invoice\'s due day; never while a ticket contest is open.' },
             { key = 'WarrantBolos.enabled', type = 'bool', label = 'Active warrants post BOLOs' },
             { key = 'WarrantBolos.person', type = 'bool', label = 'A person BOLO', shownWhen = on('WarrantBolos.enabled') },
             { key = 'WarrantBolos.vehicles', type = 'bool', label = 'A BOLO for each car they own', shownWhen = on('WarrantBolos.enabled') },
@@ -341,6 +359,74 @@ Whip.configPage({
               help = 'For players who never picked their own (pause menu > Settings > MDT, the Aa button, /mdtscale).' },
             { key = 'UI.minScale', type = 'number', min = 0.5, max = 1, step = 0.05, label = 'Smallest a player may pick' },
             { key = 'UI.maxScale', type = 'number', min = 1, max = 2, step = 0.05, label = 'Largest a player may pick' },
+        } },
+        -- 2.1.0
+        { id = 'tickets', label = 'Tickets', settings = {
+            { key = 'Tickets.enabled', type = 'bool', label = 'Roadside tickets (/ticket, a controller button)',
+              help = 'Citations, parking tickets and warnings written at the roadside, without opening the MDT. Who may write them: /departments > Ranks > "Tickets".' },
+            { key = 'Tickets.range', type = 'number', min = 3, max = 40, step = 1, unit = 'm', label = 'People and vehicles this close show in the form', shownWhen = on('Tickets.enabled') },
+            { key = 'Tickets.categories', type = 'list', item = { type = 'enum', options = { { value = 'infraction', label = 'Infractions' },
+                { value = 'misdemeanor', label = 'Misdemeanors' }, { value = 'felony', label = 'Felonies' } } }, label = 'Penal code categories a ticket can hold',
+              shownWhen = on('Tickets.enabled') },
+            { key = 'Tickets.maxCharges', type = 'int', min = 1, max = 15, label = 'Charges on one ticket (at most)', shownWhen = on('Tickets.enabled') },
+            { key = 'Tickets.signSeconds', type = 'int', min = 10, max = 180, unit = 's', label = 'Time to sign',
+              help = 'No answer in this time (or they log off) files the ticket unsigned.', shownWhen = on('Tickets.enabled') },
+            { key = 'Tickets.paper', type = 'bool', label = 'Paper copies (an item for the officer and the recipient)', shownWhen = on('Tickets.enabled') },
+            { key = 'Tickets.contests', type = 'bool', label = 'Unsigned tickets can be contested before the DOJ',
+              help = 'Off (no DOJ on the server): every ticket must simply be paid.' },
+            { key = 'Tickets.contestLapseDays', type = 'int', min = 1, max = 30, unit = 'days', label = 'A contest with no ruling is dismissed after',
+              help = 'In the citizen\'s favour: the ticket is dismissed and nothing is owed.', shownWhen = on('Tickets.contests') },
+            { key = 'Tickets.contestWarnDays', type = 'int', min = 0, max = 10, unit = 'days', label = 'Warn the DOJ this long before a contest lapses',
+              shownWhen = on('Tickets.contests') },
+            restart({ key = 'Tickets.command', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'Ticket command' }),
+        } },
+        { id = 'invoices', label = 'Fines and invoices', settings = {
+            { key = 'Invoices.enabled', type = 'bool', label = 'Every fine is an invoice (pay by a due date)',
+              help = 'Tickets AND fines from reports. Paid in the court portal (/court), or taken from the bank on the due day. Off: taken from the bank at once, as before.' },
+            { key = 'Invoices.dueDays', type = 'int', min = 0, max = 30, unit = 'days', label = 'Due after', shownWhen = on('Invoices.enabled') },
+            { key = 'Invoices.autoCollect', type = 'bool', label = 'On the due day, take it from their bank', shownWhen = on('Invoices.enabled'),
+              help = 'When the account cannot cover it, it is overdue: the unpaid-fine warrant below follows.' },
+            { key = 'Invoices.reminderHours', type = 'int', min = 0, max = 168, unit = 'h', label = 'Text a reminder this long before it is due (0 = none)',
+              shownWhen = on('Invoices.enabled') },
+            -- the unpaid-fine warrant (Fines group above) counts from the due day of an invoice
+        } },
+        { id = 'impound', label = 'Impound', settings = {
+            { key = 'Impound.enabled', type = 'bool', label = 'Impound (MDT vehicle page, /mdtimpound)',
+              help = 'Permissions: /departments > Ranks > "Impound", "hold", "Impound lot", "release early (override)".' },
+            { key = 'Impound.lots', type = 'records', widget = 'mapPoints', label = 'Impound lots', shownWhen = on('Impound.enabled'),
+              help = 'Each is a whip_core garage (made at start when missing; add parking bays to it in /whip > Garages). The first is the default.',
+              marker = { sprite = 68, colour = 47, name = 'Impound lot' },
+              fields = {
+                  { key = 'key', type = 'string', maxLen = 40, pattern = '^[%w_%-]+$', patternWhy = 'letters, digits, _ and -', label = 'Garage key' },
+                  { key = 'label', type = 'string', maxLen = 60, label = 'Name' },
+                  { key = 'coords', type = 'vec3', here = true, label = 'Where' },
+                  { key = 'heading', type = 'number', min = 0, max = 360, step = 1, label = 'Heading' },
+              } },
+            { key = 'Impound.fee', type = 'int', min = 0, max = 100000, unit = '$', label = 'Impound fee (default)', shownWhen = on('Impound.enabled') },
+            { key = 'Impound.maxFee', type = 'int', min = 0, max = 100000, unit = '$', label = 'Highest fee an officer may set', shownWhen = on('Impound.enabled') },
+            { key = 'Impound.dailyFee', type = 'int', min = 0, max = 10000, unit = '$', label = 'Storage per day', shownWhen = on('Impound.enabled') },
+            { key = 'Impound.storageCap', type = 'int', min = 0, max = 100000, unit = '$', label = 'Storage never more than', shownWhen = on('Impound.enabled') },
+            { key = 'Impound.maxHoldDays', type = 'int', min = 1, max = 365, unit = 'days', label = 'Longest hold in days', shownWhen = on('Impound.enabled'),
+              help = 'An officer with the hold permission can also hold it "until an officer releases it".' },
+            { key = 'Impound.releaseTo', type = 'enum', label = 'Released vehicles', shownWhen = on('Impound.enabled'), options = {
+                { value = 'lot', label = 'Are picked up at the lot' }, { value = 'home', label = 'Go back to the garage they came from' } } },
+            { key = 'Impound.reasons', type = 'list', item = { type = 'string', maxLen = 60 }, label = 'Reasons to pick from', shownWhen = on('Impound.enabled') },
+            { key = 'Impound.resolveBolos', type = 'bool', label = 'Impounding closes the vehicle\'s active BOLOs', shownWhen = on('Impound.enabled') },
+            { key = 'Impound.photoHosts', type = 'list', item = { type = 'string', maxLen = 60 }, label = 'Photo links only from these sites (empty = any https picture link)',
+              shownWhen = on('Impound.enabled') },
+            { key = 'Impound.unowned.enabled', type = 'bool', label = 'Tow abandoned cars nobody owns (paid to the officer)', shownWhen = on('Impound.enabled'),
+              help = 'Only a car with nobody in it, not a player\'s, and whoever drove it last not close by.' },
+            { key = 'Impound.unowned.payout', type = 'int', min = 0, max = 5000, unit = '$', label = 'Paid per tow', shownWhen = on('Impound.unowned.enabled') },
+            { key = 'Impound.unowned.cooldownSec', type = 'int', min = 0, max = 3600, unit = 's', label = 'An officer may tow once every', shownWhen = on('Impound.unowned.enabled') },
+            { key = 'Impound.unowned.perShift', type = 'int', min = 0, max = 100, label = 'Paid tows per shift (per officer)', shownWhen = on('Impound.unowned.enabled') },
+            { key = 'Impound.unowned.ownerRange', type = 'number', min = 0, max = 300, step = 5, unit = 'm', label = 'Refused while its last driver is this close',
+              shownWhen = on('Impound.unowned.enabled') },
+            restart({ key = 'Impound.command', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'Street impound command' }),
+        } },
+        { id = 'texts', label = 'Owner texts', settings = {
+            { key = 'Texts.enabled', type = 'bool', label = 'Text owners and recipients on their phone (whip_phone)',
+              help = 'Impounds, fees paid, releases, tickets, reminders and contest rulings. Kept while they are offline; a copy always goes to their /court notices. No phone script: notices only.' },
+            { key = 'Texts.sender', type = 'string', maxLen = 50, label = 'The contact name it shows with', shownWhen = on('Texts.enabled') },
         } },
         { id = 'start', label = 'Commands and keys (restart)', settings = {
             restart({ key = 'Command', type = 'string', maxLen = 32, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'MDT command' }),

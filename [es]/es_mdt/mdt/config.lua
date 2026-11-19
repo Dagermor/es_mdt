@@ -509,3 +509,76 @@ Config.WhipEvidence = {
     cachePhotosOnUpload = true,          -- fetch + keep photo copies right after an upload (else on first view)
     maxUpload = 30,                      -- items per "Add evidence" upload
 }
+
+-- ---------------------------------------------------------------- 2.1.0: tickets, invoices, contests, impound
+-- Every setting below is also on /whip > Settings > MDT (Tickets, Invoices, Impound, Owner texts): what an admin saves
+-- there is written over these defaults.
+
+-- Invoices: every police fine (roadside tickets AND fines from reports) is sent as an invoice instead of being taken
+-- from the bank at once. It is due after `dueDays`; they pay it in the court portal (/court: bank or cash), or on the
+-- due day it is taken from their default bank account (autoCollect). Still unpaid then, Config.UnpaidFineWarrantDays
+-- after the due day an automatic "failure to pay" warrant follows (as before). enabled = false: the old way (taken at once).
+Config.Invoices = {
+    enabled       = true,
+    dueDays       = 3,
+    autoCollect   = true,     -- take it from their bank on the due day (when the account holds enough)
+    reminderHours = 24,       -- a text this many hours before it is due (0 = none)
+    checkMinutes  = 5,        -- how often due invoices are looked at
+}
+
+-- Roadside tickets: /ticket (or the controller button the player sets) opens a ticket form without the MDT. The officer
+-- picks the person (or, for a parking ticket, the vehicle) from who and what is actually close, the charges from the
+-- penal code, and the recipient is asked to sign. Signing = accepting (pay it); refusing (or no answer, or logging off)
+-- files it UNSIGNED, and an unsigned ticket may be contested in the court portal (when `contests` is on).
+Config.Tickets = {
+    enabled          = true,
+    command          = 'ticket',
+    range            = 12.0,          -- people and vehicles this close show in the lists
+    categories       = { 'infraction', 'misdemeanor' },   -- penal code categories a ticket can hold
+    maxCharges       = 6,
+    signSeconds      = 45,            -- the recipient has this long to sign
+    paper            = true,          -- both sides get a paper copy (an item: use it to read it)
+    contests         = true,          -- unsigned tickets can be contested before the DOJ. Off (no DOJ): every ticket must be paid
+    statementDays    = 2,             -- the officer is asked for a statement within this many days (a reminder, not a limit)
+    contestLapseDays = 5,             -- no ruling after this many days: the ticket is dismissed in the citizen's favour
+    contestWarnDays  = 1,             -- the DOJ is warned this many days before a contest lapses
+}
+
+-- Impound and holds. From the MDT (a vehicle's page) or on the street with /mdtimpound, the same form. A stored car goes to
+-- the lot at once; a car out in the world is marked and taken the next time it is stored (it cannot be taken out again).
+-- The owner pays the fee + daily storage (up to the cap) in the court portal once any hold is over, or an officer with
+-- "Impound lot" releases it. A hold keeps it for N days or until an officer releases it; releasing it before then needs
+-- the "release early (override)" permission and a reason, and is logged as an override.
+Config.Impound = {
+    enabled       = true,
+    command       = 'mdtimpound',
+    range         = 8.0,              -- the street form picks the vehicle this close to the officer
+    lots          = {                 -- whip_core garages: made at start if they do not exist (or make one in /whip and use its key)
+        { key = 'es_mdt_impound', label = 'LS Impound Lot', coords = vector3(409.3, -1623.1, 29.3), heading = 230.0 },
+    },
+    fee           = 500,              -- the impound fee (the officer may lower it, up to maxFee)
+    maxFee        = 5000,
+    dailyFee      = 100,              -- storage per full day on the lot
+    storageCap    = 1500,             -- storage never goes above this
+    releaseTo     = 'lot',            -- 'lot': the owner picks it up at the lot; 'home': it goes back to the garage it came from
+    maxHoldDays   = 30,
+    reasons       = { 'Parking violation', 'Evidence / investigation', 'No insurance / unregistered', 'Abandoned', 'Driver arrested',
+        'Stolen vehicle recovered', 'Reckless driving', 'Other' },
+    photoHosts    = {},               -- photo links only from these hosts ({} = any https picture link)
+    resolveBolos  = true,             -- impounding closes the vehicle's active BOLOs
+    unowned       = {                 -- nobody's cars (street cars): towed away, a small payout for the officer
+        enabled     = true,
+        payout      = 150,
+        cooldownSec = 120,            -- per officer
+        perShift    = 10,             -- per officer, per clock-on
+        ownerRange  = 60.0,           -- refused while the player who last drove it is this close
+    },
+}
+
+-- Texts to owners and recipients on their phone (whip_phone), from one government number. Kept on the phone while they
+-- are offline (they see them when they look), and a copy goes to their court portal notices (/court) either way.
+Config.Texts = {
+    enabled = true,
+    sender  = 'San Andreas Gov',      -- the contact name it shows with
+    loreKey = 'es_mdt_gov',           -- its number's key in whip_phone (made once)
+}

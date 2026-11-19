@@ -221,6 +221,9 @@ local ACTIONS = {
       onHold = function() run('radarremote') end },
     -- on no button by default (WHIP has none free): players put it where they like
     { id = 'es_mdt_radar', label = 'Radar on / off', where = 'car', tap = function() run('radar') end },
+    -- 2.1.0: the roadside forms (no default button either)
+    { id = 'es_mdt_ticket', label = 'Write a ticket', tap = function() run(((mdtPart().Config or {}).Tickets or {}).command or 'ticket') end },
+    { id = 'es_mdt_impound', label = 'Impound / tow vehicle', tap = function() run(((mdtPart().Config or {}).Impound or {}).command or 'mdtimpound') end },
 }
 
 local holds = {}   -- [id] = the hold going on

@@ -1,0 +1,58 @@
+/* es_mdt 2.1.0: Tickets and Impound lot tabs, the vehicle page's impound card */
+.plate.sm { font-size: 11px; padding: 0 5px; }
+.mono { font-family: 'Courier New', ui-monospace, monospace; font-weight: 700; letter-spacing: .03em; }
+.tk-banner { background: rgba(232,197,71,.1); border: 1px solid rgba(232,197,71,.35); color: #f3dc8a; border-radius: 12px; padding: 10px 14px; font-size: 14px; margin-bottom: 4px; }
+.tk-table { display: flex; flex-direction: column; border: 1px solid var(--ui-border); border-radius: 12px; overflow: hidden; }
+.tk-tr { display: grid; grid-template-columns: 96px 92px minmax(0, 1.6fr) 90px 150px 120px 90px; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid rgba(255,255,255,.05); font-size: 14px; }
+.tk-tr:first-child { border-top: 0; }
+.tk-tr.th { background: rgba(255,255,255,.03); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--ui-text-dim); font-weight: 700; }
+.tk-tr.click { cursor: pointer; transition: background .1s; }
+.tk-tr.click:hover { background: rgba(255,255,255,.04); }
+.tk-tr .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tk-who { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tk-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e8c547; box-shadow: 0 0 0 3px rgba(232,197,71,.2); vertical-align: middle; }
+#modal-card.tk-wide { width: min(1100px, 95vw); max-width: 1100px; }
+.tk-mgrid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; margin: 10px 0; max-height: 68vh; overflow: auto; }
+.tk-side { display: flex; flex-direction: column; gap: 12px; }
+.tk-side textarea { width: 100%; min-height: 110px; }
+.tk-q { background: rgba(255,255,255,.04); border-left: 3px solid #e8c547; border-radius: 6px; padding: 8px 10px; font-size: 13.5px; margin: 6px 0; white-space: pre-wrap; }
+.tk-q.off { border-left-color: #6b8cff; }
+.tk-q i { display: block; font-style: normal; font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ui-text-dim); margin-bottom: 3px; }
+/* the lot */
+.imp-sum { display: flex; gap: 8px; }
+.imp-stat { background: rgba(255,255,255,.04); border: 1px solid var(--ui-border); border-radius: 12px; padding: 8px 14px; display: flex; flex-direction: column; align-items: flex-end; min-width: 92px; }
+.imp-stat b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.imp-stat span { font-size: 11px; color: var(--ui-text-dim); text-transform: uppercase; letter-spacing: .07em; }
+.imp-stat.gold b { color: #f2c230; }
+.imp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); gap: 12px; }
+.imp-card { background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015)); border: 1px solid var(--ui-border); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.imp-card.pending { border-color: rgba(107,140,255,.35); }
+.imp-card.held { border-left: 3px solid #e8c547; }
+.imp-top { display: flex; gap: 12px; align-items: center; }
+.imp-ph { width: 78px; height: 58px; border-radius: 9px; overflow: hidden; flex: none; background: rgba(0,0,0,.3); display: grid; place-items: center; cursor: zoom-in; font-size: 22px; color: var(--ui-text-dim); }
+.imp-ph img { width: 100%; height: 100%; object-fit: cover; }
+.imp-ph.none { cursor: default; }
+.imp-ph.none img { display: none; }
+.imp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.imp-l1 { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.imp-owe { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+.imp-owe i { font-style: normal; font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--ui-text-dim); }
+.imp-owe b { font-size: 20px; color: #f2c230; font-variant-numeric: tabular-nums; }
+.imp-owe.sm b { font-size: 17px; }
+.imp-owe .hint { font-size: 11.5px; }
+.imp-why { font-size: 13.5px; color: var(--ui-text-mid); }
+.imp-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.imp-foot .hint { flex: 1; min-width: 160px; }
+.imp-acts { display: inline-flex; gap: 6px; }
+.imp-hold { font-size: 12px; font-weight: 600; color: #ffb4a8; background: rgba(235,72,72,.12); border-radius: 999px; padding: 2px 9px; }
+.imp-hold.open { color: #ff8f80; background: rgba(235,72,72,.2); }
+.imp-warn { background: rgba(235,72,72,.12); border: 1px solid rgba(235,72,72,.4); color: #ffc4bb; border-radius: 10px; padding: 9px 12px; font-size: 13.5px; margin: 8px 0; }
+.imp-bill { background: rgba(242,194,48,.06); border: 1px solid rgba(242,194,48,.22); border-radius: 12px; padding: 8px 12px; margin: 10px 0; }
+.imp-bill div { display: flex; justify-content: space-between; padding: 3px 0; font-size: 14px; }
+.imp-bill .tot { border-top: 1px solid rgba(242,194,48,.25); margin-top: 4px; padding-top: 6px; }
+.imp-bill .tot b { color: #f2c230; font-size: 18px; }
+.imp-vcols { margin-top: 14px; }
+.imp-now { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; background: rgba(232,197,71,.07); border: 1px solid rgba(232,197,71,.3); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.imp-now.pending { background: rgba(107,140,255,.08); border-color: rgba(107,140,255,.35); }
+.imp-now > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.imp-now .imp-acts { grid-column: span 2; justify-content: flex-end; }

@@ -135,6 +135,13 @@ function DOJ.registerPortal()
         out.notices = notices(cid)
         out.unread = 0
         for _, n in ipairs(out.notices) do if not n.readAt then out.unread = out.unread + 1 end end
+        -- 2.1.0: tickets to contest, vehicles in the impound lot
+        pcall(function()
+            out.tk = MySQL.single.await([[SELECT
+                (SELECT COUNT(*) FROM `es_mdt_tickets` t JOIN `es_mdt_fines` f ON f.`id` = t.`fineId` WHERE t.`charId` = ? AND t.`status` = 'issued' AND f.`status` = 'unpaid') AS `unpaid`,
+                (SELECT COUNT(*) FROM `es_mdt_ticket_contests` k JOIN `es_mdt_tickets` t ON t.`id` = k.`ticketId` WHERE t.`charId` = ? AND k.`status` = 'open') AS `contested`,
+                (SELECT COUNT(*) FROM `es_mdt_impounds` WHERE `ownerCharId` = ? AND `status` IN ('pending','held')) AS `impounded`]], { cid, cid, cid })
+        end)
         out.subpoenas = MySQL.query.await([[SELECT s.`id`,s.`kind`,s.`details`,s.`status`,k.`number`,UNIX_TIMESTAMP(h.`startsAt`) AS `startsAt`,h.`room`
             FROM `es_doj_subpoenas` s JOIN `es_doj_cases` k ON k.`id` = s.`caseId` LEFT JOIN `es_doj_hearings` h ON h.`id` = s.`hearingId`
             WHERE s.`charId` = ? AND s.`status` IN ('issued','served') ORDER BY s.`id` DESC LIMIT 10]], { cid }) or {}

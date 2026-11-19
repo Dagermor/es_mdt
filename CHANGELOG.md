@@ -1,5 +1,39 @@
 # Changelog
 
+## es_mdt 2.1.0 (2026-11-19)
+
+**Roadside tickets, every fine as an invoice, contests before the DOJ, impound with holds, and texts to owners.** Full guide: [docs/tickets_impound.md](docs/tickets_impound.md).
+
+- **Roadside tickets** (`/ticket` or a controller button, without opening the MDT):
+  - Citations, parking tickets and written warnings, to the people and vehicles actually close by.
+  - Charges come from the penal code, priced on the server.
+  - The recipient gets a **sign prompt** with a countdown. Refusing, no answer, or logging off mid-ticket files it **unsigned**.
+  - Both sides get a paper `es_mdt_citation` item, and the recipient a text and a court notice.
+  - MDT → **Tickets** (Mine, Department, Contested, Unpaid, Unsigned), plus tickets on person and vehicle pages.
+- **Invoices:**
+  - **Every** fine (tickets, report fines, custom fines, impound fees charged by the lot) is due in 3 days (`Invoices.dueDays`).
+  - Pay in **/court → Payments**. There is a reminder text the day before, and the bank is charged on the due day.
+  - The unpaid-fine warrant (`UnpaidFineWarrantDays`) counts from the due date. No separate bank script exists here, so it uses whip_core's bank.
+- **Contests:**
+  - An unsigned ticket can be contested in **/court → My tickets**, which pauses the deadline. The officer files a statement in the MDT.
+  - A judge rules in **DOJ tablet → Ticket contests**: dismiss, reduce or uphold.
+  - With no ruling in 5 days, it is dismissed in the citizen's favour; judges are warned a day before.
+  - `Tickets.contests = false` (no DOJ): tickets must simply be paid.
+- **Impound:**
+  - **MDT vehicle page → Impound:** a garaged car is taken now; a car out in the city is **marked** and goes to the lot the next time it is stored. **`/mdtimpound`** on the street uses the same form.
+  - The form warns about stolen, BOLO or already impounded. It shows the owner, the prior impound count, reasons, the lot, the fee, notes, a **photo link with a live preview**, and the full bill.
+  - Impounding closes an active BOLO.
+  - Daily storage with a cap.
+  - MDT → **Impound lot**: what is held or marked, what each owes, the outstanding total, and the released history.
+  - Owners pay and get the car back in **/court → Impounded vehicles**. The lot can release it with an invoice or waive the fees.
+- **Holds:** N days or until released. Ending a hold early needs the new override permission and a reason, and is logged as an override.
+- **Abandoned cars nobody owns:** `/mdtimpound` tows them for an officer payout. It checks there is no driver, no owner nearby and no player owner, with a cooldown and a per-shift cap.
+- **Texts via whip_phone:** impound, hold, release, fee paid, tickets, reminders, contests and rulings, from "San Andreas Gov". They wait in the phone while the person is offline, and a copy always goes to /court → Notices. Without whip_phone, only the notice is sent.
+- **Permissions** (`/departments` → Ranks): write tickets, impound, hold, impound lot, release early (override). Existing ranks get them once, by level.
+- **Settings:** `/whip` → Settings → MDT → **Tickets**, **Fines and invoices**, **Impound** (lots as map points), **Owner texts**.
+- **Hooks:** the exports `GetTickets`, `GetTicket`, `GetInvoices`, `IsImpounded` and `GetImpounds`, and the server events `es_mdt:ticket:issued`, `es_mdt:fine:paid`, `es_mdt:contest:ruled` and `es_mdt:impound:created` / `stored` / `released`. Impounded cars are held with whip_core custody, so whip_core garage scripts refuse them without changes.
+- Fixes along the way: a vehicle page that finished loading after the MDT closed no longer throws an error, and two impound payments at once can't both charge (the second is refunded).
+
 ## es_mdt 2.0.17 (2026-11-19)
 
 **Post-mortem reports on the MDT case, and one-tap copy for every code.** Made for whip_evidence 4.2.3 (LeSiiN), which adds a post-mortem report item to the body exam.

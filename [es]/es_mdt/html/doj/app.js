@@ -251,6 +251,7 @@
       { key: 'people', label: 'Records', ico: '☺' },
       { key: 'clerk', label: 'Clerk desk', ico: '✉', show: () => R().clerk || R().judge || R().cases || R().seal, badge: () => S.counts.petitions, badgeCls: 'warn' },
       { key: 'permits', label: 'Firearm permits', ico: '◎', show: () => R().permits, badge: () => S.counts.permits, badgeCls: 'warn' },
+      { key: 'contests', label: 'Ticket contests', ico: '✎', show: () => R().judge || R().clerk || R().cases, badge: () => S.counts.contests, badgeCls: () => S.counts.contestsSoon ? 'bad' : 'warn' },   // 2.1.0
       { key: 'clients', label: 'My clients', ico: '☷', show: () => R().attorney || R().defender || R().prosecutor },
       { key: 'bar', label: 'Attorneys', ico: '⚑' },
       { key: 'penal', label: 'Penal code', ico: '§' },
@@ -260,6 +261,8 @@
       { key: 'home', label: 'Overview', ico: '⌂' },
       { key: 'mycases', label: 'My cases', ico: '⚖', badge: () => S.home && S.home.cases.filter((k) => k.status === 'open').length },
       { key: 'pay', label: 'Payments', ico: '$', badge: () => S.home && (S.home.fees.fees.length + S.home.fees.fines.length), badgeCls: 'warn' },
+      { key: 'ptickets', label: 'My tickets', ico: '✎', badge: () => S.home && S.home.tk && S.home.tk.unpaid, badgeCls: 'warn' },          // 2.1.0 (tickets.js)
+      { key: 'pimpound', label: 'Impounded vehicles', ico: 'Ⓟ', badge: () => S.home && S.home.tk && S.home.tk.impounded, badgeCls: 'bad' },
       { key: 'petitions', label: 'Petitions', ico: '✎' },
       { key: 'lawyers', label: 'Lawyers', ico: '⚑' },
       { key: 'records', label: 'Public records', ico: '⌕' },
@@ -275,7 +278,7 @@
       if (n.show && !n.show()) return;
       if (pendingHead) { out.push(`<div class="nav-head">${esc(pendingHead)}</div>`); pendingHead = null; }
       const b = n.badge ? n.badge() : 0;
-      out.push(`<button class="nav-item ${S.view === n.key || (S.parent === n.key) ? 'on' : ''}" data-nav="${n.key}"><span class="n-ico">${n.ico}</span>${esc(n.label)}${b ? `<span class="n-badge ${n.badgeCls || ''}">${b}</span>` : ''}</button>`);
+      out.push(`<button class="nav-item ${S.view === n.key || (S.parent === n.key) ? 'on' : ''}" data-nav="${n.key}"><span class="n-ico">${n.ico}</span>${esc(n.label)}${b ? `<span class="n-badge ${(typeof n.badgeCls === 'function' ? n.badgeCls() : n.badgeCls) || ''}">${b}</span>` : ''}</button>`);
     });
     $('#nav').innerHTML = out.join('');
     $$('[data-nav]').forEach((b) => b.onclick = () => go(b.dataset.nav, null, { root: true }));
@@ -424,7 +427,7 @@
       const hit = list.some((w) => {
         if (w.startsWith('case:')) return (v === 'case' || v === 'pcase') && +w.slice(5) === +a || v === 'cases' || v === 'dashboard' || v === 'mycases';
         const map = { calendar: ['calendar', 'dashboard', 'case'], warrants: ['warrants', 'dashboard'], petitions: ['clerk', 'dashboard'], fees: ['clerk', 'person'],
-          cases: ['cases', 'case', 'dashboard'], records: ['person'], bar: ['bar'], businesses: ['clerk'], notices: ['home', 'notices'], permits: ['permits'] };
+          cases: ['cases', 'case', 'dashboard'], records: ['person'], bar: ['bar'], businesses: ['clerk'], notices: ['home', 'notices', 'ptickets'], permits: ['permits'], contests: ['contests', 'ptickets'] };
         return (map[w] || []).includes(v);
       });
       if (hit) rerender();

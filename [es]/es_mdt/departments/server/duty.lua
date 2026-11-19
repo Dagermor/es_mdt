@@ -181,7 +181,7 @@ end
 Duty.loaByChar = loaByChar
 
 local function topLevel(d)
-    if H.headLevel then return H.headLevel end
+    if (tonumber(H.headLevel) or 0) > 0 then return tonumber(H.headLevel) end   -- 2.0.10: 0 (or nil) = the top rank
     local top = 0
     for _, role in ipairs(WC:GetJobRoles(d.jobId) or {}) do if (role.level or 0) > top then top = role.level end end
     return top

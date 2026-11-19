@@ -8,7 +8,8 @@ local WC = exports.whip_core
 Pers = Pers or {}
 local ctx, up = nil, false
 local CC = Config.Certs or {}
-local SOON = (CC.alertDays or 14) * 86400
+-- 2.0.10: read each time (/whip > Settings > MDT > Departments: training and certifications)
+local function soon() return math.max(1, tonumber((Config.Certs or {}).alertDays) or 14) * 86400 end
 local TEST_BASE = 900000000
 
 -- ---------------------------------------------------------------- tables
@@ -307,7 +308,7 @@ end
 local function stateOf(exp, t)
     if not exp then return 'valid' end
     if exp <= t then return 'expired' end
-    if exp - t <= SOON then return 'expiring' end
+    if exp - t <= soon() then return 'expiring' end
     return 'valid'
 end
 
@@ -592,7 +593,7 @@ exports('GetPersonnelFile', function(who, ref, charId)
             last = tonumber(asFto.last), graduated = tonumber(grads.n) or 0, current = tonumber(now_.n) or 0 },
         certs = certs, counts = full and counts or nil,
         can = { entries = canAct and mayPers(who, d), certs = canAct and mayPers(who, d), photo = view == 'self' or canAct },
-        certDefs = canAct and certDefs(d) or nil, alertDays = math.floor(SOON / 86400),
+        certDefs = canAct and certDefs(d) or nil, alertDays = math.floor(soon() / 86400),
     }
 end)
 
@@ -648,9 +649,9 @@ exports('GetCerts', function(ref, opts)
     local cnt = {}
     for _, r in ipairs(MySQL.query.await([[SELECT `certId`, COUNT(*) AS `n`, SUM(`expiresAt` IS NOT NULL AND `expiresAt` <= NOW()) AS `expired`,
         SUM(`expiresAt` > NOW() AND `expiresAt` <= NOW() + INTERVAL ? SECOND) AS `soon` FROM `es_dept_cert_holders` WHERE `deptId` = ? AND `revokedAt` IS NULL GROUP BY `certId`]],
-        { SOON, d.id }) or {}) do cnt[r.certId] = r end
+        { soon(), d.id }) or {}) do cnt[r.certId] = r end
     for _, c in ipairs(defs) do local x = cnt[c.id] or {} c.holders = tonumber(x.n) or 0 c.expired = tonumber(x.expired) or 0 c.soon = tonumber(x.soon) or 0 end
-    return { list = defs, gateFto = CC.gateFto == true, ftoCert = CC.ftoCert or 'FTO', alertDays = math.floor(SOON / 86400) }
+    return { list = defs, gateFto = (Config.Certs or {}).gateFto == true, ftoCert = (Config.Certs or {}).ftoCert or 'FTO', alertDays = math.floor(soon() / 86400) }
 end)
 
 exports('CanEditCerts', function(who, ref)
@@ -787,7 +788,7 @@ local function check()
     -- certifications about to expire (once) and expired (once)
     local rows = MySQL.query.await([[SELECT h.`id`,h.`deptId`,h.`charId`,h.`alerted`,UNIX_TIMESTAMP(h.`expiresAt`) AS `exp`,c.`name` FROM `es_dept_cert_holders` h
         JOIN `es_dept_certs` c ON c.`id` = h.`certId` WHERE h.`revokedAt` IS NULL AND c.`active` = 1 AND h.`expiresAt` IS NOT NULL
-        AND h.`expiresAt` <= NOW() + INTERVAL ? SECOND AND h.`alerted` < 2]], { SOON }) or {}
+        AND h.`expiresAt` <= NOW() + INTERVAL ? SECOND AND h.`alerted` < 2]], { soon() }) or {}
     local t = nowT()
     local ids = {}
     for _, r in ipairs(rows) do ids[#ids + 1] = r.charId end

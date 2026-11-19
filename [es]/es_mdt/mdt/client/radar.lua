@@ -152,6 +152,8 @@ end
 
 local function round(x) return x and math.floor(x + 0.5) or nil end
 
+local lastSig, lastSent, lastPrune = nil, -1e9, 0   -- 2.0.10
+
 local function tick(veh)
     local o = scan(veh)
     local patrol = round(GetEntitySpeed(veh) * MULT)
@@ -187,7 +189,18 @@ local function tick(veh)
         data.beep = true
     end
     if #ask > 0 then checkPlates(ask) end
-    send({ action = 'radar', data = data })
+    -- 2.0.10: the screen only gets the readout when something on it changed (at least every 2 s to be safe)
+    local now = GetGameTimer()
+    local sig = json.encode(data)
+    if sig ~= lastSig or now - lastSent > 2000 then
+        lastSig, lastSent = sig, now
+        send({ action = 'radar', data = data })
+    end
+    -- 2.0.10: plates looked up more than 10 minutes ago are forgotten (checked again if they come back)
+    if now - lastPrune > 60000 then
+        lastPrune = now
+        for k, c in pairs(checked) do if now - (c.at or 0) > 600000 then checked[k] = nil end end
+    end
 end
 
 -- ---------------------------------------------------------------- may it run here?
@@ -207,6 +220,7 @@ end
 local function setLive(on)
     if live == on then return end
     live = on
+    lastSig = nil   -- 2.0.10: a fresh readout right away
     if on then pushSettings() end
     send({ action = 'radarShow', show = on })
 end
@@ -231,7 +245,8 @@ CreateThread(function()
             if allowed and S.shown then
                 setLive(true)
                 tick(veh)
-                Wait(250)
+                -- 2.0.10: parked (and no remote open) it looks half as often; moving it is 4 times a second as before
+                Wait((GetEntitySpeed(veh) < 1.0 and not remoteOpen) and 500 or 250)
             else
                 setLive(false)
                 Wait(500)
@@ -299,6 +314,7 @@ cmd('radarremote', 'remote', K.remote, function()
     if remoteOpen then return closeRemote() end
     if wc():IsAnyScreenOpen() then return notify('Close what is open first', 'error') end
     remoteOpen = true
+    lastSig = nil   -- 2.0.10: the remote shows the readout at once
     wc():SetScreenOpen(true, REMOTE)
     -- 1.3.2: the remote takes the mouse and keyboard; the game gets none (the mouse turned the camera before).
     -- Set after SetScreenOpen, so nothing that runs on the screen claim can leave keep-input on.

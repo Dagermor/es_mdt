@@ -7,7 +7,14 @@ if not (Whip and Whip.configPage) then return end
 
 -- The page's root: Config (the MDT part's), plus `Suite` for EsSuite (shared/suite.lua). Reads and writes go straight
 -- through to Config, so 'Dispatch.cooldownSec' is Config.Dispatch.cooldownSec.
-local ROOT = setmetatable({ Suite = EsSuite }, {
+-- 2.0.10: the Departments and DOJ parts' own Config tables too ('Dept.Health.note', 'Doj.Fees.appeal'), so their simple
+-- settings live on this one page (WHIP gives a resource one page). Ranks, permissions, rosters, hiring, colours, logos and
+-- the health view stay in /departments: they belong to one department each, not to the server.
+local DEPT = (ESPART('departments') or {}).Config
+local DOJC = (ESPART('doj') or {}).Config
+-- a value config.lua leaves nil has no default to capture: give it its "off" value (0 = the top rank, as nil was)
+if DEPT and DEPT.Health and DEPT.Health.headLevel == nil then DEPT.Health.headLevel = 0 end
+local ROOT = setmetatable({ Suite = EsSuite, Dept = DEPT, Doj = DOJC }, {
     __index = function(_, k) return Config[k] end,
     __newindex = function(_, k, v) Config[k] = v end,
 })
@@ -176,6 +183,77 @@ Whip.configPage({
               help = 'img/map.webp (GTA V\'s map), a file in es_mdt/html/mdt/img, or an https:// link. 4096 x 4096, the same layout.',
               shownWhen = on('LiveMap.enabled') },
         } },
+        -- 2.0.10: Departments (moved from departments/config.lua; it stays the defaults)
+        { id = 'dept_activity', label = 'Departments: activity', settings = {
+            { key = 'Dept.Health.note', type = 'int', min = 1, max = 365, unit = 'days', label = 'Inactive: yellow note after',
+              help = 'Off duty MORE than this many days. Leaders see it in the MDT; leave (LOA) pauses the clock.' },
+            { key = 'Dept.Health.warn', type = 'int', min = 1, max = 365, unit = 'days', label = 'Inactive: orange warning after' },
+            { key = 'Dept.Health.act', type = 'int', min = 1, max = 365, unit = 'days', label = 'Inactive: red, an admin should step in, from',
+              help = 'Keep them in order: note < warning < red.' },
+            { key = 'Dept.Health.headLevel', type = 'int', min = 0, max = 100, label = 'Who counts as a department head: rank level from',
+              help = '0 = the top rank of each department (and the job owner). Heads past a line are flagged to admins.' },
+            { key = 'Dept.Health.adminNotes', type = 'bool', label = 'Note it on a head\'s account each time they reach a new level',
+              help = 'In the Player Manager.' },
+            { key = 'Dept.Health.checkMinutes', type = 'int', min = 5, max = 1440, unit = 'min', label = 'Check the heads every',
+              help = 'Online staff hear of anyone who just crossed a line.' },
+            { key = 'Dept.Health.heartbeatMinutes', type = 'int', min = 1, max = 60, unit = 'min', label = 'Save duty time every',
+              help = 'The most duty time a server crash can lose.' },
+        } },
+        { id = 'dept_leave', label = 'Departments: leave (LOA)', settings = {
+            { key = 'Dept.LOA.maxDays', type = 'int', min = 1, max = 365, unit = 'days', label = 'Longest leave one request may cover' },
+            { key = 'Dept.LOA.maxAheadDays', type = 'int', min = 0, max = 365, unit = 'days', label = 'A leave may start up to',
+              help = 'Days ahead of today.' },
+            { key = 'Dept.LOA.reasonMax', type = 'int', min = 20, max = 2000, unit = 'characters', label = 'Longest reason' },
+        } },
+        { id = 'dept_training', label = 'Departments: training and certifications', settings = {
+            { key = 'Dept.FTO.rideAlongsRequired', type = 'int', min = 0, max = 50, label = 'Ride-alongs a trainee needs',
+              help = 'Phases, items, ratings and DOR days are each department\'s own program (MDT > Training > Program).' },
+            { key = 'Dept.FTO.checklist', type = 'list', item = { type = 'string', maxLen = 60 }, label = 'Ride-along checklist',
+              help = 'Ticked on each ride-along report. Commas between items.' },
+            { key = 'Dept.Certs.alertDays', type = 'int', min = 1, max = 180, unit = 'days', label = 'Warn before a certification expires',
+              help = 'The officer and their supervisors hear of it.' },
+            { key = 'Dept.Certs.gateFto', type = 'bool', label = 'FTOs also need a valid FTO certification', help = 'On top of the FTO permission.' },
+            { key = 'Dept.Certs.ftoCert', type = 'string', maxLen = 60, label = 'The FTO certification\'s name', shownWhen = on('Dept.Certs.gateFto') },
+        } },
+        { id = 'dept_logos', label = 'Departments: logos', settings = {
+            { key = 'Dept.LogoMaxSide', type = 'int', min = 64, max = 1024, unit = 'px', label = 'Largest logo (each side)' },
+            { key = 'Dept.LogoMaxBytes', type = 'int', min = 16384, max = 2097152, step = 1024, unit = 'bytes', label = 'Largest logo file',
+              help = '196608 = 192 KB. Logos are sent to every MDT, so keep them small.' },
+        } },
+        -- 2.0.10: the DOJ (moved from doj/config.lua; it stays the defaults)
+        { id = 'doj_access', label = 'DOJ: access and warrants', settings = {
+            { key = 'Doj.LawCanView', type = 'bool', label = 'Police may open the DOJ tablet (read only)',
+              help = 'Records, the calendar and the warrants they asked for.' },
+            { key = 'Doj.OffDutyReadOnly', type = 'bool', label = 'DOJ members off duty can only read' },
+            { key = 'Doj.Warrants.judgeOnly', type = 'bool', label = 'Warrants need a judge\'s signature',
+              help = 'Officers request, a judge signs or denies.' },
+            { key = 'Doj.Warrants.defaultDays', type = 'int', min = 1, max = 365, unit = 'days', label = 'A signed warrant expires after',
+              help = 'When the request named no date.' },
+            { key = 'Doj.Warrants.notifyJudges', type = 'bool', label = 'Judges on duty hear of each new request' },
+            { key = 'Doj.HearingReminderMinutes', type = 'int', min = 0, max = 240, unit = 'min', label = 'Remind people of a hearing',
+              help = 'Minutes before it starts. 0 = no reminder.' },
+            { key = 'Doj.NameChange.cooldownDays', type = 'int', min = 0, max = 365, unit = 'days', label = 'One name change per person every' },
+            { key = 'Doj.Bar.prefix', type = 'string', maxLen = 6, pattern = '^[%w]+$', patternWhy = 'letters and digits', label = 'Bar number prefix',
+              help = 'New bar numbers read e.g. SA-0001.' },
+        } },
+        { id = 'doj_money', label = 'DOJ: fees, bail and sentences', settings = {
+            { key = 'Doj.Fees.filing', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Filing a civil case (portal)', help = '0 = free.' },
+            { key = 'Doj.Fees.nameChange', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Name change' },
+            { key = 'Doj.Fees.businessLicense', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Business license' },
+            { key = 'Doj.Fees.businessYears', type = 'int', min = 0, max = 50, unit = 'year(s)', label = 'A business license lasts', help = '0 = no expiry.' },
+            { key = 'Doj.Fees.expungement', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Expungement' },
+            { key = 'Doj.Fees.appeal', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Appeal' },
+            { key = 'Doj.Fees.record', type = 'int', min = 0, max = 1000000, unit = '$', label = 'A copy of a court record' },
+            { key = 'Doj.Fees.dueDays', type = 'int', min = 0, max = 365, unit = 'days', label = 'Court fines are due in',
+              help = 'Unpaid after that: an MDT warrant. 0 = never.' },
+            { key = 'Doj.Fees.toDepartment', type = 'bool', label = 'Court money goes to the DOJ\'s job account', help = 'Off: to the state.' },
+            { key = 'Doj.Bail.max', type = 'int', min = 0, max = 100000000, unit = '$', label = 'Highest bail' },
+            { key = 'Doj.Bail.bondPercent', type = 'int', min = 1, max = 100, unit = '%', label = 'A bail bond costs' },
+            { key = 'Doj.Sentence.maxFine', type = 'int', min = 0, max = 100000000, unit = '$', label = 'Largest court fine' },
+            { key = 'Doj.Sentence.maxMonths', type = 'int', min = 0, max = 10000, unit = 'months', label = 'Longest sentence' },
+            { key = 'Doj.Sentence.maxService', type = 'int', min = 0, max = 1000, unit = 'tasks', label = 'Most community service' },
+            { key = 'Doj.Sentence.maxProbationDays', type = 'int', min = 0, max = 3650, unit = 'days', label = 'Longest probation' },
+        } },
         { id = 'display', label = 'Display size', settings = {
             { key = 'UI.defaultScale', type = 'number', min = 0.5, max = 2, step = 0.05, label = 'Default size (1 = 100%)',
               help = 'For players who never picked their own (pause menu > Settings > MDT, the Aa button, /mdtscale).' },
@@ -198,6 +276,11 @@ Whip.configPage({
             restart({ key = D .. 'board.command', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'Call board command' }),
             restart({ key = D .. 'board.key', type = 'string', maxLen = 20, pattern = '^[%w_]+$', patternWhy = 'a key name, e.g. O',
               label = 'Call board key (default)', help = 'A key change reaches only players who never rebound it (FiveM keeps their own).' }),
+            restart({ key = 'Dept.Command', type = 'string', maxLen = 32, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'Departments command' }),
+            restart({ key = 'Doj.Command', type = 'string', maxLen = 32, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'DOJ tablet command' }),
+            restart({ key = 'Doj.Key', type = 'string', maxLen = 20, minLen = 0, nullable = true, pattern = '^[%w_]*$', patternWhy = 'a key name, e.g. F7',
+              label = 'DOJ tablet key (default)', help = 'Empty = none (players can still bind one).' }),
+            restart({ key = 'Doj.PortalCommand', type = 'string', maxLen = 32, pattern = '^[%w_]+$', patternWhy = 'a command name', label = 'Court portal command' }),
             restart({ key = 'Suite.DevTools', type = 'bool', label = 'Staff test tools (/dojtest, /ftotest, MDT test data)',
               help = 'Off on a live server.' }),
         } },

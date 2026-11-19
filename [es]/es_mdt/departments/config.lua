@@ -177,7 +177,7 @@ Config.Health = {
     note = 5,              -- off duty MORE than this many days: yellow note
     warn = 10,             -- more than this: orange warning
     act = 14,              -- this many or more: red, an admin should step in
-    headLevel = nil,       -- who counts as a head: nil = the department's top rank (and the job owner), or a level like 80
+    headLevel = 0,         -- who counts as a head: 0 (or nil) = the department's top rank (and the job owner), or a level like 80
     adminNotes = true,     -- add a note to the head's account (Player Manager) each time they reach a new level
     checkMinutes = 30,     -- how often heads are checked (online staff hear of anyone who just crossed a line)
     heartbeatMinutes = 5,  -- how much duty time a crash can lose at most

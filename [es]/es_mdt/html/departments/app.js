@@ -617,7 +617,7 @@
           ${esc(flagged[0].d.short)} ${esc(flagged[0].x.name)} hasn't been on duty for ${flagged[0].x.days} days${flagged[0].x.level === 3 ? ': an admin should step in' : ''}.</div>`
       : `<div class="h-banner lv-ok"><b>All department heads are active.</b> Nobody has been off duty for more than ${T.note} days.</div>`;
     box.innerHTML = `<div class="h-top">
-        <div><div class="title">Department health</div><div class="hint">${tracked} · updates live while open</div></div>
+        <div><div class="title">Department health</div><div class="hint">${tracked} · updates live while open · the day lines are set in <b>/whip → Settings → MDT → Departments: activity</b></div></div>
         <button class="btn small" id="h-refresh" data-probe-press>↻ Refresh</button>
       </div>
       ${banner}

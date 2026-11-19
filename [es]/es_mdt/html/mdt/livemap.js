@@ -79,7 +79,24 @@
     poll(true);
   };
 
-  function stop() { clearTimeout(L.timer); L.timer = null; L.seq++; }
+  // 2.0.10: the picture. GTA's map (the default) shows as a 2048 px copy (a quarter of the memory) until zoomed in, then
+  // the full 4096 one; both are let go when the tab is left or the MDT closes. Any other picture is used as it is.
+  const FULL = 'img/map.webp', LIGHT = 'img/map_2048.webp';
+  function release() {
+    if (L.img) { L.img.onerror = null; L.img.onload = null; L.img.removeAttribute('src'); L.img = null; }
+    if (L.hi) { L.hi.onload = null; L.hi.src = ''; L.hi = null; }
+    L.full = false;
+  }
+  function hiRes() {
+    const img = L.img;
+    if (!img || L.full || L.hi || !L.light || L.z <= 0.6) return;
+    const hi = new Image();
+    L.hi = hi;
+    hi.onload = () => { if (L.img === img && L.hi === hi) { L.full = true; img.src = FULL; } L.hi = null; };
+    hi.onerror = () => { L.hi = null; L.full = true; };   // the full one is missing: stay on the light one
+    hi.src = FULL;
+  }
+  function stop() { clearTimeout(L.timer); L.timer = null; L.seq++; release(); }
 
   // ---------------------------------------------------------------- pan and zoom (smooth)
   const mapEl = () => $('#lm-map');
@@ -88,6 +105,7 @@
     inner.style.transform = `translate3d(${L.x}px, ${L.y}px, 0) scale(${L.z})`;
     inner.style.setProperty('--inv', (1 / L.z).toFixed(4));
     inner.classList.toggle('far', L.z < 0.3);
+    hiRes();
   }
   function clampView() {
     const m = mapEl(); if (!m) return;
@@ -137,8 +155,14 @@
     const m = mapEl();
     const img = $('#lm-img');
     const lc = lmCfg();
-    img.onerror = () => { if (!img.dataset.fallback && img.getAttribute('src') !== 'img/map.webp') { img.dataset.fallback = '1'; img.src = 'img/map.webp'; } else { img.classList.add('none'); m.classList.add('no-img'); } };
-    img.src = lc.image || 'img/map.webp';
+    const want = lc.image || FULL;
+    L.img = img; L.full = false; L.light = want === FULL;
+    img.onerror = () => {
+      if (img.getAttribute('src') === LIGHT) { L.light = false; L.full = true; img.src = FULL; return; }   // no light copy: the full one
+      if (!img.dataset.fallback && img.getAttribute('src') !== FULL) { img.dataset.fallback = '1'; L.light = false; L.full = true; img.src = FULL; }
+      else { img.classList.add('none'); m.classList.add('no-img'); }
+    };
+    img.src = L.light ? LIGHT : want;
     m.classList.toggle('atlas', L.style === 'atlas');
     m.addEventListener('wheel', (e) => { e.preventDefault(); const r = m.getBoundingClientRect(); const f = Math.exp(-Math.max(-120, Math.min(120, e.deltaY)) * 0.0022); zoomTo(L.z * f, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
     m.addEventListener('dblclick', (e) => { if (e.target.closest('.lp, .lm-top, .lm-tools')) return; const r = m.getBoundingClientRect(); zoomTo(L.z * 2, e.clientX - r.left, e.clientY - r.top); });
@@ -189,7 +213,7 @@
   // ---------------------------------------------------------------- data
   async function poll(first) {
     clearTimeout(L.timer);
-    if (S.view !== 'livemap' || !mapEl()) return;
+    if (S.view !== 'livemap' || !mapEl()) { release(); return; }
     const seq = L.seq;
     if (S.open && !document.hidden && !L.busy) {
       L.busy = true;
@@ -202,7 +226,7 @@
         if (first && !L.centered) {
           L.centered = true;
           const me = mine();
-          if (me) centreOn(me.x, me.y, Math.max(L.z, 0.8), 0); else fitAll();
+          if (me) centreOn(me.x, me.y, Math.max(L.z, 0.55), 0); else fitAll();
         } else if (L.follow && L.sel && L.sel[0] === 'u') { const u = unitById(+L.sel.slice(2)); if (u) centreOn(u.x, u.y, null, 900); }
       } else if (first) { $('#lm-stamp-t').textContent = r.why || 'The map is not available'; $('#lm-list').innerHTML = empty(r.why || 'The map is not available'); }
     }
@@ -270,7 +294,7 @@
     if (L.show.routes && L.show.calls) calls.forEach((c) => (c.units || []).forEach((cu) => {
       const u = byId.get(cu.charId); if (!u) return;
       const [x1, y1] = toMap(u.x, u.y), [x2, y2] = toMap(c.x, c.y);
-      lines.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="lm-line p${c.priority}"/>`);
+      lines.push(`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="lm-line p${c.priority}${L.sel === 'u:' + u.charId || L.sel === 'c:' + c.id ? ' sel' : ''}"/>`);
     }));
     units.forEach((u) => {
       const [x, y] = toMap(u.x, u.y);
@@ -332,6 +356,7 @@
     $$('.lp.sel').forEach((el) => el.classList.remove('sel'));
     if (key && L.pins.get(key)) L.pins.get(key).classList.add('sel');
     $$('#lm-list .lm-row').forEach((r) => r.classList.toggle('on', r.dataset.sel === key));
+    if (L.data) draw();   // 2.0.10: the selected unit's / call's lines are the moving ones
     detail();
     if (key && fly) {
       const [k, id] = [key[0], +key.slice(2)];

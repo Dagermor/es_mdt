@@ -632,23 +632,51 @@ do
         skip = { src = key, set = set }
         return set
     end
+    -- 2.0.10: no per-frame check any more. Four times a second while a gun is in hand it compares the gun's ammo with the
+    -- last look: less ammo while aiming / pulling the trigger is a shot (a reload never lowers the total). The game's
+    -- "is shooting" flag still counts when it is caught (guns with endless ammo). On-duty law is skipped here too
+    -- (asked once a minute and again on any clock on / off); the server still makes the final call.
+    local law, lawAt, asking = false, -1e9, false
+    for _, ev in ipairs({ 'whip_core:job:clockedOn', 'whip_core:job:clockedOff', 'whip_core:client:jobClockState' }) do
+        AddEventHandler(ev, function() lawAt = -1e9 end)
+        RegisterNetEvent(ev)
+    end
+    local function isLaw()
+        if ALR.exemptLaw == false then return false end
+        if not asking and GetGameTimer() - lawAt > 60000 then
+            asking, lawAt = true, GetGameTimer()
+            CreateThread(function()
+                local ok, r = pcall(function() return wc():Callback('es_mdt:radarAllowed', {}) end)
+                law = ok and r == true
+                asking = false
+            end)
+        end
+        return law
+    end
     CreateThread(function()
-        local last = -1e9
+        local last, seenW, seenClip, seenTotal = -1e9, nil, -1, -1
         while true do
             local SHOTS = alertCfg('shots')
             local ped = PlayerPedId()
-            if SHOTS.enabled ~= false and IsPedArmed(ped, 4) then   -- 4 = guns: the per-frame check only while one is in hand
-                Wait(0)
+            if SHOTS.enabled ~= false and IsPedArmed(ped, 4) then   -- 4 = guns
+                Wait(250)
+                local _, w = GetCurrentPedWeapon(ped, true)
+                local _, clip = GetAmmoInClip(ped, w)
+                local total = GetAmmoInPedWeapon(ped, w)
+                clip, total = tonumber(clip) or 0, tonumber(total) or 0
+                local fewer = w == seenW and (total < seenTotal or (clip < seenClip and total <= seenTotal))
+                local trigger = IsPedShooting(ped) or IsControlPressed(0, 24) or IsDisabledControlPressed(0, 24) or IsPlayerFreeAiming(PlayerId())
+                local shot = IsPedShooting(ped) or (fewer and trigger)
+                seenW, seenClip, seenTotal = w, clip, total
                 local gap = math.max(5, tonumber(SHOTS.cooldown) or 45) * 1000
-                if IsPedShooting(ped) and GetGameTimer() - last >= gap then
-                    local _, w = GetCurrentPedWeapon(ped, true)
-                    if not skipList()[w] and not (SHOTS.ignoreSuppressed ~= false and IsPedCurrentWeaponSilenced(ped)) then
-                        last = GetGameTimer()
-                        local veh = GetVehiclePedIsIn(ped, false)
-                        TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'shots', street = streetHere(), model = veh ~= 0 and vehModel(veh) or nil })
-                    end
+                if shot and GetGameTimer() - last >= gap and not skipList()[w]
+                    and not (SHOTS.ignoreSuppressed ~= false and IsPedCurrentWeaponSilenced(ped)) and not isLaw() then
+                    last = GetGameTimer()
+                    local veh = GetVehiclePedIsIn(ped, false)
+                    TriggerServerEvent('es_mdt:server:autoAlert', { kind = 'shots', street = streetHere(), model = veh ~= 0 and vehModel(veh) or nil })
                 end
             else
+                seenW = nil
                 Wait(SHOTS.enabled ~= false and 500 or 2000)
             end
         end

@@ -1,5 +1,29 @@
 # Changelog
 
+## es_mdt 2.0.10 (2026-11-18)
+
+**The simple department and DOJ settings move into `/whip` → Settings → MDT, changed live. Plus a performance pass: less work every frame, fewer lookups and smaller network updates.** See [Changing settings live](README.md#changing-settings-live) and [Performance](README.md#performance).
+
+- **Six new groups in `/whip` → Settings → MDT** (live on Apply; `config.lua` stays the defaults and **Reset** goes back to it):
+  - **Departments: activity:** the inactive yellow / orange / red day lines, the rank level that counts as a department head (0 = each department's top rank), notes on a head's account, how often heads are checked and duty time is saved.
+  - **Departments: leave (LOA):** the longest leave, how far ahead it may start, the longest reason.
+  - **Departments: training and certifications:** ride-alongs a trainee needs, the ride-along checklist (comma-separated), the certification expiry warning, and whether FTOs also need a valid FTO certification (and which one).
+  - **Departments: logos:** the largest logo size and file.
+  - **DOJ: access and warrants:** police read-only access to the DOJ tablet, off-duty read only, warrants needing a judge, warrant expiry, judges notified of requests, hearing reminders, the name-change cooldown, the bar number prefix.
+  - **DOJ: fees, bail and sentences:** every fee (filing, name change, business license and how long it lasts, expungement, appeal, record copy), when court fines are due, where court money goes, bail limits and the bond percentage, and the sentence caps.
+  - **Commands and keys (restart)** gains `/departments`, the DOJ tablet command and key, and the DOJ portal command.
+  - **`/departments` keeps** what belongs to each department: departments, colours, logos, ranks, permissions, rosters, hiring, each department's FTO program and its health page, which now says where the day lines are set.
+- **Performance:**
+  - **Shots fired** no longer checks every frame while a gun is in hand. It looks 4 times a second and spots a shot from the gun's ammo going down while aiming or pulling the trigger (a reload is not a shot). On-duty law is skipped on the client too, asked once a minute and again on any clock on or off. The server still makes the final call.
+  - **Who you are in the MDT** (department, permissions) is kept 30 s instead of 3, and dropped at once when your job changes (clock on / off, hire, fire, rank) or a job or department is edited.
+  - **The on-duty list** behind the Units tab, the Live map, dispatch and the call board is kept 1 s and dropped at once on any clock, roster or department change. Statuses still show at once.
+  - **Live map:** opens on a 2048 px picture (209 KB, a quarter of the memory) and loads the 4096 px one only when you zoom in past the city view. Both are let go when you leave the tab. Responding lines are still; only the selected unit's or call's lines move. It opens a little further out (the city around you).
+  - **Radar:** looks half as often while parked, sends the readout to the screen only when something on it changed, and forgets plates read more than 10 minutes ago.
+  - **Backup / panic follow** keeps the units on the call in memory instead of reading them from the database every 4 s.
+  - **"Look again" updates** (a status, a warrant, a BOLO) go only to on-duty units and players with the MDT open, not to every player on the server.
+  - **The 5-minute clean-up** now also clears old repeat-report notes, explosion cool-downs, per-kind alert counts and the routing of calls that are closed.
+- **Fixes:** the certification warning window is read live (it was read once at start). An unset `Health.headLevel` means each department's top rank.
+
 ## es_mdt 2.0.9 (2026-11-18)
 
 **Backup and panic calls follow the officer who asked, with a marker for each unit coming. Plus a new Live map tab: every unit and call on an interactive GTA map, updated live.** See [Live map](README.md#live-map) and [Backup and panic follow the officer](README.md#backup-and-panic-follow-the-officer).

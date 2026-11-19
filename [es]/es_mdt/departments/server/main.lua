@@ -105,6 +105,7 @@ local function byOpts(source, r) if r and r.staff then return nil end return { b
 
 local function broadcast(id)
     TriggerClientEvent('es_departments:client:changed', -1, id)
+    TriggerEvent('es_departments:server:changed', id)   -- 2.0.10: the MDT drops what it keeps (permissions, the on-duty list)
 end
 
 local function log(source, what, detail)

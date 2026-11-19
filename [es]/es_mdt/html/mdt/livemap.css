@@ -14,7 +14,8 @@
 .lm-svg { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 .lm-area { fill: rgba(96,165,250,.13); stroke: rgba(147,197,253,.8); stroke-width: 1.6; stroke-dasharray: 6 5; vector-effect: non-scaling-stroke; }
 .lm-area.p1 { fill: rgba(239,68,68,.13); stroke: rgba(252,165,165,.85); } .lm-area.p2 { fill: rgba(245,158,11,.12); stroke: rgba(253,230,138,.8); }
-.lm-line { stroke: rgba(147,197,253,.75); stroke-width: 2; stroke-dasharray: 2 6; stroke-linecap: round; vector-effect: non-scaling-stroke; animation: lmDash 1.2s linear infinite; }
+.lm-line { stroke: rgba(147,197,253,.75); stroke-width: 2; stroke-dasharray: 2 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.lm-line.sel { stroke-width: 3; animation: lmDash 1.2s linear infinite; }   /* 2.0.10: only the selected one moves (a moving dash repaints the map every frame) */
 .lm-line.p1 { stroke: rgba(252,165,165,.85); } .lm-line.p2 { stroke: rgba(253,230,138,.85); }
 @keyframes lmDash { to { stroke-dashoffset: -16; } }
 

@@ -616,6 +616,7 @@ end
 --- and a panic call takes its PANIC blip and the officer's panic flag with it.
 local PanicCall = {}   -- [charId] = the call id of their last panic
 local Follow = {}      -- 2.0.9: [callId] = a backup / panic call following its officer (below)
+local function followDirty(cid) local f = Follow[tonumber(cid)] if f then f.units = nil end end   -- 2.0.10: its unit list is read again
 local stopFollow       -- 2.0.9: below
 local function callGone(cid)
     cid = tonumber(cid)
@@ -829,6 +830,7 @@ local function unitGone(charId, source)
         WHERE u.`charId` = ? AND c.`status` = 'active']], { charId }) or {}
     for _, r in ipairs(rows) do
         MySQL.update.await('DELETE FROM `es_mdt_call_units` WHERE `callId` = ? AND `charId` = ?', { r.callId, charId })
+        followDirty(r.callId)
         MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { r.callId, charId, 'Detached (went off duty)' })
         tellUnits(r.callId)
     end
@@ -1046,7 +1048,11 @@ local function followResponders(cid, f, pos, idx)
     if cfg.responders ~= false then
         local skip = {}
         for _, x in ipairs(meAndPartner({ charId = f.charId })) do skip[x] = true end
-        for _, r in ipairs(MySQL.query.await('SELECT `charId` FROM `es_mdt_call_units` WHERE `callId` = ?', { cid }) or {}) do
+        if not f.units then   -- 2.0.10: read once, again only after an attach / detach on this call (followDirty)
+            f.units = {}
+            for _, r in ipairs(MySQL.query.await('SELECT `charId` FROM `es_mdt_call_units` WHERE `callId` = ?', { cid }) or {}) do f.units[#f.units + 1] = { charId = r.charId } end
+        end
+        for _, r in ipairs(f.units) do
             local x = tonumber(r.charId)
             local e = x and idx[x]
             if x and not skip[x] and not f.done[x] and e and e.u.source then
@@ -1112,6 +1118,7 @@ local function followTick()
     end
 end
 MDT.followTick = followTick
+MDT.followDirty = followDirty   -- 2.0.10 (tests add units straight to the table)
 if type(CreateThread) == 'function' then
     CreateThread(function()
         while true do
@@ -1869,6 +1876,7 @@ function MDT.registerOps()
         local arriveR = arriveRadiusOf(r)
         local who = meAndPartner(c)
         for _, x in ipairs(who) do MySQL.insert.await('INSERT IGNORE INTO `es_mdt_call_units` (`callId`,`charId`) VALUES (?,?)', { cid, x }) end
+        followDirty(cid)
         MySQL.update.await('UPDATE `es_mdt_calls` SET `everAttached` = 1 WHERE `id` = ?', { cid })   -- 2.0.4: kept after a detach
         MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { cid, c.charId, #who > 1 and 'Attached with partner' or 'Attached' })
         if d.route and r.x then WC:SetPlayerWaypoint(c.source, vector3(r.x, r.y, r.z or 0.0)) end
@@ -1888,6 +1896,7 @@ function MDT.registerOps()
         if not cid then return false, 'No such call' end
         local who = meAndPartner(c)
         MySQL.update.await(('DELETE FROM `es_mdt_call_units` WHERE `callId` = ? AND `charId` IN (%s)'):format(MDT.marks(#who)), { cid, table.unpack(who) })
+        followDirty(cid)
         MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { cid, c.charId, 'Detached' })
         freeUnits(who)
         MDT.refresh('calls')
@@ -2262,6 +2271,22 @@ function MDT.registerOps()
                 lastClean = t
                 for k, v in pairs(HitSeen) do if v < t - 600 then HitSeen[k] = nil end end
                 for k, v in pairs(PlateCache) do if t - v.at > 600 then PlateCache[k] = nil end end
+                -- 2.0.10: the other small lookups: notes kept only for calls still open (a call's audience is read again from
+                -- its row if it is asked for later), cool-downs that are over, and per-kind counts older than a minute
+                for k, v in pairs(MergeNoted) do if v < t - 600 then MergeNoted[k] = nil end end
+                for k, v in pairs(ExplCool) do if v < t then ExplCool[k] = nil end end
+                for k, l in pairs(KindRate) do
+                    local keep = {}
+                    for _, at in ipairs(l) do if t - at < 60 then keep[#keep + 1] = at end end
+                    KindRate[k] = #keep > 0 and keep or nil
+                end
+                if next(CallAud) then
+                    pcall(function()
+                        local live = {}
+                        for _, r in ipairs(MySQL.query.await("SELECT `id` FROM `es_mdt_calls` WHERE `status` = 'active'") or {}) do live[tonumber(r.id)] = true end
+                        for k in pairs(CallAud) do if not live[tonumber(k)] then CallAud[k] = nil end end
+                    end)
+                end
             end
         end
     end)

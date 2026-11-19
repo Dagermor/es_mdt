@@ -9,6 +9,11 @@ local ED = exports.es_departments
 local Units = {}   -- [charId] = { status, at }
 local Pick  = {}   -- [source] = deptId the player chose in the switcher
 local Cache = {}   -- [source] = { at, ctx }
+-- 2.0.10: a player's MDT context (department, permissions, rights) is kept 30 s. It is dropped at once when WHIP says
+-- their job changed (clock on / off, hired, fired, rank) and for everyone when a job or department is edited.
+local CTX_MS = 30000
+local function dropAllCtx() for k in pairs(Cache) do Cache[k] = nil end end
+local dutyDrop   -- 2.0.10: drops the 1 s on-duty list (set below, used by the job events above it)
 
 local PERMS = { 'mdt_view', 'mdt_reports_write', 'mdt_reports_delete', 'warrants_request', 'warrants_issue', 'fines_issue',
     'bolo_manage', 'fto_train', 'fto_manage', 'loa_manage', 'canHire', 'canFire', 'canPromote', 'canDemote', 'canManage',
@@ -55,8 +60,22 @@ local function log(c, what, detail)
     CreateThread(function() WC:LogActivity(c.source, 'es_mdt_' .. what, { detail = detail }) end)
 end
 
+--- 2.0.10: "this list changed, look again" goes only to who can be looking: on-duty units, and anyone who used the MDT in
+--- the last 75 s (an open MDT asks the server something at least every 30 s), not to every player on the server.
+local Seen = {}   -- [source] = GetGameTimer() of their last MDT request
+local SEEN_MS = 75000
 local function refresh(what)
-    TriggerClientEvent('es_mdt:client:refresh', -1, what)
+    local ok, _, idx = pcall(function() return MDT.dutyNow() end)
+    if not ok or type(idx) ~= 'table' then return TriggerClientEvent('es_mdt:client:refresh', -1, what) end
+    local now, sent = GetGameTimer(), {}
+    for _, e in pairs(idx) do
+        local src = tonumber(e.u and e.u.source)
+        if src and not sent[src] then sent[src] = true TriggerClientEvent('es_mdt:client:refresh', src, what) end
+    end
+    for src, at in pairs(Seen) do
+        if now - at > SEEN_MS then Seen[src] = nil
+        elseif not sent[src] then sent[src] = true TriggerClientEvent('es_mdt:client:refresh', src, what) end
+    end
 end
 
 --- [charId] = source for everyone loaded
@@ -137,7 +156,7 @@ end
 
 local function ctxOf(source)
     local hit = Cache[source]
-    if hit and GetGameTimer() - hit.at < 3000 then return hit.ctx end
+    if hit and GetGameTimer() - hit.at < CTX_MS then return hit.ctx end   -- 2.0.10: 30 s (was 3), dropped at once on any change below
     local charId = WC:GetCharId(source)
     if not charId then return false, 'No character' end
     local staff = ED:IsStaff(source) == true
@@ -166,8 +185,14 @@ local function ctxOf(source)
     return c
 end
 
+-- 2.0.10: a job edited in /whip (its roles' permissions), or a department / rank / roster changed in /departments
+AddEventHandler('whip_core:job:updated', function() dropAllCtx() dutyDrop() end)
+AddEventHandler('es_departments:server:changed', function() dropAllCtx() dutyDrop() end)
+
 AddEventHandler('playerDropped', function()
     local src = source
+    dutyDrop()
+    Seen[src] = nil
     local c = Cache[src] and Cache[src].ctx
     Cache[src] = nil Pick[src] = nil
     for tid, t in pairs(Teams) do
@@ -179,6 +204,7 @@ end)
 for _, ev in ipairs({ 'whip_core:job:clockedOn', 'whip_core:job:clockedOff', 'whip_core:job:roleChanged', 'whip_core:job:fired', 'whip_core:job:hired' }) do
     AddEventHandler(ev, function(e)
         if type(e) == 'table' and e.source then Cache[e.source] = nil end
+        dutyDrop()
         if ev == 'whip_core:job:clockedOff' and type(e) == 'table' and e.charId then
             dissolveOf(e.charId, 'offduty')
             Invites[e.charId] = nil
@@ -254,6 +280,7 @@ local function cb(name, opts, fn)
         whileDead = opts.whileDead or nil, params = { { 'd', 'any' } } }, function(source, _, d)
         local c, why = ctxOf(source)
         if not c then return false, why end
+        Seen[source] = GetGameTimer()
         if not (c.perms.mdt_view or c.staff or opts.anyRank) then return false, 'Your rank cannot use the MDT' end
         if opts.perm or opts.write then
             local no = need(c, opts.perm, opts.write)
@@ -353,24 +380,44 @@ end
 
 --- Who is on duty right now, by department. Only characters clocked on AND in the game: nobody off duty shows.
 --- idx[charId] = { g = group, u = unit }
-local function dutyNow()
-    local groups, ids, idx = {}, {}, {}
+--- 2.0.10: the part that asks other code (departments, who is clocked on, names) is kept for 1 s and dropped at once on
+--- a clock on / off, rank, roster or department change; every call still gets its own fresh tables (callers change them)
+--- and the unit's status as it is now.
+local DutyRaw, DutyAt = nil, -1e9
+dutyDrop = function() DutyRaw = nil end
+local function dutyRaw()
+    if DutyRaw and GetGameTimer() - DutyAt < 1000 then return DutyRaw end
+    local depts, seen, ids = {}, {}, {}
     for _, d in ipairs(ED:GetDepartments() or {}) do
-        local g = { id = d.id, jobId = d.jobId, short = d.short, name = d.name, type = d.type, color1 = d.color1, logoVer = d.logoVer, units = {} }
+        local rd = { g = { id = d.id, jobId = d.jobId, short = d.short, name = d.name, type = d.type, color1 = d.color1, logoVer = d.logoVer }, units = {} }
         for _, u in ipairs(ED:GetOnDuty(d.id) or {}) do
-            if u.source and not idx[u.charId] and WC:IsPlayerClockedOn({ charId = u.charId }, d.jobId) == true then
-                local st = Units[u.charId] or {}
-                local x = { charId = u.charId, source = u.source, callsign = u.callsign, roleName = u.roleName, roleLevel = u.roleLevel,
-                    status = st.status or 'available', since = st.at }
-                g.units[#g.units + 1] = x
-                idx[u.charId] = { g = g, u = x }
+            if u.source and not seen[u.charId] and WC:IsPlayerClockedOn({ charId = u.charId }, d.jobId) == true then
+                seen[u.charId] = true
+                rd.units[#rd.units + 1] = { charId = u.charId, source = u.source, callsign = u.callsign, roleName = u.roleName, roleLevel = u.roleLevel }
                 ids[#ids + 1] = u.charId
             end
         end
+        depts[#depts + 1] = rd
+    end
+    DutyRaw, DutyAt = { depts = depts, names = namesOf(ids) }, GetGameTimer()
+    return DutyRaw
+end
+local function dutyNow()
+    local raw = dutyRaw()
+    local groups, idx = {}, {}
+    for _, rd in ipairs(raw.depts) do
+        local g = {}
+        for k, v in pairs(rd.g) do g[k] = v end
+        g.units = {}
+        for _, u in ipairs(rd.units) do
+            local st = Units[u.charId] or {}
+            local x = { charId = u.charId, source = u.source, callsign = u.callsign, roleName = u.roleName, roleLevel = u.roleLevel,
+                status = st.status or 'available', since = st.at, name = raw.names[u.charId] or ('#' .. u.charId) }
+            g.units[#g.units + 1] = x
+            idx[u.charId] = { g = g, u = x }
+        end
         groups[#groups + 1] = g
     end
-    local names = namesOf(ids)
-    for cid, e in pairs(idx) do e.u.name = names[cid] or ('#' .. cid) end
     return groups, idx
 end
 

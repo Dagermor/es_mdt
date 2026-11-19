@@ -9,7 +9,8 @@ local _ENV = ESAPP('mdt'); -- es_mdt 1.11.0: optional bridge to a third-party ev
 local CFG = Config.WhipEvidence or {}
 local RES = type(CFG.resource) == 'string' and CFG.resource or 'whip_evidence'
 local REASONS = { uploaded = true, taken = true, returned = true, closed = true, reopened = true, deleted = true }
-local BAG_KINDS = { casing = true, bullet = true, blood = true, fingerprint = true, vehicle_fragment = true, gsr = true, reference = true }
+local BAG_KINDS = { casing = true, bullet = true, blood = true, fingerprint = true, vehicle_fragment = true, gsr = true, reference = true,
+    shoeprint = true, tyre_track = true, fiber = true, cleaned = true, serial = true }   -- 2.0.16: whip_evidence 4.2 bags
 
 --- enabled = true / false / 'auto' (auto: on whenever the resource exists on the server)
 local function wanted()
@@ -384,7 +385,8 @@ function MDT.registerWhipEv()
         if c.readOnly then return false, 'You are off duty: the MDT is read-only' end
         local ok, res, why = X('OpenCaseLocker', c.source, k.number)
         if not ok then return false, 'whip_evidence did not answer' end
-        if res == false then return false, why and tostring(why) or 'Go to an evidence locker first, then open it from here' end
+        -- 2.0.16: whip_evidence 4.1+ says why (not at a locker, rank level); no reason = its 1 s "Opening locker" bar was cancelled
+        if res == false then return false, why and tostring(why) or 'Opening the locker was cancelled. Stand still at the evidence locker and try again' end
         return true
     end)
 

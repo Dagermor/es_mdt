@@ -11,8 +11,15 @@
     casing: ['Casing', '⁍'], bullet: ['Bullet', '•'], blood: ['Blood', '🩸'], fingerprint: ['Fingerprint', '🖐'],
     vehicle_fragment: ['Vehicle fragment', '🚗'], gsr: ['Gunshot residue', '💨'], reference: ['Reference sample', '🧬'],
     photo: ['Photo', '📷'], gun: ['Weapon', '🔫'], weapon: ['Weapon', '🔫'], item: ['Item', '▣'],
+    // 2.0.16: whip_evidence 4.2
+    shoeprint: ['Shoe print', '👟'], tyre_track: ['Tyre track', '🛞'], fiber: ['Glove fibres', '🧤'],
+    cleaned: ['Cleaned spot', '🧴'], serial: ['Serial report', '🔢'],
   };
-  const RES = { ammo: 'Ammo', weapon_serial: 'Weapon serial', fingerprint: 'Print', blood_type: 'Blood type', paint: 'Paint', gsr: 'GSR', ballistics: 'Ballistics', age: 'Age' };
+  const RES = { ammo: 'Ammo', weapon_serial: 'Weapon serial', fingerprint: 'Print', blood_type: 'Blood type', paint: 'Paint', gsr: 'GSR', ballistics: 'Ballistics', age: 'Age',
+    // 2.0.16: whip_evidence 4.2 lab results
+    shoe_profile: 'Sole pattern', shoe_size: 'Shoe size', tyre_profile: 'Tread pattern', tyre_width: 'Tyre', fiber: 'Glove fibres', cleaner: 'Cleaner', surface: 'Ground' };
+  // any other field whip_evidence adds later: "some_field" -> "Some field"
+  const niceKey = (k) => { const s = String(k).replace(/_/g, ' ').trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
   const kindOf = (e) => KIND[e.kind] || (String(e.ref || '').startsWith('photo:') ? KIND.photo : String(e.ref || '').startsWith('gun:') ? KIND.gun : KIND.item);
   const ico = (e) => `<span class="wev-ico wev-k-${esc(e.kind || 'item')}">${kindOf(e)[1]}</span>`;
   const val = (v) => {
@@ -24,8 +31,11 @@
   function resultChips(e) {
     const out = [];
     const r = e.results || {};
+    // 2.0.16: "quality" set = only partly readable ("?" stand for unreadable characters): a warning chip first
+    const q = val(r.quality);
+    if (q) out.push(`<span class="wev-r warn" title="Some characters could not be read (shown as ?)"><i>⚠ Quality</i>${esc(q)}</span>`);
     Object.keys(RES).forEach((k) => { const t = val(r[k]); if (t) out.push(`<span class="wev-r"><i>${esc(RES[k])}</i>${esc(t)}</span>`); });
-    Object.keys(r).filter((k) => !RES[k]).forEach((k) => { const t = val(r[k]); if (t) out.push(`<span class="wev-r"><i>${esc(k)}</i>${esc(t)}</span>`); });
+    Object.keys(r).filter((k) => !RES[k] && k !== 'quality').forEach((k) => { const t = val(r[k]); if (t) out.push(`<span class="wev-r"><i>${esc(niceKey(k))}</i>${esc(t)}</span>`); });
     if (e.serial) out.push(`<span class="wev-r"><i>Serial</i>${esc(e.serial)}</span>`);
     if (e.caliber) out.push(`<span class="wev-r"><i>Caliber</i>${esc(e.caliber)}</span>`);
     if (e.ballistics && !r.ballistics) out.push(`<span class="wev-r"><i>Ballistics</i>${esc(val(e.ballistics) || '')}</span>`);

@@ -1,5 +1,17 @@
 # Changelog
 
+## es_mdt 2.0.16 (2026-11-19)
+
+**Ready for whip_evidence 4.2.2** (LeSiiN). Its API is unchanged, so 2.0.15 already works with it. This release tidies up what changed around it.
+
+- **New evidence in the case's Evidence locker card and on report chips:** shoe prints 👟, tyre tracks 🛞, glove fibres 🧤, cleaned spots (bleach) 🧴 and restored serial-number lab reports 🔢, each with its own icon and colour.
+  - Readable labels for the new lab results: Sole pattern, Shoe size, Tread pattern, Tyre, Glove fibres, Cleaner and Ground.
+  - A **partly readable** result (whip_evidence's `quality`, with `?` for unreadable characters) gets an amber "⚠ Quality · Partly readable" chip.
+  - Any field whip_evidence adds later shows with a readable label ("Some field") instead of its raw key.
+- **Open locker** from the MDT: whip_evidence 4.1+ runs a 1 s "Opening locker" bar at the locker. If the officer moves and the bar is cancelled, the MDT now says "Opening the locker was cancelled. Stand still at the evidence locker and try again" instead of "Go to an evidence locker first". whip_evidence's own reasons (not at a locker, rank level too low) are shown as they are.
+- **/departments:** whip_evidence 4.1+ decides who may do what by **rank level** in `/whip` → Settings → Forensics → "Lowest rank level", no longer by job permissions. With such a version on the server, the "Upload evidence to cases (whip_evidence)" and "Close evidence lockers (whip_evidence)" switches are hidden from the rank editor (what they held is kept), and a note points to `/whip` → Forensics. With whip_evidence 4.0 they show as before.
+- Docs: [docs/whip_evidence_integration.md](docs/whip_evidence_integration.md) section 10 covers 4.2.2: the rank-level defaults, the controller buttons it shares with the MDT (the MDT's panic, respond and backup keep them), and the two config lines to set again after an update.
+
 ## es_mdt 2.0.15 (2026-11-19)
 
 **Backup on a call now joins that call instead of making a new one.**

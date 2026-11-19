@@ -11,6 +11,8 @@
 .wev-k-blood .wev-ico, .wev-ico.wev-k-blood { background: rgba(235,72,72,.15); border-color: rgba(235,72,72,.35); }
 .wev-ico.wev-k-fingerprint, .wev-ico.wev-k-reference { background: rgba(80,200,120,.13); border-color: rgba(80,200,120,.35); }
 .wev-ico.wev-k-casing, .wev-ico.wev-k-bullet, .wev-ico.wev-k-gsr, .wev-ico.wev-k-gun, .wev-ico.wev-k-weapon { background: rgba(245,177,61,.13); border-color: rgba(245,177,61,.38); }
+.wev-ico.wev-k-shoeprint, .wev-ico.wev-k-tyre_track, .wev-ico.wev-k-fiber { background: rgba(96,165,250,.13); border-color: rgba(96,165,250,.38); }   /* 2.0.16 */
+.wev-ico.wev-k-cleaned, .wev-ico.wev-k-serial { background: rgba(148,163,184,.14); border-color: rgba(148,163,184,.4); }
 .wev-ico.wev-k-photo { background: rgba(139,92,246,.15); border-color: rgba(139,92,246,.4); }
 .wev-t { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 2px; }
 .wev-t b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -18,6 +20,8 @@
 .wev-meta { line-height: 1.45; }
 .wev-rs { display: flex; flex-wrap: wrap; gap: 6px; }
 .wev-r { display: inline-flex; gap: 6px; align-items: baseline; font-size: 12px; padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.9); }
+.wev-r.warn { background: rgba(245,177,61,.13); border-color: rgba(245,177,61,.45); }   /* 2.0.16: partly readable */
+.wev-r.warn i { color: rgba(245,177,61,.95); }
 .wev-r i { font-style: normal; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: rgba(255,255,255,.55); }
 .wev-out { font-size: 12.5px; padding: 6px 10px; border-radius: 8px; background: rgba(245,177,61,.12); border: 1px solid rgba(245,177,61,.42); color: #ffd58a; }
 .wev-out::before { content: '⇢ '; }

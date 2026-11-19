@@ -25,6 +25,16 @@ local function permMap(typeKey)
     return out
 end
 
+-- 2.0.16: whip_evidence 4.1+ checks its actions by rank level (/whip -> Settings -> Forensics), not by these two
+-- job permissions. With such a version on the server they are left out of /departments (their stored values stay).
+local WEV_LEVEL_PERMS = { evidence_upload = true, evidence_case_close = true }
+local function wevByLevel()
+    if GetResourceState('whip_evidence') == 'missing' then return false end
+    local a, b = tostring(GetResourceMetadata('whip_evidence', 'version', 0) or ''):match('^(%d+)%.(%d+)')
+    a, b = tonumber(a), tonumber(b)
+    return a ~= nil and (a > 4 or (a == 4 and b >= 1))
+end
+
 local function trim(s) return (type(s) == 'string' and s:gsub('^%s+', ''):gsub('%s+$', '')) or '' end
 
 local function validColor(c) return type(c) == 'string' and c:match('^#%x%x%x%x%x%x$') ~= nil end
@@ -524,9 +534,13 @@ local function register()
             if staff or mine[d.jobId] then list[#list + 1] = summary(d) end
         end
         if #list == 0 and not staff then return false, 'You are not in a department' end
-        local perms = {}
-        for k, v in pairs(Config.Permissions) do perms[k] = v end
-        return { departments = list, admin = isAdmin(source), staff = staff, health = staff, types = Config.Types,
+        local perms, byLevel = {}, wevByLevel()
+        for k, v in pairs(Config.Permissions) do
+            local l = {}
+            for _, p in ipairs(v) do if not (byLevel and WEV_LEVEL_PERMS[p.key]) then l[#l + 1] = p end end
+            perms[k] = l
+        end
+        return { departments = list, wevByLevel = byLevel, admin = isAdmin(source), staff = staff, health = staff, types = Config.Types,
             permissions = perms, builtins = Config.BuiltinPermissions, insignia = Config.Insignia }
     end)
 
@@ -701,7 +715,14 @@ local function register()
         for _, k in ipairs(perms) do on[k] = true end
         local permissions = { bankAccess = data.bankAccess }
         for _, p in ipairs(Config.BuiltinPermissions) do permissions[p.key] = on[p.key] == true end
-        for _, p in ipairs(Config.Permissions[d.type] or {}) do permissions[p.key] = on[p.key] == true end
+        local byLevel, old = wevByLevel(), {}
+        if byLevel and roleId ~= 0 then   -- hidden switches keep what the rank had
+            for _, x in ipairs(WC:GetJobRoles(d.jobId) or {}) do if x.roleId == roleId then old = x.permissions or {} end end
+        end
+        for _, p in ipairs(Config.Permissions[d.type] or {}) do
+            if byLevel and WEV_LEVEL_PERMS[p.key] then permissions[p.key] = old[p.key] == true
+            else permissions[p.key] = on[p.key] == true end
+        end
         local opts = byOpts(source, r)
         local role, rwhy
         if roleId == 0 then

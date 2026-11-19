@@ -400,7 +400,8 @@
         <div class="field"><label>Callsign start</label><input type="text" id="r-pre" maxlength="8" value="${esc(r ? r.callsignPrefix || '' : '')}" placeholder="2-"${dis}></div>
         <div class="field"><label>Department bank account</label><select id="r-bank"${(dis || top) ? ' disabled' : ''}>${banks.map(([b, l]) => `<option value="${b}"${(p.bankAccess || 'none') === b ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       </div>
-      <div class="section"><div class="lbl">What this rank can do</div><div class="perm-grid">${permsFor(d.type).map((x) => tog(x.key, x.label)).join('')}</div></div>
+      <div class="section"><div class="lbl">What this rank can do</div><div class="perm-grid">${permsFor(d.type).map((x) => tog(x.key, x.label)).join('')}</div>
+        ${S.meta.wevByLevel && permsFor(d.type).some((x) => x.key === 'evidence_collect') ? '<p class="hint" style="margin-top:8px">🔬 In-game forensics (whip_evidence: collecting, the lab, uploading to cases, evidence lockers) go by rank level, not by these switches. Set them in <b>/whip → Settings → Forensics → Lowest rank level</b>.</p>' : ''}</div>
       <div class="section"><div class="lbl">Managing people</div><div class="perm-grid">${(S.meta.builtins || []).map((x) => tog(x.key, x.label)).join('')}</div></div>
       ${top ? '<p class="hint section">A level 100 rank can do everything.</p>' : ''}
       ${rt.ranks ? `<div class="row actions"><button class="btn accent" id="r-save" data-primary data-probe-press>${r ? 'Save rank' : 'Create rank'}</button>

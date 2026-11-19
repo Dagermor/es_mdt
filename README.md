@@ -8,7 +8,7 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.0.15).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.0.16).** Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -37,6 +37,7 @@ All screenshots use made-up test data.
 | ![In-car radar](docs/images/18_radar_incar_panel.png) The radar in a police vehicle (only there) | ![Radar remote](docs/images/18_radar_remote.png) The radar remote (F7) |
 | ![Radar settings](docs/images/18_whip_settings_radar.png) The radar, live in /whip → Settings → MDT → Radar | ![Pause menu radar](docs/images/18_pause_settings_radar.png) Each player's radar settings in the pause menu |
 | ![Backup banner](docs/images/20_dispatch_backup_banner.png) Backup asked on a call: the call is marked, no new call | ![Backup marker](docs/images/20_livemap_backup_marker.png) The officer who asked, followed on the Live map |
+| ![whip_evidence 4.2 evidence](docs/images/21_case_evidence_new_kinds.png) whip_evidence 4.2 evidence on a case: shoe prints, tyre tracks, fibres, partly readable results | ![Forensics by rank level](docs/images/21_departments_rank_forensics_note.png) Ranks: forensics go by rank level in /whip (whip_evidence 4.1+) |
 | ![Controller focus](docs/images/19_mdt_focus_ring.png) The MDT on a controller: focus ring and button hints | ![Controller Live map](docs/images/19_livemap_controller.png) The Live map on a controller: stick pans, triggers zoom |
 | ![Controller call card](docs/images/19_call_card_and_panic_hold.png) Call card with pad buttons, and the panic hold ring | ![Controller settings](docs/images/19_whip_settings_controller.png) Controller support, live in /whip → Settings → MDT |
 
@@ -414,12 +415,15 @@ Prefer events? Use `TriggerEvent('es_mdt:jail:reportRelease', charId, info)` and
 
 ## whip_evidence integration
 
-With [whip_evidence](docs/whip_evidence_integration.md) installed, the MDT finds it by itself (`Config.WhipEvidence.enabled = 'auto'`). Set `Config.ApiResources = { 'es_mdt' }` in whip_evidence's config, and list your department job names in its `PoliceJobs`. The bridge provides:
+With [whip_evidence](docs/whip_evidence_integration.md) installed, the MDT finds it by itself (`Config.WhipEvidence.enabled = 'auto'`). Set `Config.ApiResources = { 'es_mdt' }` in whip_evidence's config, and list your department job names in its `PoliceJobs` (do it again after each whip_evidence update: its config file comes with `ApiResources = {}`). Checked with whip_evidence **4.2.2** (es_mdt 2.0.16). The bridge provides:
 
 - MDT case numbers as whip_evidence case IDs
 - uploading bagged evidence and photos to a case
 - lab results, the chain of custody and the timeline in the case
 - closing and reopening the locker together with the MDT case
+- whip_evidence 4.2's shoe prints, tyre tracks, glove fibres, cleaned spots and restored serials, with readable labels, and an amber chip on partly readable results (2.0.16)
+
+**Who may do what (whip_evidence 4.1+):** whip_evidence checks a lowest rank level per action in `/whip` → Settings → Forensics → "Lowest rank level", the same for every police job, on duty only. Its defaults: scan and photos 1; collect, GSR, upload to a case, open lockers 20; dust, release scenes, run the lab, take items out of a locker 40; close cases 60. With the default ranks (Officer 30, Sergeant 60) Officers cannot run the lab, dust or take items out until you lower those levels. The old "Upload evidence to cases" and "Close evidence lockers" switches in `/departments` do nothing with 4.1+, so 2.0.16 hides them there.
 
 The details are in [docs/whip_evidence_integration.md](docs/whip_evidence_integration.md).
 
@@ -571,6 +575,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 ## What is tested
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
+- **Tested for 2.0.16:** against the real whip_evidence 4.2.2 code (read, not changed): every export, event, field and whip_core call it uses is present on the live server. In Lua tests against the real es_mdt code: "Open locker" shows whip_evidence's own reason and a clear "cancelled" text when its 1 s bar is cancelled, still refused off duty; `/departments` hides the two whip_evidence switches with 4.1+ (shown with 4.0 or without whip_evidence), and saving a rank keeps what they held (a forged tick is ignored). In browser tests: the case's Evidence locker card with shoe print, tyre track, fibre, cleaned spot and serial report entries (labels, icons, the amber "Partly readable" chip, no raw field names) and the rank editor note, with no page errors. All 21 earlier test files still pass.
 - **Tested for 2.0.15:** in Lua tests against the real server code: backup on a call merges into it (no new call), the priority rules (never lowered, the urgent priority on a panic), who and when, the timeline note, the re-alert to the routed units only (never the asker, never EMS) with nothing private in it, the call keeping its spot and circle, the following marker (moves with the officer, not the call), responder markers as before, the cooldown, asking again, closing, the asker going off duty, backup with no call, and `merge = false`. The client re-alert (card, banner, P1 sound) is also covered. In browser tests: the Dispatch badge and banner (local time), the call card, the call board and the Live map marker with its line, with no page errors.
 - **Tested for 2.0.14:** in Lua tests against the real server code: a witness call gets its own circle blip, sent to the same units as the call, at the circle centre (never the true spot) and in the priority colour. It stays after the call's dot times out, comes back on a duty change, shrinks and moves on a repeat report, goes on close and stays gone, and is not added for calls without a circle or with `blip.areas = false`. The other 19 test files still pass.
 - **Tested for 2.0.13:** in Lua tests against WHIP's real pad code (`Whip.padScreen` and the pad actions): every action registered on its slot, the panic hold (released early, nothing; held, the panic; set to work over any screen, the death screen too), respond / hide and board / remote holds, the admin switches applied live (actions removed and added back), each player's on/off, stick speed and hints, the Controller settings in whip_core's real Settings and pause-menu code, the on-screen keyboard and its fallback, and no per-frame loops with no screen open. In browser tests with simulated pad input: the focus ring, D-pad and stick moves, A, B, LB / RB, LT / RT, X and Y, the keyboard on text boxes, dialogs, the Live map (pan, zoom, nearest pin), the call card and hold ring, the call board, the radar remote, the permit application, Departments and DOJ, with Xbox, PlayStation and keyboard hints, and no page errors. **Not yet tried on a real controller.**

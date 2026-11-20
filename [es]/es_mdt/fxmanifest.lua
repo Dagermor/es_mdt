@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.4.2'
+version '2.5.0'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -52,6 +52,7 @@ server_scripts {
     'mdt/server/texts.lua',        -- 2.1.0: texts to owners (whip_phone) + court portal notices
     'mdt/server/tickets.lua',      -- 2.1.0: roadside tickets, invoices, contests
     'mdt/server/impound.lua',      -- 2.1.0: impound, holds, the lot, tows
+    'mdt/server/ems.lua',          -- 2.5.0: the EMS side of the MDT (patients, incident reports, bills, deaths, stats)
     'mdt/server/testdata.lua',
     'mdt/server/main.lua',
     'doj/server/tables.lua',
@@ -95,6 +96,8 @@ files {
     'html/mdt/app.css',
     'html/mdt/app.js',
     'html/mdt/cases.js',
+    'html/mdt/ems.css',
+    'html/mdt/ems.js',
     'html/mdt/evidence.js',
     'html/mdt/index.html',
     'html/mdt/jail.js',

@@ -66,6 +66,7 @@
   const P = () => (S.ctx && S.ctx.perms) || {};
   const RO = () => !!(S.ctx && S.ctx.readOnly);
   const can = (p) => !RO() && !!P()[p];
+  const EMS = () => !!(S.ctx && S.ctx.ems);   // 2.5.0: an EMS department: the EMS side of the MDT
   const empty = (txt, ico) => `<div class="empty-state"><div class="es-ico">${ico || '◌'}</div>${esc(txt)}</div>`;
   const pill = (txt, cls) => `<span class="pill ${cls || ''}">${esc(txt)}</span>`;
   // 1.7.0: certification badges (roster, profile): valid / expiring (amber ring) / expired (struck out)
@@ -112,7 +113,7 @@
   }
 
   // A search box that finds a person; onPick({charId, name})
-  function personPicker(host, placeholder, onPick) {
+  function personPicker(host, placeholder, onPick, cbName) {   // 2.5.0: cbName (EMS: emsPeople)
     host.innerHTML = `<div class="picker-wrap"><input type="text" class="pp-in" placeholder="${esc(placeholder || 'Search a name or phone…')}" autocomplete="off"><div class="pop hidden"></div></div>`;
     const inp = $('.pp-in', host), pop = $('.pop', host);
     let t = null, seq = 0;
@@ -122,7 +123,7 @@
       if (q.length < 2) { pop.classList.add('hidden'); return; }
       t = setTimeout(async () => {
         const my = ++seq;
-        const r = await call('people', { q });
+        const r = await call(cbName || (EMS() ? 'emsPeople' : 'people'), { q });
         if (my !== seq) return;
         const list = (r.ok && r.data) || [];
         pop.innerHTML = list.length ? list.map((p) => `<div class="pop-row" data-id="${p.charId}" data-name="${esc(p.name)}"><b>${esc(p.name)}</b><span class="hint">#${p.charId}${p.dob ? ' · ' + esc(p.dob) : ''}${p.warrants ? ' · <span class="txt-bad">warrant</span>' : ''}</span></div>`).join('')
@@ -136,12 +137,20 @@
   }
 
   // ---------------------------------------------------------------- frame
+  // 2.5.0: e = 1 also on the EMS side, e = 2 only there (an EMS department's members get the EMS tabs, not police records)
   const NAV = [
     { head: 'Patrol' },
+    { head: 'EMS', e: 2 },
     { key: 'dashboard', label: 'Dashboard', ico: '◧' },
-    { key: 'dispatch', label: 'Dispatch', ico: '☎' },
-    { key: 'units', label: 'Active units', ico: '◉' },
-    { key: 'livemap', label: 'Live map', ico: '⌖', show: () => (S.ctx.onDuty || S.ctx.staff) && ((S.ctx.config.liveMap || {}).enabled !== false || S.ctx.staff) },
+    { key: 'ems', label: 'EMS dashboard', ico: '✚', e: 2 },
+    { key: 'dispatch', label: 'Dispatch', ico: '☎', e: 1 },
+    { key: 'units', label: 'Active units', ico: '◉', e: 1 },
+    { key: 'livemap', label: 'Live map', ico: '⌖', e: 1, show: () => (S.ctx.onDuty || S.ctx.staff) && ((S.ctx.config.liveMap || {}).enabled !== false || S.ctx.staff) },
+    { head: 'Patients', e: 2 },
+    { key: 'patients', label: 'Patients', ico: '♥', e: 2, show: () => !!(S.ctx.staff || P().medical_records) },
+    { key: 'emsreports', label: 'Incident reports', ico: '✎', e: 2 },
+    { key: 'bills', label: 'Medical bills', ico: '＄', e: 2, show: () => !!(S.ctx.staff || P().medical_records) },
+    { key: 'deaths', label: 'Death records', ico: '✝', e: 2 },
     { key: 'arrest', label: 'Process arrest', ico: '⛓', show: () => !!P().mdt_reports_write },
     { key: 'bolos', label: 'BOLOs', ico: '⚑' },
     { key: 'tickets', label: 'Tickets', ico: '✎' },          // 2.1.0 (tickets.js)
@@ -158,13 +167,14 @@
     { key: 'warrants', label: 'Warrants', ico: '⚖' },
     { key: 'penal', label: 'Penal code', ico: '§' },
     { key: 'court', label: 'Court (DOJ)', ico: '⚖', show: () => !!S.ctx.court },
-    { head: 'Department' },
+    { head: 'Department', e: 1 },
     { key: 'stats', label: 'Stats', ico: '▤' },
-    { key: 'department', label: 'Department', ico: '⛨', show: () => { const r = S.ctx.rights || {}; return S.ctx.staff || r.roster || r.hire || r.promote || r.fire || P().loa_manage; } },
-    { key: 'training', label: 'Training (FTO)', ico: '✎', show: () => S.ctx.staff || P().fto_train || P().fto_manage || P().canPromote || S.ctx.trainee },
-    { key: 'leave', label: 'My leave', ico: '☂' },
-    { key: 'officer', label: 'My profile', ico: '☻' },
-    { key: 'testdata', label: 'Admin · Test data', ico: '🧹', show: () => !!S.ctx.staff && S.ctx.config.devTools !== false },
+    { key: 'emsstats', label: 'Roster & stats', ico: '▤', e: 2 },
+    { key: 'department', label: 'Department', ico: '⛨', e: 1, show: () => { const r = S.ctx.rights || {}; return S.ctx.staff || r.roster || r.hire || r.promote || r.fire || P().loa_manage; } },
+    { key: 'training', label: 'Training (FTO)', ico: '✎', e: 1, show: () => S.ctx.staff || P().fto_train || P().fto_manage || P().canPromote || S.ctx.trainee },
+    { key: 'leave', label: 'My leave', ico: '☂', e: 1 },
+    { key: 'officer', label: 'My profile', ico: '☻', e: 1 },
+    { key: 'testdata', label: 'Admin · Test data', ico: '🧹', e: 1, show: () => !!S.ctx.staff && S.ctx.config.devTools !== false },
   ];
 
   function renderFrame() {
@@ -177,7 +187,9 @@
     const pick = $('#dept-pick');
     pick.classList.toggle('hidden', (c.depts || []).length < 2);
     pick.innerHTML = (c.depts || []).map((x) => `<option value="${x.id}"${x.id === d.id ? ' selected' : ''}>${esc(x.short)}${x.onDuty ? ' · on duty' : ''}</option>`).join('');
-    $('#nav').innerHTML = NAV.filter((n) => n.head || !n.show || n.show()).map((n) => n.head ? `<div class="nav-head">${esc(n.head)}</div>`
+    const emsMode = EMS();
+    $('#gsearch').placeholder = emsMode ? 'Search a patient: name, phone or ID…  (Ctrl+K)' : 'Search people, phone, plate or serial…  (Ctrl+K)';
+    $('#nav').innerHTML = NAV.filter((n) => (emsMode ? !!n.e : n.e !== 2) && (n.head || !n.show || n.show())).map((n) => n.head ? `<div class="nav-head">${esc(n.head)}</div>`
       : `<button class="nav-item${S.view === n.key ? ' on' : ''}" data-nav="${n.key}" data-probe-press><span class="n-ico">${n.ico}</span><span>${n.label}</span><span class="n-badge hidden" data-badge="${n.key}"></span></button>`).join('');
     const st = statusOf(c.me.status);
     $('#me').innerHTML = `<div class="me-name">${esc(c.me.name)}</div>
@@ -198,10 +210,12 @@
     setBadge('dispatch', t.calls || 0, 'bad');
     setBadge('permits', t.permits || 0, 'warn');
     setBadge('tickets', t.statements || 0, 'warn');   // 2.1.0: contests waiting for my statement
+    setBadge('ems', t.emsReports || 0, 'warn'); setBadge('emsreports', t.emsReports || 0, 'warn');   // 2.5.0 (ems.js)
   }
   async function loadBadges() {
     const r = await call('badges');
     if (r.ok) { S.todo = r.data || {}; applyBadges(); }
+    if (HOOK.badgesExtra) HOOK.badgesExtra();   // 2.5.0: the EMS side's own counts
   }
   const tabBadge = (n, cls) => n ? `<span class="t-badge ${cls || ''}">${n}</span>` : '';
 
@@ -210,7 +224,17 @@
     b.textContent = n; b.className = 'n-badge ' + (cls || '') + (n ? '' : ' hidden');
   }
 
+  // 2.5.0: on the EMS side the police pages lead to their EMS ones (a unit's name opens the patient, not police records)
+  const EMS_TO = { dashboard: 'ems', people: 'patients', stats: 'emsstats' };
+  const LAW_TO = { ems: 'dashboard', patients: 'people', emsstats: 'stats', emsreports: 'dashboard', bills: 'dashboard', deaths: 'dashboard' };
   function go(view, arg) {
+    if (S.ctx) {
+      if (EMS()) {
+        if (EMS_TO[view]) view = EMS_TO[view];
+        const n = NAV.find((x) => x.key === view);
+        if (n && !n.e) { view = 'ems'; arg = null; }
+      } else if (LAW_TO[view]) { view = LAW_TO[view]; arg = view === 'people' ? arg : null; }
+    }
     S.view = view; S.arg = arg == null ? null : arg; S.dirty = false;
     $$('.nav-item').forEach((b) => b.classList.toggle('on', b.dataset.nav === view));
     const v = $('#view'); v.classList.remove('fade-in'); void v.offsetWidth; v.classList.add('fade-in');
@@ -1489,7 +1513,7 @@
 
   // ---------------------------------------------------------------- 1.3.0: the toolbox ops.js builds on
   window.MDT = { S, $, $$, esc, money, call, post, toast, said, busy, ago, date, dateTime, modal, confirmBox, modalOpen, personPicker, pill, empty,
-    can, P, RO, go, VIEWS, HOOK, watchEditing: (k, i, a, b) => watchEditing(k, i, a, b), dur, hours, isoDay, certBadges: (l, s) => certBadges(l, s), ccv, drawer: (h, f) => drawer(h, f), typeLabel, ridesCard, rideForm, ftoRecs, tabBadge, loadBadges, calDate: (t) => calDate(t), warrantForm, statusOf, renderFrame, setBadge, applyBadges, loadBadges, penal, serialTag, queueRefresh, logoOf };
+    can, P, RO, EMS, go, VIEWS, HOOK, watchEditing: (k, i, a, b) => watchEditing(k, i, a, b), dur, hours, isoDay, certBadges: (l, s) => certBadges(l, s), ccv, drawer: (h, f) => drawer(h, f), typeLabel, ridesCard, rideForm, ftoRecs, tabBadge, loadBadges, calDate: (t) => calDate(t), warrantForm, statusOf, renderFrame, setBadge, applyBadges, loadBadges, penal, serialTag, queueRefresh, logoOf };
 
   // ---------------------------------------------------------------- global search (Ctrl+K)
   let gsT = null, gsSeq = 0;
@@ -1499,6 +1523,15 @@
     if (q.length < 2) { pop.classList.add('hidden'); return; }
     gsT = setTimeout(async () => {
       const my = ++gsSeq;
+      if (EMS()) {   // 2.5.0: EMS looks up patients only
+        const re = await call('emsPeople', { q });
+        if (my !== gsSeq) return;
+        const list = (re.ok && re.data) || [];
+        pop.innerHTML = list.length ? `<div class="pop-h">Patients</div>${list.slice(0, 8).map((p) => `<div class="pop-row" data-gp="${p.charId}"><b>${esc(p.name)}</b><span class="hint">#${p.charId}${p.dob ? ' · ' + esc(p.dob) : ''}</span>${p.deceased ? pill('Deceased', 'off') : ''}</div>`).join('')}` : '<div class="pop-empty">Nobody found</div>';
+        pop.classList.remove('hidden');
+        $$('[data-gp]', pop).forEach((el) => el.onmousedown = () => { pop.classList.add('hidden'); $('#gsearch').value = ''; go('patients', +el.dataset.gp); });
+        return;
+      }
       const serialish = q.length >= 4 && !/\s/.test(q);
       const [rp, rv, rw] = await Promise.all([call('people', { q }), q.length <= 10 ? call('vehicles', { q }) : Promise.resolve({ ok: true, data: [] }),
         serialish ? call('weapons', { q }) : Promise.resolve({ ok: true, data: [] })]);
@@ -1613,7 +1646,7 @@
       renderFrame(); go(S.view && S.view !== 'reports' ? S.view : 'dashboard', S.view === 'people' || S.view === 'vehicles' ? null : S.arg);
       clearInterval(S.timer);
       loadBadges();
-      S.timer = setInterval(() => { if (!S.open) return; loadBadges(); if (!modalOpen() && ((S.view === 'units' && S.unitsMode !== 'map') || S.view === 'dashboard')) go(S.view); }, 30000);
+      S.timer = setInterval(() => { if (!S.open) return; loadBadges(); if (!modalOpen() && ((S.view === 'units' && S.unitsMode !== 'map') || S.view === 'dashboard' || S.view === 'ems')) go(S.view); }, 30000);
     } else if (m.action === 'close') {
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       if (modalOpen()) { $('#modal').classList.add('hidden'); $('#modal-card').innerHTML = ''; }

@@ -583,3 +583,24 @@ Config.Texts = {
     sender  = 'San Andreas Gov',      -- the contact name it shows with
     loreKey = 'es_mdt_gov',           -- its number's key in whip_phone (made once)
 }
+
+-- 2.5.0: the EMS side of the MDT (an EMS department's members get it instead of the police tabs). Kept simple for RP:
+-- no vitals, codes, prescriptions or insurance. Treatments, medical records and bills come from the job pack
+-- (whip_jobs); incident reports, blood types, patient notes and death records are the MDT's own.
+Config.EMS = {
+    enabled     = true,
+    -- a person's blood type until a medic sets it (picked once from their ID, weighted like real life)
+    bloodTypes  = { { 'O+', 38 }, { 'A+', 34 }, { 'B+', 9 }, { 'AB+', 3 }, { 'O-', 7 }, { 'A-', 6 }, { 'B-', 2 }, { 'AB-', 1 } },
+    -- what was done, ticked on an incident report (the key is saved; the label can change)
+    actions     = {
+        { key = 'treated',     label = 'Treated' },
+        { key = 'revived',     label = 'Revived' },
+        { key = 'transported', label = 'Transported' },
+        { key = 'refused',     label = 'Refused care' },
+        { key = 'dead',        label = 'Pronounced dead' },
+    },
+    reportHours    = 6,     -- the calls you were on in the last N hours ask for an incident report
+    reportEditHours = 24,   -- the writer may edit their report this long; supervisors (ems_deaths) always
+    policeDays     = 7,     -- officers see "treated by EMS" on a person / call this many days back
+    autopsyDays    = 60,    -- death records can link post-mortem reports (whip_evidence) uploaded this many days back
+}

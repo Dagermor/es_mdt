@@ -138,7 +138,10 @@ for _, n in ipairs({ 'open', 'pickDept', 'dashboard', 'units', 'setStatus', 'peo
     -- 1.11.2: also had server handlers but were never let through (Jail tab, booking prints, weapon release)
     'jailList', 'jailRelease', 'evPrintsOf', 'evPrintsTake', 'evRelease',
     -- 2.1.0: tickets, contests (the officer's statement), impound and the lot
-    'tickets', 'ticket', 'tkStatement', 'tkVoid', 'impForm', 'impSave', 'impList', 'impGet', 'impVehicle', 'impHold', 'impRelease' }) do CALLS[n] = true end
+    'tickets', 'ticket', 'tkStatement', 'tkVoid', 'impForm', 'impSave', 'impList', 'impGet', 'impVehicle', 'impHold', 'impRelease',
+    -- 2.5.0: the EMS side (server/ems.lua)
+    'emsHome', 'emsBadges', 'emsPeople', 'emsRecent', 'emsPatient', 'emsPatientSave', 'emsReports', 'emsReport', 'emsReportForm', 'emsReportSave',
+    'emsBills', 'emsBillWaive', 'emsDeaths', 'emsAutopsies', 'emsDeathSave', 'emsDeathRevoke', 'emsStats' }) do CALLS[n] = true end
 
 RegisterNUICallback('call', function(d, cb)
     local name = type(d) == 'table' and d.name

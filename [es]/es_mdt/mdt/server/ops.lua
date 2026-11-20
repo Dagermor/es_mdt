@@ -612,6 +612,9 @@ local function callsList(status, limit, c)
     return rows
 end
 
+MDT.callsList = callsList   -- 2.5.0: the EMS dashboard
+MDT.unitsOfCalls = unitsOfCalls
+
 --- Me plus my paired partner (they attach together)
 local function meAndPartner(c)
     local out = { c.charId }
@@ -2020,6 +2023,7 @@ function MDT.registerOps()
         end
         r.backups = MySQL.query.await("SELECT `id`,`priority`,`status`,`street`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt` FROM `es_mdt_calls` WHERE `parentId` = ? AND `kind` = 'backup' ORDER BY `id`", { cid }) or {}
         r.now = now()
+        if MDT.emsForCall then local okE, e = pcall(MDT.emsForCall, cid, c) r.ems = okE and e or nil end   -- 2.5.0
         return r
     end)
 

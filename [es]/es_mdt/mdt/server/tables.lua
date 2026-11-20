@@ -693,6 +693,56 @@ local DEFS = {
         PRIMARY KEY (`id`),
         KEY `idx_es_tow_officer` (`officerCharId`, `createdAt`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    -- 2.5.0: EMS. A patient's blood type and the short note medics keep (allergies, conditions)
+    { 'es_mdt_ems_patients', [[CREATE TABLE IF NOT EXISTS `es_mdt_ems_patients` (
+        `charId` INT UNSIGNED NOT NULL,
+        `blood` VARCHAR(3) NULL,
+        `note` VARCHAR(300) NULL,
+        `updatedBy` INT UNSIGNED NULL,
+        `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`charId`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    -- 2.5.0: the quick incident report after a call: what happened, what was done (keys of Config.EMS.actions), a line
+    { 'es_mdt_ems_reports', [[CREATE TABLE IF NOT EXISTS `es_mdt_ems_reports` (
+        `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `deptId` INT UNSIGNED NOT NULL,
+        `callId` INT UNSIGNED NULL,
+        `charId` INT UNSIGNED NULL,
+        `patientName` VARCHAR(80) NULL,
+        `what` VARCHAR(200) NOT NULL,
+        `actions` VARCHAR(120) NOT NULL DEFAULT '',
+        `note` VARCHAR(500) NULL,
+        `street` VARCHAR(120) NULL,
+        `byCharId` INT UNSIGNED NOT NULL,
+        `byName` VARCHAR(80) NULL,
+        `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updatedAt` TIMESTAMP NULL,
+        PRIMARY KEY (`id`),
+        KEY `idx_es_emsr_call` (`callId`),
+        KEY `idx_es_emsr_char` (`charId`, `id`),
+        KEY `idx_es_emsr_by` (`byCharId`, `createdAt`),
+        CONSTRAINT `fk_es_emsr_dept` FOREIGN KEY (`deptId`) REFERENCES `es_departments` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
+    -- 2.5.0: death records (a character's death in RP). Undone ones stay (revokedAt) for the history
+    { 'es_mdt_deaths', [[CREATE TABLE IF NOT EXISTS `es_mdt_deaths` (
+        `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `charId` INT UNSIGNED NOT NULL,
+        `name` VARCHAR(80) NOT NULL,
+        `deptId` INT UNSIGNED NULL,
+        `cause` VARCHAR(200) NOT NULL,
+        `place` VARCHAR(120) NULL,
+        `diedAt` DATETIME NULL,
+        `caseId` INT UNSIGNED NULL,
+        `autopsyRef` VARCHAR(80) NULL,
+        `byCharId` INT UNSIGNED NOT NULL,
+        `byName` VARCHAR(80) NULL,
+        `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `revokedAt` DATETIME NULL,
+        `revokedBy` VARCHAR(80) NULL,
+        `revokeNote` VARCHAR(200) NULL,
+        PRIMARY KEY (`id`),
+        KEY `idx_es_death_char` (`charId`, `revokedAt`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4]] },
 }
 
 function Tables.ensure()

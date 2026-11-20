@@ -2,7 +2,7 @@
 
 One resource for police, sheriff, state police, rangers, EMS and the courts on a [WHIP](https://whipfx.net) FiveM server:
 
-- **MDT** (`/mdt`, F6): dispatch, reports, warrants, BOLOs, fines as invoices, roadside tickets, impound, cases, evidence, weapons registry, firearm permits, a radar and plate reader, FTO, and personnel.
+- **MDT** (`/mdt`, F6): dispatch, reports, warrants, BOLOs, fines as invoices, roadside tickets, impound, cases, evidence, weapons registry, firearm permits, a radar and plate reader, FTO, and personnel. EMS departments get their own side of the MDT (2.5.0): medical calls, patients, incident reports, medical bills, death records and stats.
 - **Departments** (`/departments`): departments, logos, ranks, permissions, rosters, duty time, leave, certifications, and department health.
 - **DOJ** (`/doj` tablet, `/court` portal): court cases, hearings, judge-signed warrants, verdicts and sentences, pleas, appeals, a clerk desk, the bar and attorneys, petitions, and records.
 
@@ -12,7 +12,7 @@ Optional companion: **[whip_jobs](https://github.com/Dagermor/whip_jobs)** (the 
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.4.2).** There is no bail system: bail is off by default (`Config.Bail.enabled` in `es_mdt/doj/config.lua`). Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.5.0).** There is no bail system: bail is off by default (`Config.Bail.enabled` in `es_mdt/doj/config.lua`). Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -59,7 +59,7 @@ All screenshots use made-up test data.
 | es_jail (in this repo) or another jail script | optional | serving sentences. Without one, sentences are recorded in the MDT and their time is counted there |
 | whip_evidence (LeSiiN) | optional | forensics. Evidence is uploaded to MDT cases. See [docs/whip_evidence_integration.md](docs/whip_evidence_integration.md) |
 | whip_gunny | optional | weapons registry (gun serials) |
-| [whip_jobs](https://github.com/Dagermor/whip_jobs) (was es_jobs) | optional | the job pack: stations, duty, pay, uniforms, EMS, the courthouse desks. Start it after es_mdt. Without it, the courthouse clerk window in `doj/config.lua` is used |
+| [whip_jobs](https://github.com/Dagermor/whip_jobs) (was es_jobs) | optional | the job pack: stations, duty, pay, uniforms, EMS, the courthouse desks. Start it after es_mdt. The MDT's EMS side reads treatments, bills and EMS stats from whip_jobs **0.6.0+**. Without it, the courthouse clerk window in `doj/config.lua` is used |
 | whip_phone | optional | owner texts and the Court phone app |
 
 ## Install
@@ -341,7 +341,7 @@ Every option is commented in its file. Most of `mdt/config.lua` can also be chan
 
 ### Permissions
 
-Permissions are WHIP job permissions on each department's ranks, and you switch them per rank in `/departments`. Examples: `mdt_view`, `mdt_reports_write`, `warrants_request`, `warrants_issue`, `fines_issue`, `cases_create`, `cases_close`, `evidence_upload`, `bolo_manage`, `fto_train`, `personnel_manage`, `weapons_register`, `permits_manage`, `jail_cuff`, `jail_manage`, `doj_cases`, `doj_sign`, `doj_prosecute`, `doj_defend`, `doj_clerk`, `doj_bar` and `doj_seal`. The full list with descriptions is `Config.Permissions` in `departments/config.lua`.
+Permissions are WHIP job permissions on each department's ranks, and you switch them per rank in `/departments`. Examples: `mdt_view`, `medical_records`, `ems_reports`, `ems_deaths`, `ems_bills_waive` (EMS), `mdt_reports_write`, `warrants_request`, `warrants_issue`, `fines_issue`, `cases_create`, `cases_close`, `evidence_upload`, `bolo_manage`, `fto_train`, `personnel_manage`, `weapons_register`, `permits_manage`, `jail_cuff`, `jail_manage`, `doj_cases`, `doj_sign`, `doj_prosecute`, `doj_defend`, `doj_clerk`, `doj_bar` and `doj_seal`. The full list with descriptions is `Config.Permissions` in `departments/config.lua`.
 
 ## Jail integration for developers
 
@@ -425,6 +425,21 @@ Prefer events? Use `TriggerEvent('es_mdt:jail:reportRelease', charId, info)` and
 ### Calling the jail from other resources
 
 `exports.es_mdt:JailSend(info)`, `exports.es_mdt:JailRelease(charId, byCharId, reason)` and `exports.es_mdt:JailIsJailed(charId)` all go through whichever provider is active.
+
+## The EMS side of the MDT (2.5.0)
+
+Members of an **EMS** department (type `ems` in `/departments`) open the same `/mdt`, with EMS tabs instead of police records. It is built for RP, so it stays short: no vitals, medical codes, prescriptions or insurance.
+
+- **EMS dashboard:** the active medical calls (P1 first) with the units on each, **Attach & en route** in one press (sets the GPS), your status, the crew on duty, today's numbers, and the calls you still owe a report for.
+- **Patients:** search by name, phone or ID. Shows the blood type (from the ID until a medic sets it), a short note (allergies, conditions), recent treatments and open bills from whip_jobs, incident reports, custody (in jail or cuffed, from es_jail) and a death record. EMS does not see police records.
+- **Incident reports:** after a call, what happened, what was done (treated, revived, transported, refused care, pronounced dead) and a line of notes. The report is on the call (a call note too) and on the patient. The writer can edit it for 24 hours; supervisors always can.
+- **Medical bills:** what patients owe (open, paid, waived). Supervisors waive a bill with a reason, and it is logged.
+- **Death records:** a supervisor marks a character deceased (cause, place, time) and can link a whip_evidence post-mortem report that was uploaded to an MDT case. Police see it on the person. Undoing one keeps it, struck out.
+- **Roster & stats:** calls, treatments, revives and reports per member over 7, 30 or 90 days, a top-3 podium and duty hours (for leaders). Ranks, hiring and duty use the same Department tab as the police.
+- **What the police see:** a "Deceased" banner and a "Treated by EMS" tag on a person, and what EMS did on a call ("EMS: Revived, Transported"). Nothing more.
+- Permissions (EMS ranks, `/departments`): `medical_records` and `ems_reports` from level 10; `ems_deaths` and `ems_bills_waive` from level 80 (supervisors). Existing EMS ranks get them once by level.
+- Settings: `Config.EMS` in `mdt/config.lua` (blood types, the "what was done" list, how long reports are asked for and editable, how many days police see "treated").
+- Fully controller friendly: LB/RB switch the tabs, A presses, B closes.
 
 ## Tickets, invoices, contests and impound (2.1.0)
 
@@ -577,7 +592,7 @@ es_mdt creates and updates its own tables, so there is no SQL to import. Each ta
 1. WHIP's `EnsureTable` creates any missing table and runs the table's migrations that haven't run yet. The migrations are recorded in `schema_migrations`.
 2. **The schema self-check** (2.0.5, `server/schema.lua`) compares each table with its `CREATE TABLE` in `information_schema` and adds any missing column or key. It never drops, renames or changes anything that is already there, and it doesn't add foreign keys. So a database that missed a migration, for any reason, is completed at the next start.
 
-Each column or key it adds is logged as `[es_mdt] schema: added missing column ...`. If it cannot add one, the server console shows a red **SCHEMA ERROR** block with the SQL to run by hand, and WHIP lists it as a start problem. About 20 seconds after start, `[es_mdt] schema check: 68 tables OK` confirms everything is in place.
+Each column or key it adds is logged as `[es_mdt] schema: added missing column ...`. If it cannot add one, the server console shows a red **SCHEMA ERROR** block with the SQL to run by hand, and WHIP lists it as a start problem. About 20 seconds after start, `[es_mdt] schema check: 75 tables OK` confirms everything is in place.
 
 ### Call retention
 
@@ -597,6 +612,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 
 ## What is tested
 
+- **Tested for 2.5.0:** an EMS sim against the real code (permissions by level, the 17 EMS calls, blood types, reports on calls, waiving bills, death records with a post-mortem, what police see, stats), whip_jobs 0.6.0 export sims, every earlier es_mdt and whip_jobs sim, luac on every file, and browser tests of every EMS tab and the police view (no JS errors). Started on a live server: the new tables and permissions.
 - **Tested for 2.2.0 to 2.4.2:** Lua sims against the real code (whip_jobs / es_jobs server, client, EMS and DOJ sims; the post-mortem impact sim wev241; all earlier es_mdt sims), luac on every file, and browser tests: bail removed from the DOJ tablet and portal (10 checks), the Court phone app in a copy of the whip_phone page (29 checks), the DOJ station spots and New department locations (21 checks), and the post-mortem impact rows (7 checks), with no page errors. On the live server: the courthouse station, the clerk window, the public defender office, the judge's chambers and no bail anywhere were checked in game.
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.

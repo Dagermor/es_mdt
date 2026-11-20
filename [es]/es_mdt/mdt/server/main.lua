@@ -19,7 +19,9 @@ local PERMS = { 'mdt_view', 'mdt_reports_write', 'mdt_reports_delete', 'warrants
     'bolo_manage', 'fto_train', 'fto_manage', 'loa_manage', 'canHire', 'canFire', 'canPromote', 'canDemote', 'canManage',
     'weapons_register', 'weapons_manage', 'licenses_manage', 'announce', 'evidence_collect', 'evidence_lab', 'evidence_manage', 'cases_create', 'cases_close', 'jail_cuff', 'jail_manage', 'personnel_manage', 'permits_manage',
     -- 2.1.0: roadside tickets and impound (added to every law department's permission list by departments/server/main.lua)
-    'tickets_issue', 'impound_vehicle', 'impound_hold', 'impound_override', 'impound_lot' }
+    'tickets_issue', 'impound_vehicle', 'impound_hold', 'impound_override', 'impound_lot',
+    -- 2.5.0: the EMS side (EMS departments: patients, incident reports, bills, death records)
+    'medical_records', 'ems_reports', 'ems_bills_waive', 'ems_deaths' }
 
 -- ---------------------------------------------------------------- helpers
 
@@ -262,6 +264,22 @@ local function verCheck(k, ver, c)
 end
 local function bump(k, c) Ver[k] = { n = verOf(k) + 1, by = c.charId, name = c.name, at = os.time() } end
 
+-- 2.5.0: an EMS department's members get the EMS side of the MDT, not police records (and the police not the medical
+-- side): these calls are refused to EMS (staff excepted); `opts.ems` calls are for EMS only (and staff).
+local LAW_ONLY = {}
+for _, k in ipairs({ 'dashboard', 'people', 'person', 'profileSave', 'vehicles', 'vehicle', 'vehicleSave', 'penalSave', 'reports', 'report',
+    'reportSave', 'reportDelete', 'fineReport', 'fineCustom', 'fineAct', 'warrants', 'warrantCounts', 'warrantSave', 'warrantAct',
+    'bolos', 'boloSave', 'boloClose', 'weaponTypes', 'weaponOverview', 'weapons', 'weapon', 'weaponRegister', 'weaponAct', 'licenseAct',
+    'cases', 'caseFind', 'case', 'caseSave', 'caseStatus', 'casePerson', 'caseLink', 'reportCase', 'casePurge',
+    'evStatus', 'evList', 'evGet', 'evForReport', 'evLink', 'evUnlink', 'evSources', 'evAttachMany', 'evNote', 'evDestroy', 'evRelease',
+    'evRoll', 'evRollPhoto', 'evPhoto', 'evPrintsTake', 'evPrintsOf', 'evLockers', 'evImage',
+    'wevList', 'wevUpload', 'wevPhoto', 'wevLocker', 'wevReport', 'wevReportLink',
+    'mugshotPrep', 'mugshotTake', 'mugshotLink', 'mugshotRoll', 'mugshots', 'mugshot', 'mugshotProfile',
+    'jailStatus', 'jailList', 'jailRelease', 'sendToJail', 'permits', 'permitPhoto', 'permitRecheck', 'permitDecide',
+    'tkForm', 'tkIssue', 'tkStatus', 'tickets', 'ticket', 'tkStatement', 'tkVoid',
+    'impForm', 'impSave', 'impList', 'impGet', 'impVehicle', 'impHold', 'impRelease' }) do LAW_ONLY[k] = true end
+local function isEmsCtx(c) return c and c.dept and c.dept.type == 'ems' end
+
 local function cb(name, opts, fn)
     if opts.lock then
         local inner, kind = fn, opts.lock
@@ -284,6 +302,10 @@ local function cb(name, opts, fn)
         if not c then return false, why end
         Seen[source] = GetGameTimer()
         if not (c.perms.mdt_view or c.staff or opts.anyRank) then return false, 'Your rank cannot use the MDT' end
+        if not c.staff then
+            if opts.ems and not isEmsCtx(c) then return false, 'That part of the MDT is for EMS' end
+            if LAW_ONLY[name] and isEmsCtx(c) then return false, 'That part of the MDT is for law enforcement' end
+        end
         if opts.perm or opts.write then
             local no = need(c, opts.perm, opts.write)
             if no then return false, no end
@@ -365,6 +387,8 @@ local function openData(c)
         urgent = MDT.urgentAnnouncements and MDT.urgentAnnouncements(c) or {},   -- 2.0.4: shown once when the MDT opens
         trainee = ED:IsTrainee(d.id, c.charId) == true,
         court = GetResourceState('es_doj') == 'started',   -- 1.10.0: the Court (DOJ) page in the nav
+        ems = d.type == 'ems' and (Config.EMS or {}).enabled ~= false,   -- 2.5.0: the EMS side instead of the police tabs
+        emsCfg = d.type == 'ems' and MDT.emsPageConfig and MDT.emsPageConfig() or nil,
         config = { statuses = Config.UnitStatuses, reportTypes = Config.ReportTypes, personFlags = Config.PersonFlags,
             vehicleFlags = Config.VehicleFlags, dept = ED:GetConfig(),
             chargeOverride = { maxFineMult = (Config.ChargeOverride or {}).maxFineMult or 1.0, maxMonthsMult = (Config.ChargeOverride or {}).maxMonthsMult or 1.0 },
@@ -1407,6 +1431,7 @@ local function register()
         local jobs = ED:GetPlayerDepartments({ charId = cid }) or {}
         p.departments = {}
         for _, j in ipairs(jobs) do p.departments[#p.departments + 1] = { short = j.short, roleName = j.roleName, callsign = j.callsign } end
+        if MDT.emsForPolice then local okE, e = pcall(MDT.emsForPolice, cid) p.ems = okE and e or nil end   -- 2.5.0: deceased / treated by EMS
         return p
     end)
 
@@ -2480,6 +2505,8 @@ Whip.register(function()
     if MDT.registerTexts then MDT.registerTexts() end
     if MDT.registerTickets then MDT.registerTickets()
     else print('^1[es_mdt] server/tickets.lua is not loaded: tickets and invoices are OFF. Run `refresh` then `ensure es_mdt`.^7') end
+    if MDT.registerEms then MDT.registerEms()   -- 2.5.0
+    else print('^1[es_mdt] server/ems.lua is not loaded: the EMS side of the MDT is OFF. Run `refresh` then `ensure es_mdt`.^7') end
     if MDT.registerImpound then MDT.registerImpound()
     else print('^1[es_mdt] server/impound.lua is not loaded: impound is OFF. Run `refresh` then `ensure es_mdt`.^7') end
     -- automatic "failure to pay" warrants: on start, then every few minutes

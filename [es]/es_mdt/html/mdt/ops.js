@@ -107,6 +107,7 @@
         ${c.message ? `<div class="c-say">“${esc(c.message)}”</div>` : ''}
         <div class="facts"><span><i>Location</i>${esc(c.street || '—')}${c.radius ? ` <em class="hint">· search area ~${c.radius} m</em>` : ''}</span><span><i>Caller</i>${esc(c.callerName || '—')}</span><span><i>Phone</i>${esc(c.callerPhone || '—')}</span></div>
         ${detailsHtml(c.details)}
+        ${HOOK.callEms ? HOOK.callEms(c) : ''}
         <div class="link-row cl-links">${links.map(([k, v]) => `<span class="link-call small kept" title="Kept: a linked call is never removed by the call retention">🔗 ${k} #${v}${active || c.canClose ? ` <b data-unlink="${k}" title="Remove the link">×</b>` : ''}</span>`).join('')}
           ${!S.ctx.readOnly && (c.attached || c.canClose) ? '<span class="link-call small ghost" id="cd-link" title="Link a report, warrant or case: the call is then kept for good">＋ Link report / warrant / case</span>' : ''}</div>
         <div class="row">${c.x != null ? '<button class="btn" id="cd-route" data-probe-press>⌖ Set waypoint</button>' : ''}
@@ -121,6 +122,7 @@
           ${active && !S.ctx.readOnly ? '<div class="note-add"><input type="text" id="cd-note" maxlength="500" placeholder="Add a note… (Enter)"><button class="btn small" id="cd-note-go">Add</button></div>' : ''}</div>
       </div>`;
     const reload = () => { dList(true); dDetail(id, true); };
+    if (HOOK.callEmsWire) HOOK.callEmsWire(box, c, reload);   // 2.5.0
     if ($('#cd-route')) $('#cd-route').onclick = (e) => busy(e.currentTarget, async () => said(await call('callRoute', { id }), 'Waypoint set'));
     if ($('#cd-attach')) $('#cd-attach').onclick = (e) => busy(e.currentTarget, async () => { const x = await call('callAttach', { id, route: true }); if (said(x, x.ok && x.data.units > 1 ? 'Attached with your partner · GPS set' : 'Attached · GPS set')) reload(); });
     if ($('#cd-detach')) $('#cd-detach').onclick = (e) => busy(e.currentTarget, async () => { if (said(await call('callDetach', { id }), 'Detached')) reload(); });

@@ -1,5 +1,13 @@
 # Changelog
 
+## es_mdt 2.5.0 (2026-11-20)
+
+- **The EMS side of the MDT.** Members of an EMS department get EMS tabs in `/mdt`: EMS dashboard (medical calls P1 first, units on each, one-press attach & en route, crew on duty, calls waiting for your report), Patients (blood type, a short note, treatments and open bills, incident reports, custody, death record), Incident reports, Medical bills (supervisors waive), Death records (with a linked whip_evidence post-mortem) and Roster & stats (leaderboard). Kept simple for RP.
+- **Police see a short line only:** "Deceased" and "Treated by EMS" on a person, "EMS: Revived, Transported" on a call. EMS sees custody but not police records; the server refuses police record calls from EMS departments.
+- New permissions for EMS ranks: `medical_records`, `ems_reports` (level 10), `ems_deaths`, `ems_bills_waive` (level 80). The stock EMS rule no longer gives every permission from level 30. Existing ranks get them once by level.
+- New tables `es_mdt_ems_patients`, `es_mdt_ems_reports`, `es_mdt_deaths` (created on start). Settings: `Config.EMS` in `mdt/config.lua`.
+- Treatments, bills and stats need **whip_jobs 0.6.0**. Without it the EMS side still works (calls, reports, deaths) and says what is missing.
+
 ## es_mdt 2.4.2 (2026-11-20)
 
 - **The job pack is now [whip_jobs](https://github.com/Dagermor/whip_jobs)** (es_jobs renamed in its 0.5.0). es_mdt finds it under either name: Departments → Locations, New department's usual spots, the "person down" hand-off and the courthouse desks work with `whip_jobs` or an older `es_jobs` (`EsSuite.jobsRes` in `shared/suite.lua`).

@@ -95,20 +95,22 @@ end
 
 RegisterNUICallback('close', function(_, cb) close() cb({ ok = true }) end)
 
--- 2.2.0: "Set up locations": the job pack's station editor (es_jobs), on this department
+-- 2.2.0: "Set up locations": the job pack's station editor (whip_jobs; es_jobs before 0.5.0), on this department
 RegisterNUICallback('jobsLocations', function(d, cb)
-    if GetResourceState('es_jobs') ~= 'started' then return cb({ ok = false, why = 'The job pack (es_jobs) is not running on this server' }) end
+    local res = EsSuite.jobsRes(true)
+    if not res then return cb({ ok = false, why = 'The job pack (whip_jobs) is not running on this server' }) end
     close()
     cb({ ok = true })
     local jobId = type(d) == 'table' and tonumber(d.jobId) or nil
     local starter = type(d) == 'table' and d.starter == true   -- 2.4.0: a new department: its usual spots, placed one after another
-    CreateThread(function() Wait(200) exports.es_jobs:OpenStations({ jobId = jobId, starter = starter or nil }) end)
+    CreateThread(function() Wait(200) exports[res]:OpenStations({ jobId = jobId, starter = starter or nil }) end)
 end)
 
 -- 2.4.0: the spots (and their peds) a department of this type gets on New department, from the job pack
 RegisterNUICallback('jobsStarter', function(d, cb)
-    if GetResourceState('es_jobs') ~= 'started' then return cb({ ok = true, data = false }) end
-    local ok, list = pcall(function() return exports.es_jobs:GetStarter(type(d) == 'table' and tostring(d.type or '') or '') end)
+    local res = EsSuite.jobsRes(true)
+    if not res then return cb({ ok = true, data = false }) end
+    local ok, list = pcall(function() return exports[res]:GetStarter(type(d) == 'table' and tostring(d.type or '') or '') end)
     cb({ ok = true, data = ok and type(list) == 'table' and list or false })
 end)
 

@@ -13,3 +13,15 @@ if Whip and Whip.command then
         return command(name, opts, fn)
     end
 end
+
+-- 2.4.2: the job pack is whip_jobs (named es_jobs before its 0.5.0); either name works. started = true: only a
+-- running one; otherwise any installed one (stopped or starting too). nil when neither is on this server.
+EsSuite.JobsNames = { 'whip_jobs', 'es_jobs' }
+function EsSuite.jobsRes(started)
+    for _, n in ipairs(EsSuite.JobsNames) do
+        local s = GetResourceState(n)
+        if started then if s == 'started' then return n end
+        elseif s ~= 'missing' and s ~= 'unknown' then return n end
+    end
+    return nil
+end

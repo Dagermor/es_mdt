@@ -19,8 +19,8 @@ Config.Warrants = {
 }
 
 -- Courthouse: the name and the hearing rooms. 2.4.0: the court's desks and peds (clerk window, courtroom, judge's chambers,
--- DA and public defender offices) are station spots in the job pack (es_jobs): /departments -> the DOJ -> Locations, or
--- /w -> Stations. `desks` and `blip` below are only used on a server without es_jobs; with it, es_jobs moves them once
+-- DA and public defender offices) are station spots in the job pack (whip_jobs): /departments -> the DOJ -> Locations, or
+-- /w -> Stations. `desks` and `blip` below are only used on a server without whip_jobs; with it, whip_jobs moves them once
 -- into a "Courthouse" station (Los Santos City Hall, Rockford Hills) and they are edited there.
 Config.Courthouse = {
     label = 'Courthouse',

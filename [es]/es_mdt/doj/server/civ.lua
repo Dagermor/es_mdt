@@ -355,7 +355,7 @@ function DOJ.registerPortal()
     -- the courthouse window and blip (the client asks once)
     Whip.core:SecureCallback('es_doj:pub:places', { rateLimit = 2000, burst = 3, params = {} }, function()
         local out = {}
-        -- 2.4.0: with the job pack installed, the DOJ's stations (es_jobs) are the clerk windows; these are only a fallback
+        -- 2.4.0: with the job pack installed, the DOJ's stations (whip_jobs) are the clerk windows; these are only a fallback
         if not DOJ.stationsOwnDesks() then
             for i, D in ipairs(Config.Courthouse.desks or {}) do out[#out + 1] = { i = i, label = D.label, x = D.coords.x, y = D.coords.y, z = D.coords.z } end
         end

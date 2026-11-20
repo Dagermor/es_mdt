@@ -2171,9 +2171,10 @@ function MDT.registerOps()
         local dead = WC:IsPlayerDead(source) == true
         if kind == 'down' then
             if not dead then return end
-            -- 2.2.2: es_jobs (0.3.0+) files its own wounded / down calls; this one stays quiet then
-            if GetResourceState('es_jobs') == 'started' then
-                local okj, handles = pcall(function() return exports.es_jobs:HandlesDowns() end)
+            -- 2.2.2: the job pack (whip_jobs; es_jobs 0.3.0+) files its own wounded / down calls; this one stays quiet then
+            local jres = EsSuite.jobsRes(true)
+            if jres then
+                local okj, handles = pcall(function() return exports[jres]:HandlesDowns() end)
                 if okj and handles == true then return end
             end
             -- anyone on duty in a department has the panic button / is the help
@@ -2502,7 +2503,7 @@ function MDT.registerOps()
     end)
 end
 
--- ---------------------------------------------------------------- 2.2.2: for es_jobs (wounded / down calls)
+-- ---------------------------------------------------------------- 2.2.2: for the job pack (wounded / down calls)
 --- exports.es_mdt:GetCallUnits(callId) -> { active = bool, units = { { charId, name, callsign, deptShort, status } } } | nil
 MDT.getCallUnits = function(cid)
     cid = tonumber(cid)

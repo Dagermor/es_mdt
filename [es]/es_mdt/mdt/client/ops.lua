@@ -433,7 +433,7 @@ RegisterNetEvent('es_mdt:client:callMerged', function(d)
     if c then
         c.reports, c.priority = tonumber(d.reports) or c.reports, tonumber(d.priority) or c.priority
         if d.x then c.x, c.y, c.radius = d.x, d.y, tonumber(d.radius) end
-        -- 2.2.2: UpdateCall (es_jobs: a wounded person is now down) changes the title and text too
+        -- 2.2.2: UpdateCall (the job pack: a wounded person is now down) changes the title and text too
         if type(d.title) == 'string' and d.title ~= '' then c.title = d.title end
         if type(d.message) == 'string' then c.message = d.message end
         if d.critical ~= nil then c.critical = d.critical end

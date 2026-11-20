@@ -8,11 +8,11 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 - **Court phone app** (2.3.0): the `/court` portal as a **Court** app on whip_phone.
 
-Optional companion: **[es_jobs](https://github.com/Dagermor/es_jobs)** (the job pack): stations and peds placed in game, duty and pay by rank, armory, fleet, lockers and uniforms, police actions with es_jail's cuffs, EMS down states and the hospital desk, the impound clerk, the courthouse desks, and player-owned businesses. It reads departments and ranks from es_mdt and sends calls to its dispatch.
+Optional companion: **[whip_jobs](https://github.com/Dagermor/whip_jobs)** (the job pack; named es_jobs before its 0.5.0): stations and peds placed in game, duty and pay by rank, armory, fleet, lockers and uniforms, police actions with es_jail's cuffs, EMS down states and the hospital desk, the impound clerk, the courthouse desks, and player-owned businesses. It reads departments and ranks from es_mdt and sends calls to its dispatch.
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.4.1).** There is no bail system: bail is off by default (`Config.Bail.enabled` in `es_mdt/doj/config.lua`). Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.4.2).** There is no bail system: bail is off by default (`Config.Bail.enabled` in `es_mdt/doj/config.lua`). Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -59,7 +59,7 @@ All screenshots use made-up test data.
 | es_jail (in this repo) or another jail script | optional | serving sentences. Without one, sentences are recorded in the MDT and their time is counted there |
 | whip_evidence (LeSiiN) | optional | forensics. Evidence is uploaded to MDT cases. See [docs/whip_evidence_integration.md](docs/whip_evidence_integration.md) |
 | whip_gunny | optional | weapons registry (gun serials) |
-| [es_jobs](https://github.com/Dagermor/es_jobs) | optional | the job pack: stations, duty, pay, uniforms, EMS, the courthouse desks. Start it after es_mdt. Without it, the courthouse clerk window in `doj/config.lua` is used |
+| [whip_jobs](https://github.com/Dagermor/whip_jobs) (was es_jobs) | optional | the job pack: stations, duty, pay, uniforms, EMS, the courthouse desks. Start it after es_mdt. Without it, the courthouse clerk window in `doj/config.lua` is used |
 | whip_phone | optional | owner texts and the Court phone app |
 
 ## Install
@@ -597,7 +597,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 
 ## What is tested
 
-- **Tested for 2.2.0 to 2.4.1:** Lua sims against the real code (es_jobs server, client, EMS and DOJ sims; the post-mortem impact sim wev241; all earlier es_mdt sims), luac on every file, and browser tests: bail removed from the DOJ tablet and portal (10 checks), the Court phone app in a copy of the whip_phone page (29 checks), the DOJ station spots and New department locations (21 checks), and the post-mortem impact rows (7 checks), with no page errors. On the live server: the courthouse station, the clerk window, the public defender office, the judge's chambers and no bail anywhere were checked in game.
+- **Tested for 2.2.0 to 2.4.2:** Lua sims against the real code (whip_jobs / es_jobs server, client, EMS and DOJ sims; the post-mortem impact sim wev241; all earlier es_mdt sims), luac on every file, and browser tests: bail removed from the DOJ tablet and portal (10 checks), the Court phone app in a copy of the whip_phone page (29 checks), the DOJ station spots and New department locations (21 checks), and the post-mortem impact rows (7 checks), with no page errors. On the live server: the courthouse station, the clerk window, the public defender office, the judge's chambers and no bail anywhere were checked in game.
 
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
 - **Tested for 2.1.0:** in Lua tests against the real es_mdt code (tk210, 86 checks): invoices (due in 3 days, nothing charged at issue, the old behaviour when turned off); texts (the government number made once, phone_messages rows, a push only when online, the queue while offline, the portal copy, skipped without whip_phone); roadside tickets (penal-code prices, no felonies, the sign prompt only for the recipient, signed / refused / logged off / timed out, warnings with no fine, distance checks); contests (unsigned only, needs a reason, off when turned off, the deadline paused, reduce, uphold, lapse); impound (storage capped, holds, an override needs the permission and a reason, the owner pays only after a hold, a double payment is refused and refunded, the history kept). A database test on a scratch MariaDB database (fresh, an old 1.x shape and a 2.0.4 install) covers the new tables and the `002_invoices` migration. In browser tests (Chrome, 64 checks): the roadside ticket, parking and sign prompt, the paper, the street impound with its live photo preview, the tow, MDT Tickets, Impound lot, hold override, release and vehicle page, controller rings, the DOJ Ticket contests and ruling, and /court My tickets, contest, Impounded vehicles and Payments, with no page errors. All 24 earlier test files still pass. 2.1.1/2.1.2 add grant211 (10 checks: permission grants send only the added keys, so a rank holding an old unknown key still gets them, and a refused grant is retried).

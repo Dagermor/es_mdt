@@ -607,7 +607,7 @@ local function autoWarrants()
 end
 
 --- 2.1.0: money for a paid fine goes to the issuing department's job account (Config.FineToDepartment)
---- 2.2.0: money that went into a department's account, for es_jobs' Finances tab (a local server event: nothing moves)
+--- 2.2.0: money that went into a department's account, for whip_jobs' Finances tab (a local server event: nothing moves)
 local function deptIncome(jobId, amount, kind, note, charId)
     if jobId and amount and amount ~= 0 then TriggerEvent('es_mdt:server:deptIncome', jobId, amount, kind or 'fine', note, charId) end
 end

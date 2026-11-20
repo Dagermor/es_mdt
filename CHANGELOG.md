@@ -1,5 +1,10 @@
 # Changelog
 
+## es_mdt 2.4.2 (2026-11-20)
+
+- **The job pack is now [whip_jobs](https://github.com/Dagermor/whip_jobs)** (es_jobs renamed in its 0.5.0). es_mdt finds it under either name: Departments → Locations, New department's usual spots, the "person down" hand-off and the courthouse desks work with `whip_jobs` or an older `es_jobs` (`EsSuite.jobsRes` in `shared/suite.lua`).
+- No other changes; es_mdt keeps its name, tables, exports and events. whip_evidence is untouched.
+
 ## es_mdt 2.4.1 (2026-11-20)
 
 - **Post-mortem: impact speed and skid marks** (PR #2 by LeSiiN, for whip_evidence 4.2.6). A body hit by a car shows "Impact speed" (about lo–hi km/h, red from 60 km/h) and "Skid marks" (red when the car did not brake). The copy-as-text summary has the same line. The values are checked on the server. Reports from older whip_evidence (4.2.3 and earlier) have no impact data and look as before.

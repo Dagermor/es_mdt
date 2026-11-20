@@ -550,7 +550,7 @@ exports('IsImpounded', function(vehicleId)
     return true, { id = r.id, status = r.status, lot = r.lot, held = r.held, holdUntil = r.holdUntilTs, owed = r.owe.total, reason = r.reason }
 end)
 exports('GetImpounds', function(charId) return MDT.impoundsOf(tonumber(charId) or 0) end)
---- 2.2.1: es_jobs' impound clerk: the owner pays at the counter (as the court portal's Impound tab does). method 'bank' | 'cash'
+--- 2.2.1: the job pack's (whip_jobs) impound clerk: the owner pays at the counter (as the court portal's Impound tab does). method 'bank' | 'cash'
 exports('PayImpound', function(source, impoundId, method)
     local cid = WC:GetCharId(source)
     if not cid then return false, 'Load a character first' end

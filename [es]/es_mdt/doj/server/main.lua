@@ -101,7 +101,7 @@ Whip.register(function()
         tostring((Config.Warrants or {}).judgeOnly == true)))
 end)
 
--- 2.4.0: the job pack (es_jobs) reads the old hard-coded clerk windows once, to move them into a DOJ station
+-- 2.4.0: the job pack (whip_jobs) reads the old hard-coded clerk windows once, to move them into a DOJ station
 exports('GetCourthouse', function()
     local desks = {}
     for _, D in ipairs(Config.Courthouse.desks or {}) do

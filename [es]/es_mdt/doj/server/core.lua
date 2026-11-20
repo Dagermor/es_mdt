@@ -70,7 +70,7 @@ function DOJ.deposit(amount, reason)
     if not accts[1] then return false end
     local ok, why = WC:BankSystemDeposit(accts[1].accountId, amount, { reason = tostring(reason or 'Court'):sub(1, 120) })
     if not ok then print(('^3[es_doj] deposit of $%d failed: %s^7'):format(amount, tostring(why)))
-    else TriggerEvent('es_mdt:server:deptIncome', d.jobId, amount, 'court', tostring(reason or 'Court'):sub(1, 120)) end   -- 2.2.0: es_jobs' ledger
+    else TriggerEvent('es_mdt:server:deptIncome', d.jobId, amount, 'court', tostring(reason or 'Court'):sub(1, 120)) end   -- 2.2.0: whip_jobs' ledger
     return ok
 end
 
@@ -83,9 +83,9 @@ end
 
 --- A court notice to a person (kept in their portal; a toast when online). Returns the notice id.
 --- 2.3.1: bail is off unless Config.Bail.enabled (doj/config.lua)
---- 2.4.0: the job pack (es_jobs) is on this server: its DOJ stations are the court's desks and peds (placed in
---- /w -> Stations or Departments -> Locations), so Config.Courthouse.desks is not used (es_jobs moves it over once)
-function DOJ.stationsOwnDesks() local s = GetResourceState('es_jobs') return s ~= 'missing' and s ~= 'unknown' end
+--- 2.4.0: the job pack (whip_jobs) is on this server: its DOJ stations are the court's desks and peds (placed in
+--- /w -> Stations or Departments -> Locations), so Config.Courthouse.desks is not used (whip_jobs moves it over once)
+function DOJ.stationsOwnDesks() return EsSuite.jobsRes(false) ~= nil end   -- 2.4.2: whip_jobs or es_jobs
 
 function DOJ.bailOn() return (Config.Bail or {}).enabled == true end
 

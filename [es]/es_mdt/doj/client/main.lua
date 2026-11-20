@@ -23,7 +23,7 @@ end
 local function lists()
     return {
         caseKinds = Config.CaseKinds, stages = Config.Stages, hearingKinds = Config.HearingKinds, filingKinds = Config.FilingKinds,
-        rooms = Config.Courthouse.rooms, courthouse = Config.Courthouse.label, bondPercent = (Config.Bail or {}).bondPercent or 10,
+        rooms = Config.Courthouse.rooms, courthouse = Config.Courthouse.label, bail = (Config.Bail or {}).enabled == true, bondPercent = (Config.Bail or {}).bondPercent or 10,
         bailMax = (Config.Bail or {}).max or 1000000, sentence = Config.Sentence, fees = Config.Fees, portal = Config.PortalCommand, tablet = Config.Command,
         maxImage = (Config.Images or {}).maxBytes or 420000, judgeOnly = (Config.Warrants or {}).judgeOnly == true,
     }
@@ -57,6 +57,13 @@ RegisterCommand(Config.PortalCommand or 'court', function() CreateThread(functio
 -- DOJ member); "Police MDT" here goes back for someone who is in a police department too.
 AddEventHandler('es_doj:client:openTablet', function() CreateThread(function() openScreen('tablet') end) end)
 exports('OpenTablet', function() CreateThread(function() openScreen('tablet') end) end)
+-- 2.4.0: the job pack's DOJ spots (court clerk window, courtroom, public defender) open the portal on a page
+local PORTAL_VIEWS = { home = true, pay = true, mycases = true, lawyers = true, petitions = true, records = true, notices = true }
+exports('OpenPortal', function(o)
+    o = type(o) == 'table' and o or {}
+    local extra = { desk = o.desk and 1 or nil, view = PORTAL_VIEWS[o.view] and o.view or nil }
+    CreateThread(function() openScreen('portal', extra) end)
+end)
 RegisterNUICallback('toMdt', function(_, cb)
     cb({ ok = true })
     if mode ~= 'tablet' then return end
@@ -123,7 +130,7 @@ local function addDesks(P)
             description = P.label, reach = 2.0, seeFrom = 6.0,
             options = {
                 { id = 'portal', label = 'Court services (cases, payments, petitions)', onSelect = function() openScreen('portal', { desk = d.i }) end },
-                { id = 'pay', label = 'Pay a fine, fee or bail', onSelect = function() openScreen('portal', { desk = d.i, view = 'pay' }) end },
+                { id = 'pay', label = (Config.Bail or {}).enabled == true and 'Pay a fine, fee or bail' or 'Pay a fine or fee', onSelect = function() openScreen('portal', { desk = d.i, view = 'pay' }) end },
             },
         })
         if ok then added[#added + 1] = key end

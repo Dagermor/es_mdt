@@ -46,7 +46,7 @@ function DOJ.recordSummary(cid, opts)
             FROM `es_doj_cases` k WHERE k.`defendantCharId` = ? AND k.`test` = 0 AND k.`sealed` = 0 ORDER BY (k.`status` = 'open') DESC, k.`id` DESC LIMIT 15]], { cid }) or {}
         for _, r in ipairs(rows) do
             r.stageLabel = r.status == 'open' and DOJ.stageLabel(r.stage) or (r.status == 'dismissed' and 'Dismissed' or 'Closed')
-            r.bail = (r.bailStatus ~= 'none') and (r.bailStatus == 'set' and ('$' .. r.bailAmount .. ' set') or r.bailStatus) or nil
+            r.bail = DOJ.bailOn() and (r.bailStatus ~= 'none') and (r.bailStatus == 'set' and ('$' .. r.bailAmount .. ' set') or r.bailStatus) or nil
             r.bailStatus, r.bailAmount, r.stage = nil, nil, nil
         end
         out.cases = rows

@@ -45,8 +45,8 @@ function DOJ.registerAdmin()
         local names = DOJ.namesOf(ids)
         for _, h in ipairs(out.hearings) do h.judge = names[h.judgeCharId or 0] end
         out.recent = MySQL.query.await([[SELECT l.`caseId`,k.`number`,l.`what`,l.`detail`,l.`byLabel`,UNIX_TIMESTAMP(l.`createdAt`) AS `at` FROM `es_doj_log` l
-            JOIN `es_doj_cases` k ON k.`id` = l.`caseId` WHERE ? IN (k.`judgeCharId`, k.`prosecutorCharId`, k.`defenseCharId`) AND l.`byCharId` <> ?
-            ORDER BY l.`id` DESC LIMIT 10]], { me, me }) or {}
+            JOIN `es_doj_cases` k ON k.`id` = l.`caseId` WHERE ? IN (k.`judgeCharId`, k.`prosecutorCharId`, k.`defenseCharId`) AND l.`byCharId` <> ? AND (? = 1 OR l.`what` NOT LIKE 'bail%')
+            ORDER BY l.`id` DESC LIMIT 10]], { me, me, DOJ.bailOn() and 1 or 0 }) or {}
         out.judgeOnly = (Config.Warrants or {}).judgeOnly == true
         return out
     end)

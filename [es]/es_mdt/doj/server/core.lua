@@ -82,13 +82,24 @@ function DOJ.log(caseId, c, what, detail)
 end
 
 --- A court notice to a person (kept in their portal; a toast when online). Returns the notice id.
+--- 2.3.1: bail is off unless Config.Bail.enabled (doj/config.lua)
+--- 2.4.0: the job pack (es_jobs) is on this server: its DOJ stations are the court's desks and peds (placed in
+--- /w -> Stations or Departments -> Locations), so Config.Courthouse.desks is not used (es_jobs moves it over once)
+function DOJ.stationsOwnDesks() local s = GetResourceState('es_jobs') return s ~= 'missing' and s ~= 'unknown' end
+
+function DOJ.bailOn() return (Config.Bail or {}).enabled == true end
+
 function DOJ.notice(charId, title, body, caseId, kind, by, test)
     charId = DOJ.id(charId)
     if not charId then return nil end
     local nid = MySQL.insert.await('INSERT INTO `es_doj_notices` (`charId`,`caseId`,`kind`,`title`,`body`,`createdBy`,`test`) VALUES (?,?,?,?,?,?,?)',
         { charId, caseId, kind or 'notice', tostring(title):sub(1, 160), body and tostring(body):sub(1, 1000) or nil, by, test and 1 or 0 })
     local src = DOJ.notifyChar(charId, ('⚖ Court notice: %s  (/%s)'):format(tostring(title):sub(1, 90), Config.PortalCommand or 'court'), 'info')
-    if src then TriggerClientEvent('es_doj:client:notices', src) end
+    if src then
+        TriggerClientEvent('es_doj:client:notices', src)
+        -- 2.3.0: the Court phone app reads again (quietly: the notify above already told them)
+        if Config.PhoneApp ~= false and GetResourceState('whip_phone') == 'started' then pcall(function() exports.whip_phone:Push(src, 'court', 'notice', { id = nid }) end) end
+    end
     return nid
 end
 

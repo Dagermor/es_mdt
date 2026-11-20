@@ -1,7 +1,7 @@
 local _ENV = ESAPP('doj'); -- es_doj /dojtest: staff solo testing. Test rows are flagged (test = 1): test cases name YOU as the defendant, money
 -- is never taken (bills show and "pay" for free), nobody is jailed, renamed or given a real warrant.
 --   /dojtest role judge|prosecutor|da|defender|pd|clerk|attorney|leo|off   view the tablet as that role
---   /dojtest case        a criminal case against you (2 charges, a hearing in 10 minutes, bail set)
+--   /dojtest case        a criminal case against you (2 charges, a hearing in 10 minutes; bail set only when bail is on)
 --   /dojtest warrant     an arrest warrant request against you in the MDT (for the judges' queue)
 --   /dojtest petition name|business|expunge   a petition from you (clerk / judge queue)
 --   /dojtest service [n] n community service tasks for you
@@ -29,8 +29,12 @@ local function testCase(source, cid)
     local at = os.time() + 600
     MySQL.insert.await([[INSERT INTO `es_doj_hearings` (`caseId`,`kind`,`title`,`startsAt`,`minutes`,`room`,`test`,`createdBy`) VALUES (?,?,?,FROM_UNIXTIME(?),30,?,1,?)]],
         { res.id, 'arraignment', 'Arraignment — ' .. res.number, at, Config.Courthouse.rooms[1], cid })
-    local fid = DOJ.addFee(cid, 'bail', 5000, 'Bail: ' .. res.number, res.id, cid, true, 0)
-    MySQL.update.await("UPDATE `es_doj_cases` SET `stage` = 'arraignment', `bailStatus` = 'set', `bailAmount` = 5000, `bailFeeId` = ? WHERE `id` = ?", { fid, res.id })
+    if DOJ.bailOn() then
+        local fid = DOJ.addFee(cid, 'bail', 5000, 'Bail: ' .. res.number, res.id, cid, true, 0)
+        MySQL.update.await("UPDATE `es_doj_cases` SET `stage` = 'arraignment', `bailStatus` = 'set', `bailAmount` = 5000, `bailFeeId` = ? WHERE `id` = ?", { fid, res.id })
+    else
+        MySQL.update.await("UPDATE `es_doj_cases` SET `stage` = 'arraignment' WHERE `id` = ?", { res.id })
+    end
     DOJ.refresh('cases')
     return res
 end
@@ -90,7 +94,7 @@ function DOJ.registerTest()
             return reply(source, ('DOJ tablet: viewing as %s (/dojtest role off to stop)'):format(r), 'success')
         elseif sub == 'case' then
             local res, why = testCase(source, cid)
-            return reply(source, res and ('Test case %s filed against you (bail $5,000 set, arraignment in 10 min). /%s or /%s'):format(res.number, Config.Command, Config.PortalCommand) or why, res and 'success' or 'error')
+            return reply(source, res and ('Test case %s filed against you (%sarraignment in 10 min). /%s or /%s'):format(res.number, DOJ.bailOn() and 'bail $5,000 set, ' or '', Config.Command, Config.PortalCommand) or why, res and 'success' or 'error')
         elseif sub == 'warrant' then
             if GetResourceState('es_mdt') ~= 'started' then return reply(source, 'es_mdt is not running', 'error') end
             local dept

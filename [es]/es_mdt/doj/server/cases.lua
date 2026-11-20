@@ -100,6 +100,7 @@ end
 
 -- ---------------------------------------------------------------- money: fees and bail
 function DOJ.addFee(charId, kind, amount, reason, caseId, by, test, dueDays)
+    if kind == 'bail' and not DOJ.bailOn() then return nil end   -- 2.3.1: no bail
     amount = math.floor(tonumber(amount) or 0)
     if amount < 1 or not charId then return nil end
     dueDays = tonumber(dueDays) or 0
@@ -225,9 +226,9 @@ local function caseFull(c, k, side, access)
         k.subpoenas = MySQL.query.await([[SELECT `id`,`hearingId`,`charId`,`kind`,`details`,`status`,`requestedBy`,`issuedBy`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`
             FROM `es_doj_subpoenas` WHERE `caseId` = ? ORDER BY `id`]], { k.id }) or {}
         for _, s in ipairs(k.subpoenas) do ids[#ids + 1] = s.charId ids[#ids + 1] = s.requestedBy end
-        k.log = MySQL.query.await('SELECT `id`,`what`,`detail`,`byLabel`,UNIX_TIMESTAMP(`createdAt`) AS `at` FROM `es_doj_log` WHERE `caseId` = ? ORDER BY `id` DESC LIMIT 80', { k.id }) or {}
+        k.log = MySQL.query.await('SELECT `id`,`what`,`detail`,`byLabel`,UNIX_TIMESTAMP(`createdAt`) AS `at` FROM `es_doj_log` WHERE `caseId` = ? AND (? = 1 OR `what` NOT LIKE \'bail%\') ORDER BY `id` DESC LIMIT 80', { k.id, DOJ.bailOn() and 1 or 0 }) or {}
         k.fees = MySQL.query.await([[SELECT `id`,`charId`,`kind`,`amount`,`reason`,`status`,`method`,UNIX_TIMESTAMP(`dueAt`) AS `dueAt`,UNIX_TIMESTAMP(`paidAt`) AS `paidAt`
-            FROM `es_doj_fees` WHERE `caseId` = ? ORDER BY `id`]], { k.id }) or {}
+            FROM `es_doj_fees` WHERE `caseId` = ? AND (? = 1 OR `kind` <> 'bail') ORDER BY `id`]], { k.id, DOJ.bailOn() and 1 or 0 }) or {}
         k.sentences = MySQL.query.await([[SELECT `id`,`source`,`fine`,`months`,`service`,`probationDays`,`restitution`,`notes`,`jailed`,`status`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`
             FROM `es_doj_sentences` WHERE `caseId` = ? ORDER BY `id`]], { k.id }) or {}
         -- the police side: the MDT report and the MDT case's evidence (discovery)
@@ -269,6 +270,7 @@ local function caseFull(c, k, side, access)
     k.test = isTest(k)
     k.side, k.access = side, access
     k.bond = math.ceil((k.bailAmount or 0) * ((Config.Bail or {}).bondPercent or 10) / 100)
+    if not DOJ.bailOn() then k.bond, k.bailStatus, k.bailAmount, k.bailFeeId = nil, nil, nil, nil end
     -- what this person may do (the page shows buttons; the server checks again)
     local open = not closed(k)
     local judge = c.staff or (c.r.judge and (not k.judgeCharId or k.judgeCharId == c.charId))
@@ -290,7 +292,7 @@ local function caseFull(c, k, side, access)
         pleaApprove = W and open and judge,
         verdict = W and open and judge and k.kind ~= 'appeal' and (k.verdict == 'none'),
         sentence = W and open and judge and (k.verdict == 'guilty' or k.verdict == 'plaintiff'),
-        bail = W and open and judge and k.kind ~= 'civil' and k.defendantCharId ~= nil,
+        bail = DOJ.bailOn() and W and open and judge and k.kind ~= 'civil' and k.defendantCharId ~= nil,
         close = W and open and (judge or (side == 'prosecution' and k.verdict == 'none')),
         appeal = W and not open and k.kind ~= 'appeal' and (side == 'defense' or side == 'prosecution' or c.staff),
         appealRule = W and open and k.kind == 'appeal' and judge,
@@ -584,7 +586,7 @@ function DOJ.registerCases()
             DOJ.log(k.id, c, 'hearing_' .. act, ('%s: %s%s'):format(h.title or 'Hearing', act, outcome ~= '' and (' — ' .. outcome) or ''))
             if act == 'cancelled' then tellParties(k, ('Hearing cancelled: %s'):format(h.title or k.number), outcome, 'hearing', c, c.charId) end
             if act == 'noshow' and k.defendantCharId then
-                DOJ.notice(k.defendantCharId, ('You missed court: %s'):format(k.number), 'The judge may forfeit your bail and issue a bench warrant. Contact the court.', k.id, 'hearing', c.charId, isTest(k))
+                DOJ.notice(k.defendantCharId, ('You missed court: %s'):format(k.number), DOJ.bailOn() and 'The judge may forfeit your bail and issue a bench warrant. Contact the court.' or 'The judge may issue a bench warrant. Contact the court.', k.id, 'hearing', c.charId, isTest(k))
             end
         end
         DOJ.refresh('calendar')
@@ -900,6 +902,7 @@ function DOJ.registerCases()
 
     -- ------------------------------------------------------------ bail and bond
     cb('bail', { role = 'judge', write = true }, function(c, d)
+        if not DOJ.bailOn() then return false, 'This court has no bail' end
         local k, why = load(c, d.caseId, true)
         if not k then return false, why end
         local okj, e = judgeOf(c, k) if not okj then return false, e end

@@ -58,7 +58,7 @@ Config.Permissions = {
     doj = {
         { key = 'doj_view',       label = 'DOJ: open the tablet (cases, calendar, records)' },
         { key = 'doj_cases',      label = 'DOJ: file and manage court cases, schedule hearings' },
-        { key = 'doj_sign',       label = 'Judge: sign warrants, rule, verdicts, sentences, bail' },
+        { key = 'doj_sign',       label = 'Judge: sign warrants, rule, verdicts, sentences' },
         { key = 'doj_deny',       label = 'Judge: deny warrants' },
         { key = 'doj_prosecute',  label = 'Prosecutor (DA office): charge, prosecute, offer plea deals' },
         { key = 'doj_defend',     label = 'Public defender: defend, answer plea offers' },
@@ -153,12 +153,12 @@ Config.Seed = {
       color1 = '#1b2a5c', color2 = '#f2c230', logo = 'departments/seed/lspd.webp.b64', sort = 1,
       ranks = { Chief = 'CHF', Captain = 'CPT', Sergeant = 'SGT', Officer = 'OFC', Cadet = 'CDT' } },
     { key = 'bcso', short = 'BCSO', name = "Blaine County Sheriff's Office", type = 'sheriff',
-      color1 = '#5a3e1b', color2 = '#d9a441', logo = 'departments/seed/bcso.webp.b64', sort = 2, owner = nil },
+      color1 = '#5a3e1b', color2 = '#d9a441', logo = 'departments/seed/bcso.webp.b64', sort = 2, owner = 1 },
     -- since = 2: added after the first seed; made on the next start when no department has that job yet
     { since = 2, key = 'sasp', short = 'SASP', name = 'San Andreas State Police', type = 'state',
-      color1 = '#0d203d', color2 = '#b3b4bd', logo = 'departments/seed/sasp.webp.b64', sort = 3, owner = nil },
+      color1 = '#0d203d', color2 = '#b3b4bd', logo = 'departments/seed/sasp.webp.b64', sort = 3, owner = 1 },
     { since = 2, key = 'sapr', short = 'SAPR', name = 'San Andreas State Parks', type = 'state',
-      color1 = '#12529a', color2 = '#f7da9c', logo = 'departments/seed/sapr.png.b64', sort = 4, owner = nil,
+      color1 = '#12529a', color2 = '#f7da9c', logo = 'departments/seed/sapr.png.b64', sort = 4, owner = 1,
       rankList = {
           { name = 'Chief Ranger', level = 100, abbr = 'CRG' },
           { name = 'Captain',      level = 80,  abbr = 'CPT', permissions = { canHire = true, canFire = true, canPromote = true, canDemote = true, bankAccess = 'withdraw' } },
@@ -168,7 +168,7 @@ Config.Seed = {
       } },
     -- 1.7.0: the Department of Justice (es_doj). Ranks: Config.DefaultRanks.doj
     { since = 3, key = 'doj', short = 'DOJ', name = 'San Andreas Department of Justice', type = 'doj',
-      color1 = '#16213e', color2 = '#d6b25e', logo = 'departments/seed/doj.png.b64', sort = 5, owner = nil },
+      color1 = '#16213e', color2 = '#d6b25e', logo = 'departments/seed/doj.png.b64', sort = 5, owner = 1 },
 }
 
 -- Duty time and department health (the admin Health view in /departments)
@@ -177,7 +177,7 @@ Config.Health = {
     note = 5,              -- off duty MORE than this many days: yellow note
     warn = 10,             -- more than this: orange warning
     act = 14,              -- this many or more: red, an admin should step in
-    headLevel = 0,         -- who counts as a head: 0 (or nil) = the department's top rank (and the job owner), or a level like 80
+    headLevel = nil,       -- who counts as a head: nil = the department's top rank (and the job owner), or a level like 80
     adminNotes = true,     -- add a note to the head's account (Player Manager) each time they reach a new level
     checkMinutes = 30,     -- how often heads are checked (online staff hear of anyone who just crossed a line)
     heartbeatMinutes = 5,  -- how much duty time a crash can lose at most

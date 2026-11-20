@@ -1,5 +1,38 @@
 # Changelog
 
+## es_mdt 2.4.1 (2026-11-20)
+
+- **Post-mortem: impact speed and skid marks** (PR #2 by LeSiiN, for whip_evidence 4.2.6). A body hit by a car shows "Impact speed" (about lo–hi km/h, red from 60 km/h) and "Skid marks" (red when the car did not brake). The copy-as-text summary has the same line. The values are checked on the server. Reports from older whip_evidence (4.2.3 and earlier) have no impact data and look as before.
+
+## es_mdt 2.4.0 (2026-11-20)
+
+- **The DOJ's desks and peds are stations in es_jobs**, set up like the police: clerk window, courtroom (bailiff), judge's chambers / bench, District Attorney's office and public defender's office, each with its own default ped (changeable with a picture). They open the `/court` portal (court services, pay a fine or fee, my cases, lawyers) or the DOJ tablet for DOJ staff.
+- **New department** shows the spots the department type gets (the full courthouse set for a DOJ department) and opens the station editor right after, to place each one with the ghost ped.
+- With es_jobs installed, es_mdt no longer makes its own clerk window and blip. es_jobs moves the old `Config.Courthouse.desks` into a "Courthouse" station once. Without es_jobs they work as before.
+- New exports: `OpenPortal({ view, desk })` (client) and `GetCourthouse()` (server).
+
+## es_mdt 2.3.1 (2026-11-20)
+
+- **Bail removed.** `Config.Bail.enabled = false` by default: no bail / bond hearings, no judge bail permission, no bail screens on the DOJ tablet, no bail or bond payments on `/court` or at the clerk window ("Pay a fine or fee"), and no bail in notices or totals. The server refuses bail payments too. Old bail rows stay in the database, hidden (nothing is dropped).
+
+## es_mdt 2.3.0 (2026-11-19)
+
+- **Court phone app**: the `/court` portal as a "Court" app on whip_phone (Home, Cases, Pay, Notices, More), fully controller friendly (LB/RB tabs, A select, B back). `/court` still works. Turn it off with `Config.PhoneApp = false` in `doj/config.lua`.
+
+## es_mdt 2.2.2 (2026-11-19)
+
+- es_jobs 0.3.0 hooks: `UpdateCall` changes a call's title and text (a wounded person going down upgrades the same call); the built-in "person down" call stays quiet when es_jobs files its own.
+
+## es_mdt 2.2.1 (2026-11-19)
+
+- es_jobs 0.2.0 hook: the impound clerk lets owners pay at the counter by bank or cash (same rules as the `/court` Impound tab).
+
+## es_mdt 2.1.3 (2026-11-19)
+
+- Post-mortem figure draws each hit on its exact spot (PR #1 by LeSiiN).
+
+> **es_jobs moved to its own repository:** https://github.com/Dagermor/es_jobs (its changelog is there).
+
 ## es_jobs 0.1.0 + es_mdt 2.2.0 (2026-11-19)
 
 **New resource: es_jobs (stations, duty, gear, pay and player-owned businesses).** It runs next to es_mdt and reads departments and ranks from it.

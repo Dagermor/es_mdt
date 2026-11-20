@@ -101,7 +101,15 @@ RegisterNUICallback('jobsLocations', function(d, cb)
     close()
     cb({ ok = true })
     local jobId = type(d) == 'table' and tonumber(d.jobId) or nil
-    CreateThread(function() Wait(200) exports.es_jobs:OpenStations({ jobId = jobId }) end)
+    local starter = type(d) == 'table' and d.starter == true   -- 2.4.0: a new department: its usual spots, placed one after another
+    CreateThread(function() Wait(200) exports.es_jobs:OpenStations({ jobId = jobId, starter = starter or nil }) end)
+end)
+
+-- 2.4.0: the spots (and their peds) a department of this type gets on New department, from the job pack
+RegisterNUICallback('jobsStarter', function(d, cb)
+    if GetResourceState('es_jobs') ~= 'started' then return cb({ ok = true, data = false }) end
+    local ok, list = pcall(function() return exports.es_jobs:GetStarter(type(d) == 'table' and tostring(d.type or '') or '') end)
+    cb({ ok = true, data = ok and type(list) == 'table' and list or false })
 end)
 
 RegisterNUICallback('reload', function(_, cb)

@@ -179,7 +179,7 @@
         <td>${f.dueAt ? date(f.dueAt) : '—'}${f.status === 'unpaid' && f.dueAt && f.dueAt < Date.now() / 1000 ? ' ' + pill('Overdue', 'bad') : ''}${f.warrantId ? ' ' + pill('Warrant #' + f.warrantId, 'bad') : ''}</td>
         <td>${pill(cap(f.status), FEE_ST[f.status])}${f.method ? `<span class="sub">${esc(f.method)}${f.paidAt ? ' · ' + date(f.paidAt) : ''}</span>` : ''}${f.test ? ' ' + pill('Test', 'test') : ''}</td>
         <td>${f.status === 'unpaid' && has('clerk', 'judge') ? `<button class="btn small ghost" data-void="${f.id}">Waive</button>` : ''}</td></tr>`).join('')}</tbody></table>` : empty('No bills here', '$')}</div>
-      <div class="help mt">People pay at the courthouse window or in /${esc(S.lists.portal || 'court')} → Payments (cash or bank). Anyone may pay someone else's bill or bail there.</div>`;
+      <div class="help mt">People pay at the courthouse window or in /${esc(S.lists.portal || 'court')} → Payments (cash or bank). Anyone may pay someone else's bill${S.lists.bail ? ' or bail' : ''} there.</div>`;
     $$('[data-st]', b).forEach((x) => x.onclick = () => { CL.fst = x.dataset.st; rerender(); });
     $$('[data-void]', b).forEach((x) => x.onclick = () => voidFee(+x.dataset.void));
   };

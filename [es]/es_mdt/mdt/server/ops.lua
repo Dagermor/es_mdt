@@ -2171,6 +2171,11 @@ function MDT.registerOps()
         local dead = WC:IsPlayerDead(source) == true
         if kind == 'down' then
             if not dead then return end
+            -- 2.2.2: es_jobs (0.3.0+) files its own wounded / down calls; this one stays quiet then
+            if GetResourceState('es_jobs') == 'started' then
+                local okj, handles = pcall(function() return exports.es_jobs:HandlesDowns() end)
+                if okj and handles == true then return end
+            end
             -- anyone on duty in a department has the panic button / is the help
             for _, x in ipairs(ED:GetPlayerDepartments(source) or {}) do if x.onDuty then return end end
         elseif dead then return end   -- the rest come from someone on their feet
@@ -2496,3 +2501,60 @@ function MDT.registerOps()
         end
     end)
 end
+
+-- ---------------------------------------------------------------- 2.2.2: for es_jobs (wounded / down calls)
+--- exports.es_mdt:GetCallUnits(callId) -> { active = bool, units = { { charId, name, callsign, deptShort, status } } } | nil
+MDT.getCallUnits = function(cid)
+    cid = tonumber(cid)
+    if not cid then return nil end
+    local row = MySQL.single.await('SELECT `status` FROM `es_mdt_calls` WHERE `id` = ?', { cid })
+    if not row then return nil end
+    local list = {}
+    for _, u in ipairs(unitsOfCalls({ cid })[cid] or {}) do
+        list[#list + 1] = { charId = u.charId, name = u.name, callsign = u.callsign, deptShort = u.deptShort, status = u.status }
+    end
+    return { active = row.status == 'active', units = list }
+end
+exports('GetCallUnits', function(cid)
+    local ok, r = pcall(MDT.getCallUnits, cid)
+    if not ok then print(('^3[es_mdt] GetCallUnits failed: %s^7'):format(tostring(r))) return nil end
+    return r
+end)
+
+--- exports.es_mdt:UpdateCall(callId, { priority?, title?, message?, critical?, note?, upgraded? }) -> true | false, why
+--- Changes an active call in place (the same call number, its units stay on it): a note on the call, its blip flashes
+--- at P1, units see the new title / priority (an upgrade sounds the call tone again).
+MDT.updateCall = function(cid, d)
+    cid = tonumber(cid)
+    if not cid or type(d) ~= 'table' then return false, 'Bad call' end
+    local row = MySQL.single.await('SELECT `id`,`status`,`priority`,`title`,`message`,`audience`,`critical` FROM `es_mdt_calls` WHERE `id` = ?', { cid })
+    if not row then return false, 'No such call' end
+    if row.status ~= 'active' then return false, 'That call is closed' end
+    local pri = d.priority and MDT.int(d.priority, 1, 3) or tonumber(row.priority) or 2
+    local title = (type(d.title) == 'string' and d.title ~= '') and MDT.str(d.title, 120) or row.title
+    local message = type(d.message) == 'string' and MDT.str(d.message, 500) or row.message
+    local critical = row.critical == 1 or row.critical == true
+    if d.critical ~= nil and CRIT.enabled ~= false then critical = d.critical == true end
+    MySQL.update.await('UPDATE `es_mdt_calls` SET `priority` = ?, `title` = ?, `message` = ?, `critical` = ?, `lastReportAt` = NOW() WHERE `id` = ?',
+        { pri, title, message, critical and 1 or 0, cid })
+    if type(d.note) == 'string' and d.note ~= '' then
+        MySQL.insert.await('INSERT INTO `es_mdt_call_notes` (`callId`,`byCharId`,`note`) VALUES (?,?,?)', { cid, tonumber(d.byCharId), MDT.str(d.note, 500) })
+    end
+    local list = routedDuty(row.audience)
+    local b = DutyBlips['call:' .. cid]
+    if b then
+        b.spec.label = ('#%d %s'):format(cid, title):sub(1, 40)
+        b.spec.flash = pri == 1 or critical
+        pcall(function() WC:ShowBlip({ people = sourcesOf(list) }, 'call:' .. cid, b.spec) end)
+    end
+    local payload = { id = cid, priority = pri, title = title, message = MDT.str(message or '', 200), critical = critical or nil,
+        upgraded = d.upgraded == true or nil }
+    for _, u in ipairs(list) do TriggerClientEvent('es_mdt:client:callMerged', u.source, payload) end
+    MDT.refresh('calls')
+    return true
+end
+exports('UpdateCall', function(cid, d)
+    local ok, a, b = pcall(MDT.updateCall, cid, d)
+    if not ok then print(('^3[es_mdt] UpdateCall failed: %s^7'):format(tostring(a))) return false, 'The call could not be changed' end
+    return a, b
+end)

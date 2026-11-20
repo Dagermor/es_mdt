@@ -5,6 +5,7 @@ Config = Config or {}
 
 Config.Command = 'doj'              -- the DOJ tablet (DOJ members, bar-licensed attorneys, police read-only, staff)
 Config.Key = ''                     -- a key for it (players can set one in Settings → Key Bindings → FiveM); '' = none
+Config.PhoneApp = true            -- 2.3.0: the portal as a whip_phone app ("Court"), when whip_phone runs. Same data as /court, no bail.
 Config.PortalCommand = 'court'      -- the public court portal (anyone): your cases, notices, payments, petitions, lawyers
 Config.OffDutyReadOnly = false      -- true: DOJ members off duty can only read
 Config.LawCanView = true            -- police (mdt_view) may open the tablet read-only: records, calendar, warrants they asked for
@@ -17,7 +18,10 @@ Config.Warrants = {
     notifyJudges = true,            -- judges on duty (and online staff) hear of each new request
 }
 
--- Courthouse: the clerk's window (public portal prompt) and the map blip. Los Santos City Hall (Rockford Hills).
+-- Courthouse: the name and the hearing rooms. 2.4.0: the court's desks and peds (clerk window, courtroom, judge's chambers,
+-- DA and public defender offices) are station spots in the job pack (es_jobs): /departments -> the DOJ -> Locations, or
+-- /w -> Stations. `desks` and `blip` below are only used on a server without es_jobs; with it, es_jobs moves them once
+-- into a "Courthouse" station (Los Santos City Hall, Rockford Hills) and they are edited there.
 Config.Courthouse = {
     label = 'Courthouse',
     blip = { sprite = 419, color = 5, scale = 0.8 },
@@ -45,7 +49,6 @@ Config.Stages = {
 }
 Config.HearingKinds = {
     { key = 'arraignment', label = 'Arraignment' },
-    { key = 'bail',        label = 'Bail / bond hearing' },
     { key = 'pretrial',    label = 'Pre-trial conference' },
     { key = 'motion',      label = 'Motion hearing' },
     { key = 'trial',       label = 'Trial' },
@@ -78,12 +81,17 @@ Config.Fees = {
     toDepartment = true,
 }
 
--- Bail. bondPercent: a bondsman-style bond (part of the bail, NOT refunded). Full bail is refunded when the case ends
--- (any verdict / dismissal) unless the judge forfeits it (missed court).
+-- Bail. 2.3.1: OFF (Rob: this server has no bail system; any future bail needs an active DOJ). Off: no bail hearings,
+-- no Manage bail, no bail bills or bonds anywhere (tablet, clerk window, /court, the phone). Old bail rows stay in the
+-- database untouched; bail already posted is still returned when its case ends. enabled = true brings it all back.
+-- bondPercent: a bondsman-style bond (part of the bail, NOT refunded). Full bail is refunded when the case ends.
 Config.Bail = {
+    enabled = false,
     max = 1000000,
     bondPercent = 10,
 }
+-- the bail hearing type only exists while bail is on
+if Config.Bail.enabled then table.insert(Config.HearingKinds, 2, { key = 'bail', label = 'Bail / bond hearing' }) end
 
 -- Sentencing limits a judge may give (es_jail caps months too)
 Config.Sentence = {
@@ -123,6 +131,6 @@ Config.HearingReminderMinutes = 15
 -- Staff test tools (/dojtest). Test rows are flagged: test cases name YOU as the defendant so one person can play every
 -- side; nothing real happens on them (no jail, no money taken, no rename). /dojtest clear removes every test row.
 Config.Test = {
-    enabled = false,   -- /dojtest also needs EsSuite.DevTools = true (shared/suite.lua)
+    enabled = true,
     ace = 'es_doj.admin',
 }

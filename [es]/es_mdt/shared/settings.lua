@@ -318,7 +318,7 @@ Whip.configPage({
             { key = 'Doj.Bar.prefix', type = 'string', maxLen = 6, pattern = '^[%w]+$', patternWhy = 'letters and digits', label = 'Bar number prefix',
               help = 'New bar numbers read e.g. SA-0001.' },
         } },
-        { id = 'doj_money', label = 'DOJ: fees, bail and sentences', settings = {
+        { id = 'doj_money', label = 'DOJ: fees and sentences', settings = {
             { key = 'Doj.Fees.filing', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Filing a civil case (portal)', help = '0 = free.' },
             { key = 'Doj.Fees.nameChange', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Name change' },
             { key = 'Doj.Fees.businessLicense', type = 'int', min = 0, max = 1000000, unit = '$', label = 'Business license' },
@@ -329,8 +329,6 @@ Whip.configPage({
             { key = 'Doj.Fees.dueDays', type = 'int', min = 0, max = 365, unit = 'days', label = 'Court fines are due in',
               help = 'Unpaid after that: an MDT warrant. 0 = never.' },
             { key = 'Doj.Fees.toDepartment', type = 'bool', label = 'Court money goes to the DOJ\'s job account', help = 'Off: to the state.' },
-            { key = 'Doj.Bail.max', type = 'int', min = 0, max = 100000000, unit = '$', label = 'Highest bail' },
-            { key = 'Doj.Bail.bondPercent', type = 'int', min = 1, max = 100, unit = '%', label = 'A bail bond costs' },
             { key = 'Doj.Sentence.maxFine', type = 'int', min = 0, max = 100000000, unit = '$', label = 'Largest court fine' },
             { key = 'Doj.Sentence.maxMonths', type = 'int', min = 0, max = 10000, unit = 'months', label = 'Longest sentence' },
             { key = 'Doj.Sentence.maxService', type = 'int', min = 0, max = 1000, unit = 'tasks', label = 'Most community service' },

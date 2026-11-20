@@ -210,3 +210,10 @@ tr.click td { transition: background .12s; }
 .h-cell .pill { align-self: flex-start; }
 .h-stats b.bad { color: #ff7a7a; }
 .h-legend-note { margin-left: var(--ui-sp-3); }
+
+/* 2.4.0: New department -> the locations it gets */
+.loc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin-top: 8px; }
+.loc-spot { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); }
+.loc-spot img, .loc-spot .loc-ico { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; object-position: top; background: rgba(255,255,255,.06); display: grid; place-items: center; font-size: 20px; flex: none; }
+.loc-spot b { display: block; font-size: 13px; }
+.loc-spot .hint { font-size: 11px; }

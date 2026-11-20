@@ -8,7 +8,7 @@ lua54 'yes'
 name 'es_mdt'
 description 'Emergency services for WHIP: MDT, Departments and DOJ in one resource'
 author 'Rob'
-version '2.2.0'
+version '2.4.1'
 whip_requires '1.0'
 
 dependencies { 'oxmysql', 'whip_core' }   -- optional: es_jail (or any jail script), whip_evidence
@@ -77,6 +77,7 @@ client_scripts {
     'mdt/client/permits.lua',
     'mdt/client/roadside.lua',     -- 2.1.0: /ticket, /mdtimpound, signing, the paper ticket
     'doj/client/main.lua',
+    'doj/client/phone.lua',        -- 2.3.0: the Court app on whip_phone (RegisterModule)
     'client/ui.lua',               -- 2.0.2: each player's display size (KVP), /mdtscale
     'client/pad.lua',              -- 2.0.13: controller support (WHIP's pad buttons, Whip.padScreen, the on-screen keyboard)
 }
@@ -85,6 +86,7 @@ ui_page 'html/index.html'
 nui_callback_strict_mode 'true'
 
 files {
+    'html/phone/court.js',         -- 2.3.0: the Court phone app (whip_phone module)
     'html/index.html',
     'html/shell.js',
     'html/scale.js',

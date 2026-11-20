@@ -18,7 +18,7 @@
     const nextH = open.filter((k) => k.next).sort((a, b) => a.next - b.next)[0];
     const alerts = [];
     d.cases.filter((k) => k.offers > 0 && k.status === 'open').forEach((k) => alerts.push(['warn', '✍', `A plea deal is waiting for your answer in ${k.number}`, 'Read it and accept or reject it.', 'pcase', k.id]));
-    d.fees.fees.filter((f) => f.kind === 'bail').forEach((f) => alerts.push(['warn', '$', `Bail ${money(f.amount)} (or a ${money(f.bond)} bond) in ${f.number || 'your case'}`, 'Pay it to be released until trial. Anyone may pay it for you.', 'pay']));
+    if (S.lists.bail) d.fees.fees.filter((f) => f.kind === 'bail').forEach((f) => alerts.push(['warn', '$', `Bail ${money(f.amount)} (or a ${money(f.bond)} bond) in ${f.number || 'your case'}`, 'Pay it to be released until trial. Anyone may pay it for you.', 'pay']));
     if (owed) alerts.push([d.fees.fees.some((f) => f.dueAt && f.dueAt < Date.now() / 1000) ? 'bad' : 'warn', '$', `You owe ${money(owed)}`, 'Unpaid court fines become a warrant when they are overdue.', 'pay']);
     (d.subpoenas || []).forEach((s) => alerts.push(['bad', '✉', `Subpoena in ${s.number}: ${s.kind === 'documents' ? 'produce documents' : 'appear in court'}`, (s.startsAt ? dateTime(s.startsAt) + (s.room ? ' · ' + s.room : '') + ' · ' : '') + (s.details || ''), 'mycases']));
     if (d.service) alerts.push(['warn', '🧹', `${d.service} community service task${d.service === 1 ? '' : 's'} left`, 'Your spot is marked on the map. Go there and press E.', null]);
@@ -30,7 +30,7 @@
       ${alerts.length ? alerts.map((a) => `<div class="alert ${a[0]} ${a[4] ? 'tile' : ''}" ${a[4] ? `data-go="${a[4]}" data-arg="${a[5] || ''}"` : ''} style="${a[4] ? 'flex-direction:row;padding:14px 18px' : ''}"><span class="a-ico">${a[1]}</span><div class="li-main"><b>${esc(a[2])}</b><span class="hint">${esc(a[3])}</span></div>${a[4] ? '<span class="lnk">Open →</span>' : ''}</div>`).join('') : '<div class="alert"><span class="a-ico">✓</span><div class="li-main"><b>Nothing needs you right now</b><span class="hint">No open bills, plea offers or subpoenas.</span></div></div>'}
       <div class="tiles">
         ${tile('mycases', '⚖', 'My cases', open.length ? `${open.length} open` : 'Cases you are part of')}
-        ${tile('pay', '$', 'Payments', owed ? money(owed) + ' owed' : 'Fines, fees and bail · pay for someone')}
+        ${tile('pay', '$', 'Payments', owed ? money(owed) + ' owed' : (S.lists.bail ? 'Fines, fees and bail' : 'Fines and fees') + ' · pay for someone')}
         ${tile('ptickets', '✎', 'My tickets', tk.unpaid ? tk.unpaid + ' to pay' + (tk.contested ? ' · ' + tk.contested + ' contested' : '') : 'Police tickets · contest an unsigned one')}
         ${tile('pimpound', 'Ⓟ', 'Impounded vehicles', tk.impounded ? tk.impounded + ' at the lot' : 'Get an impounded car back')}
         ${tile('petitions', '✎', 'Petitions', 'Name change, business license, expungement, lawsuit')}
@@ -59,7 +59,7 @@
     if (!r.ok) { h.innerHTML = crumb('My cases') + empty(r.why, '🔒'); wireBack(h); return; }
     const k = r.data;
     const open = k.status === 'open', def = k.role === 'defendant';
-    const bill = H().fees.fees.find((f) => f.kind === 'bail' && f.caseId === k.id);
+    const bill = S.lists.bail && H().fees.fees.find((f) => f.kind === 'bail' && f.caseId === k.id);
     h.innerHTML = `${crumb('My cases')}
       <div class="case-head"><div class="flex1"><div class="case-meta">${caseNo(k)} ${kindTag(k.kind)} ${statusPill(k.status)} ${verdictPill(k.verdict)} ${k.test ? pill('Test case', 'test') : ''}</div>
         <div class="case-title">${esc(k.title)}</div><div class="hint">${esc(k.stageLabel)} · filed ${date(k.createdAt)} · you are the ${esc(k.role)}</div></div>
@@ -69,7 +69,7 @@
         ${k.kind === 'civil' ? `<div class="party"><span class="lbl">Plaintiff</span><b>${esc(k.plaintiff || '—')}</b></div>` : `<div class="party"><span class="lbl">Prosecutor</span>${k.prosecutor ? `<b>${esc(k.prosecutor)}</b>` : '<b class="none">—</b>'}</div>`}
         <div class="party"><span class="lbl">Defendant</span><b>${esc(k.defendant || '—')}</b></div>
         <div class="party"><span class="lbl">Defense</span>${k.defense ? `<b>${esc(k.defense)}</b><span class="hint">${esc(cap(k.defenseKind))}</span>` : `<b class="none">${k.defenseKind === 'public' ? 'Public defender asked' : k.defenseKind === 'self' ? 'Yourself' : 'None'}</b>`}</div>
-        ${k.kind !== 'civil' ? `<div class="party"><span class="lbl">Bail</span><b>${esc({ none: 'Not set', set: money(k.bailAmount) + ' set', posted: 'Posted', denied: 'Denied', ror: 'Own recognizance', revoked: 'Revoked', forfeited: 'Forfeited', returned: 'Returned' }[k.bailStatus] || cap(k.bailStatus))}</b>${bill ? '<div class="p-act"><button class="btn small gold" data-paybail>Pay bail</button></div>' : ''}</div>` : ''}
+        ${S.lists.bail && k.kind !== 'civil' ? `<div class="party"><span class="lbl">Bail</span><b>${esc({ none: 'Not set', set: money(k.bailAmount) + ' set', posted: 'Posted', denied: 'Denied', ror: 'Own recognizance', revoked: 'Revoked', forfeited: 'Forfeited', returned: 'Returned' }[k.bailStatus] || cap(k.bailStatus))}</b>${bill ? '<div class="p-act"><button class="btn small gold" data-paybail>Pay bail</button></div>' : ''}</div>` : ''}
       </div>
       ${(k.pleas || []).filter((p) => p.status === 'offered').map((p) => `<div class="card" style="border-color:var(--gold-b)"><div class="card-head"><div class="card-title">Plea deal offered · ${date(p.createdAt)}</div>${pill('Waiting for you', 'warn')}</div>
         <div class="narr" style="white-space:pre-wrap">${esc(p.terms)}</div><div class="row mt">${p.fine ? pill(money(p.fine) + ' fine') : ''}${p.months ? pill(p.months + ' months jail') : ''}${p.service ? pill(p.service + ' service tasks') : ''}${p.probationDays ? pill(p.probationDays + ' days probation') : ''}</div>
@@ -81,7 +81,7 @@
         <div class="card"><div class="card-title">Documents</div>${(k.filings || []).length ? `<div class="files">${k.filings.map((f) => `<div class="file">${f.hasImage ? `<div class="thumb" data-img="${f.id}" data-cap="${esc(f.title)}"><div class="spin"></div></div>` : ''}<div class="f-body"><div class="row gap-s">${f.exhibitNo ? `<span class="exh">${esc(f.exhibitNo)}</span>` : ''}<span class="f-title">${esc(f.title)}</span></div><span class="hint">${esc(cap(f.kind))} · ${esc(f.byLabel || '')} · ${date(f.createdAt)}</span>${f.body ? `<div class="f-text">${esc(f.body)}</div>` : ''}<div class="f-foot">${pill(cap(f.status))}${f.ruling ? '<span class="hint">' + esc(f.ruling) + '</span>' : ''}</div></div></div>`).join('')}</div>` : empty('Nothing filed that you may read', '📄')}</div>
       </div><div>
         <div class="card"><div class="card-title">Hearings</div>${(k.hearings || []).length ? k.hearings.map((x) => `<div class="li"><div class="li-main"><b>${esc(x.title || labelOf(S.lists.hearingKinds, x.kind))}</b><span class="hint">${dateTime(x.startsAt)} · ${esc(x.room)}${x.status === 'scheduled' ? ' · ' + inTime(x.startsAt) : ''}${x.outcome ? ' · ' + esc(x.outcome) : ''}</span></div>${pill(cap(x.status), x.status === 'scheduled' ? 'gold' : 'off')}</div>`).join('') : empty('None scheduled yet', '▦')}
-          <div class="hint mt">Go to the ${esc(S.lists.courthouse || 'courthouse')} on time. Missing court can cost your bail and bring a warrant.</div></div>
+          <div class="hint mt">Go to the ${esc(S.lists.courthouse || 'courthouse')} on time. Missing court can ${S.lists.bail ? 'cost your bail and ' : ''}bring a warrant.</div></div>
         ${(k.sentences || []).length ? `<div class="card"><div class="card-title">${k.kind === 'civil' ? 'Judgment' : 'Sentence'}</div>${k.sentences.map((s) => `<div class="li"><div class="li-main"><b>${[s.fine ? money(s.fine) + ' fine' : '', s.months ? s.months + ' months' : '', s.service ? s.service + ' service tasks' : '', s.probationDays ? s.probationDays + ' days probation' : '', s.restitution ? money(s.restitution) + (k.kind === 'civil' ? ' award' : ' restitution') : ''].filter(Boolean).join(' · ') || 'No penalty'}</b><span class="hint">${date(s.createdAt)}${s.notes ? ' · ' + esc(s.notes) : ''}</span></div>${pill(cap(s.status))}</div>`).join('')}</div>` : ''}
       </div></div>`;
     wireBack(h);
@@ -109,7 +109,7 @@
 
   // ---------------------------------------------------------------- payments
   function payDialog(f, isFine, forName) {
-    const bail = f.kind === 'bail';
+    const bail = !!S.lists.bail && f.kind === 'bail';
     modal(`<div class="m-title"><span class="m-ico">$</span>Pay ${esc(isFine ? 'police fine #' + f.id : (f.label || cap(f.kind)) + (f.number ? ' · ' + f.number : ' #' + f.id))}</div>
       ${forName ? `<div class="help">You are paying for <b>${esc(forName)}</b>.</div>` : ''}
       ${bail ? `<div class="choice mt" data-bond style="grid-template-columns:1fr 1fr"><button type="button" class="on" data-v="0"><b>Full bail · ${money(f.amount)}</b><span>Returned to you when the case ends</span></button><button type="button" data-v="1"><b>Bond · ${money(f.bond)}</b><span>${H().fees.bondPercent || 10}%, never returned</span></button></div>`
@@ -122,7 +122,7 @@
       $$('[data-bond] button', card).forEach((b) => b.onclick = () => { bond = b.dataset.v === '1'; $$('[data-bond] button', card).forEach((x) => x.classList.toggle('on', x === b)); });
       const ok = $('[data-ok]', card);
       ok.onclick = () => busy(ok, async () => {
-        const r = await call(isFine ? 'payFine' : 'pay', { id: f.id, method, bond });
+        const r = await call(isFine ? 'payFine' : 'pay', { id: f.id, method, bond: bail && bond });
         if (!r.ok) { $('[data-err]', card).textContent = r.why; return; }
         closeIt(); toast(`Paid ${money(r.data.amount)}${r.data.test ? ' (test: no money moved)' : ''}`, 'ok'); setTimeout(rerender, 150);
       });
@@ -139,9 +139,9 @@
     const d = await fresh();
     if (!alive()) return;
     const b = d.fees;
-    h.innerHTML = `<div class="v-head"><div><div class="v-title">Payments</div><div class="v-sub">Court fines, fees, bail and police fines. Pay by bank or cash.</div></div></div>
+    h.innerHTML = `<div class="v-head"><div><div class="v-title">Payments</div><div class="v-sub">Court fines, fees${S.lists.bail ? ', bail' : ''} and police fines. Pay by bank or cash.</div></div></div>
       <div class="card"><div class="card-title">What you owe</div>${billRows(b)}</div>
-      <div class="card"><div class="card-title">Pay for someone else <span class="hint">· bail for a friend, a family member's fine</span></div><div data-pp></div><div data-other class="mt"></div></div>
+      <div class="card"><div class="card-title">Pay for someone else <span class="hint">· ${S.lists.bail ? 'bail for a friend, ' : ''}a friend's or family member's fine</span></div><div data-pp></div><div data-other class="mt"></div></div>
       ${(b.paid || []).length ? `<div class="card"><div class="card-title">Paid recently</div>${b.paid.map((f) => `<div class="li"><div class="li-main"><b>${esc(f.label)} · ${money(f.amount)}</b><span class="hint">${esc(f.reason || '')} · ${date(f.paidAt)} · ${esc(f.method || '')}</span></div>${pill(cap(f.status), f.status === 'paid' ? 'on' : 'off')}</div>`).join('')}</div>` : ''}`;
     const wire = (root, bills, name) => {
       $$('[data-pay]', root).forEach((x) => x.onclick = () => payDialog(bills.fees.find((f) => f.id === +x.dataset.pay), false, name));

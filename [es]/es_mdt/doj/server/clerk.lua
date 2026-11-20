@@ -14,6 +14,7 @@ function DOJ.payFee(payer, feeId, method, bond)
     if f.status ~= 'unpaid' then return false, 'That bill is already ' .. f.status end
     method = method == 'cash' and 'cash' or 'bank'
     if bond and f.kind ~= 'bail' then return false, 'A bond is only for bail' end
+    if (bond or f.kind == 'bail') and not DOJ.bailOn() then return false, 'This court has no bail' end   -- 2.3.1
     local k = f.caseId and DOJ.caseRow(f.caseId) or nil
     if f.kind == 'bail' and not (k and k.status == 'open' and k.bailStatus == 'set' and k.bailFeeId == f.id) then return false, 'That bail can no longer be paid' end
     local amount = bond and math.ceil(f.amount * ((Config.Bail or {}).bondPercent or 10) / 100) or f.amount
@@ -87,6 +88,12 @@ function DOJ.billsOf(cid)
     local paid = MySQL.query.await([[SELECT `id`,`kind`,`amount`,`reason`,`status`,`method`,UNIX_TIMESTAMP(`paidAt`) AS `paidAt` FROM `es_doj_fees`
         WHERE `charId` = ? AND `status` IN ('paid','refunded') ORDER BY `paidAt` DESC LIMIT 15]], { cid }) or {}
     for _, f in ipairs(paid) do f.label = DOJ.FEE_LABEL[f.kind] or f.kind end
+    if not DOJ.bailOn() then   -- 2.3.1: bail bills (old ones stay in the table) are not shown or paid
+        local a, b = {}, {}
+        for _, f in ipairs(fees) do if f.kind ~= 'bail' then f.bond = nil a[#a + 1] = f end end
+        for _, f in ipairs(paid) do if f.kind ~= 'bail' and f.method ~= 'bond' then b[#b + 1] = f end end
+        return { fees = a, fines = fines, paid = b }
+    end
     return { fees = fees, fines = fines, paid = paid, bondPercent = (Config.Bail or {}).bondPercent or 10 }
 end
 
@@ -235,6 +242,7 @@ function DOJ.registerClerk()
         elseif st ~= 'all' then where[#where + 1] = 'f.`status` = ?' args[#args + 1] = st end
         local who = id(d.charId)
         if who then where[#where + 1] = 'f.`charId` = ?' args[#args + 1] = who end
+        if not DOJ.bailOn() then where[#where + 1] = "f.`kind` <> 'bail'" end   -- 2.3.1: old bail rows stay, unseen
         local rows = MySQL.query.await(([[SELECT f.`id`,f.`charId`,f.`kind`,f.`amount`,f.`reason`,f.`status`,f.`method`,f.`caseId`,f.`test`,f.`warrantId`,k.`number`,
             UNIX_TIMESTAMP(f.`dueAt`) AS `dueAt`,UNIX_TIMESTAMP(f.`paidAt`) AS `paidAt`,UNIX_TIMESTAMP(f.`createdAt`) AS `createdAt`
             FROM `es_doj_fees` f LEFT JOIN `es_doj_cases` k ON k.`id` = f.`caseId` %s ORDER BY f.`id` DESC LIMIT 150]]):format(#where > 0 and ('WHERE ' .. table.concat(where, ' AND ')) or ''), args) or {}
@@ -269,7 +277,7 @@ function DOJ.registerClerk()
         local f = MySQL.single.await('SELECT `id`,`charId`,`kind`,`amount`,`status`,`caseId`,`warrantId` FROM `es_doj_fees` WHERE `id` = ?', { id(d.id) or 0 })
         if not f then return false, 'No such bill' end
         if f.status ~= 'unpaid' then return false, 'Only an unpaid bill can be waived' end
-        if (f.kind == 'fine' or f.kind == 'restitution' or f.kind == 'bail') and not (c.r.judge or c.staff) then return false, 'Only a judge waives a fine, restitution or bail' end
+        if (f.kind == 'fine' or f.kind == 'restitution' or f.kind == 'bail') and not (c.r.judge or c.staff) then return false, 'Only a judge waives a fine or restitution' end
         local reason = str(d.reason, 200)
         if reason == '' then return false, 'Say why' end
         MySQL.update.await("UPDATE `es_doj_fees` SET `status` = 'void' WHERE `id` = ? AND `status` = 'unpaid'", { f.id })

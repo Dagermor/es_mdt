@@ -324,7 +324,7 @@
           : '<div class="logo-box" id="o-logo-box"><span class="hint">No logo</span></div><p class="hint">Only the department\'s leaders can change it.</p>'}
       </div>
       ${rt.edit ? `<div class="card"><div class="card-title">Locations</div>
-        <p class="hint">Duty desk, armory, locker, garage, helipad and boat dock, with their peds and the map blip. Stations can be shared with other departments.</p>
+        <p class="hint">${d.type === 'doj' ? 'Court clerk window, courtroom, judge\'s chambers, DA and public defender offices, duty desk and locker' : 'Duty desk, armory, locker, garage, helipad and boat dock'}, with their peds and the map blip. Stations can be shared with other departments.</p>
         <div class="row actions"><button class="btn" id="o-locations" data-probe-press>📍 Set up locations</button></div></div>` : ''}
       ${rt.admin ? `<div class="card danger-zone"><div class="card-title">Delete department</div><div class="row">
         <label class="switch"><input type="checkbox" id="o-alsojob"><span></span> Also delete its job, ranks and member list</label>
@@ -515,6 +515,7 @@
         </div>
       </div>
       <div class="card"><div class="card-title">Logo <span class="hint">(optional)</span></div><div id="c-picker"></div></div>
+      <div class="card hidden" id="c-loc"></div>
       <div class="row actions"><button class="btn accent" id="c-go" data-primary data-probe-press>Create department</button><button class="btn ghost" id="c-cancel" data-probe-press>Cancel</button><span class="hint">Enter creates · Esc closes</span></div>`;
     showPane('create');
     const shortEl = $('#c-short'), nameEl = $('#c-name'), keyEl = $('#c-key');
@@ -524,6 +525,25 @@
     shortEl.addEventListener('input', () => { if (!keyEl.dataset.touched) { keyEl.value = shortEl.value.toLowerCase().replace(/[^a-z0-9_]/g, ''); fieldError(keyEl, null); } });
     keyEl.addEventListener('input', () => { keyEl.dataset.touched = '1'; });
     const P = makePicker($('#c-picker'), { deptId: 0 });
+    // 2.4.0: the locations it gets (the job pack's usual spots for this type, each with its ped), placed right after
+    let locOn = true;
+    const showLoc = async () => {
+      const box = $('#c-loc'), type = $('#c-type').value;
+      const r = await nui('jobsStarter', { type });
+      if (!box || $('#c-type').value !== type) return;
+      const list = r && r.ok && r.data;
+      if (!list || !list.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+      box.classList.remove('hidden');
+      box.innerHTML = `<div class="card-title">Locations <span class="hint">(${type === 'doj' ? 'the courthouse' : 'its station'}: ${list.length} spots)</span></div>
+        <p class="hint">Right after it is made, each spot comes up in turn to place with the ghost ped: move it, turn it, <b>E / A</b> to place. Peds can be changed later, with a picture, in Locations. Stations can be shared with other departments.</p>
+        <div class="loc-grid">${list.map((s) => `<div class="loc-spot" title="${esc(s.hint || '')}">${s.ped ? `<img src="https://docs.fivem.net/peds/${encodeURIComponent(String(s.ped).toLowerCase())}.webp" alt="">` : `<span class="loc-ico">${esc(s.icon || '•')}</span>`}
+          <div><b>${esc(s.label)}</b><span class="hint">${s.ped ? esc(s.ped) : 'no ped'}</span></div></div>`).join('')}</div>
+        <label class="switch" style="margin-top:10px"><input type="checkbox" id="c-loc-on" ${locOn ? 'checked' : ''}><span></span> Place them now, after creating</label>`;
+      const cb = $('#c-loc-on'); if (cb) cb.onchange = () => { locOn = cb.checked; };
+      box.querySelectorAll('.loc-spot img').forEach((im) => im.onerror = () => { const sp = document.createElement('span'); sp.className = 'loc-ico'; sp.textContent = '👤'; im.replaceWith(sp); });
+    };
+    $('#c-type').addEventListener('change', showLoc);
+    showLoc();
     shortEl.focus();
     $('#c-cancel').onclick = () => { S.picker = null; showPane('empty'); };
     $('#c-go').onclick = (e) => busy(e.currentTarget, async () => {
@@ -539,7 +559,11 @@
         else toast(data.short + ' created with its logo', 'ok');
       } else toast(data.short + ' created', 'ok');
       S.picker = null;
-      await reloadList(); select(r.data);
+      await reloadList(); await select(r.data);
+      if (locOn && S.cur && S.cur.jobId && !$('#c-loc').classList.contains('hidden')) {
+        const lr = await nui('jobsLocations', { jobId: S.cur.jobId, starter: true });
+        if (!lr || !lr.ok) said(lr);
+      }
     });
   }
 

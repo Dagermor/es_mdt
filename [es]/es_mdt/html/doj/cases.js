@@ -186,7 +186,7 @@
   D.newCase = newCase;
 
   // ---------------------------------------------------------------- the case page
-  const TABS = [['overview', 'Overview'], ['hearings', 'Hearings'], ['filings', 'Filings & exhibits'], ['pleas', 'Plea deals'], ['money', 'Sentence & bail'], ['subpoenas', 'Subpoenas'], ['discovery', 'Police file'], ['docket', 'Docket']];
+  const TABS = [['overview', 'Overview'], ['hearings', 'Hearings'], ['filings', 'Filings & exhibits'], ['pleas', 'Plea deals'], ['money', S.lists.bail ? 'Sentence & bail' : 'Sentence & bills'], ['subpoenas', 'Subpoenas'], ['discovery', 'Police file'], ['docket', 'Docket']];
   const tabOf = {};
   views.case = async (h, id, alive) => {
     const r = await call('case', { id });
@@ -216,7 +216,7 @@
           ${btn(c.verdict, 'verdict', '⚖ Verdict', 'gold')}
           ${btn(c.sentence, 'sentence', '⚖ ' + (k.kind === 'civil' ? 'Judgment' : 'Sentence'), 'gold')}
           ${btn(c.appealRule, 'appealRule', '⚖ Rule on appeal', 'gold')}
-          ${btn(c.bail, 'bail', '$ Bail')}
+          ${S.lists.bail ? btn(c.bail, 'bail', '$ Bail') : ''}
           ${btn(c.subpoena, 'subpoena', '✉ Subpoena')}
           ${btn(c.bench, 'bench', '⚠ Bench warrant')}
           ${btn(c.appeal, 'appeal', '↗ Appeal')}
@@ -233,7 +233,7 @@
         ${party('Judge', k.judge, k.judgeCharId, '', c.assignJudge ? 'assignJudge' : null, k.judge ? 'Change' : 'Assign')}
         ${k.kind === 'civil' ? '' : party('Prosecutor', k.prosecutor, k.prosecutorCharId, '', c.assignProsecutor ? 'assignProsecutor' : null, k.prosecutor ? 'Change' : 'Assign')}
         ${party('Defense', k.defense || (k.defenseKind === 'self' ? 'Self-represented' : k.defenseKind === 'public' && !k.defense ? 'Public defender requested' : null), k.defenseCharId, k.defenseKind && k.defenseKind !== 'none' && k.defense ? cap(k.defenseKind) : '', c.assignDefense ? 'assignDefense' : null, k.defense ? 'Change' : 'Assign')}
-        ${k.kind !== 'civil' && k.defendantCharId ? `<div class="party"><span class="lbl">Bail</span><b>${bailText(k)}</b>${c.bail ? '<div class="p-act"><button class="btn small ghost" data-a="bail">Manage</button></div>' : ''}</div>` : ''}
+        ${S.lists.bail && k.kind !== 'civil' && k.defendantCharId ? `<div class="party"><span class="lbl">Bail</span><b>${bailText(k)}</b>${c.bail ? '<div class="p-act"><button class="btn small ghost" data-a="bail">Manage</button></div>' : ''}</div>` : ''}
       </div>
       ${full ? `<div class="tabs">${TABS.map(([t, l]) => `<button class="tab ${tab === t ? 'on' : ''}" data-tab="${t}">${l}${n[t] ? ` <span class="count">${n[t]}</span>` : ''}${t === 'pleas' && pendingPlea ? ' <span class="pill warn">open</span>' : ''}${t === 'filings' && pendingMotions ? ` <span class="pill warn">${pendingMotions} pending</span>` : ''}</button>`).join('')}</div>` : ''}
       <div data-tabbody></div>`;
@@ -370,9 +370,9 @@
   TAB.money = (b, k) => {
     const fees = k.fees || [], sent = k.sentences || [];
     b.innerHTML = `<div class="cols2">
-      <div class="card"><div class="card-head"><div class="card-title">Bail</div>${k.can.bail ? '<button class="btn small" data-bail>Manage bail</button>' : ''}</div>
+      ${S.lists.bail ? `<div class="card"><div class="card-head"><div class="card-title">Bail</div>${k.can.bail ? '<button class="btn small" data-bail>Manage bail</button>' : ''}</div>
         <div class="kv"><dt>Status</dt><dd>${bailText(k)}</dd>${k.bailAmount ? `<dt>Amount</dt><dd>${money(k.bailAmount)} <span class="hint">(or a ${money(k.bond)} bond, ${S.lists.bondPercent || 10}%, kept by the court)</span></dd>` : ''}</div>
-        <div class="help mt">Bail paid in full is returned to whoever paid it when the case ends. A bond is cheaper but never returned. Forfeit bail when the defendant misses court.</div></div>
+        <div class="help mt">Bail paid in full is returned to whoever paid it when the case ends. A bond is cheaper but never returned. Forfeit bail when the defendant misses court.</div></div>` : ''}
       <div class="card"><div class="card-title">Sentences and judgments</div>${sent.length ? sent.map((s) => `<div class="li"><div class="li-main"><b>${esc(cap(s.source))} · ${date(s.createdAt)}</b><span class="hint">${[s.fine ? money(s.fine) + ' fine' : '', s.months ? s.months + ' months' + (s.jailed ? ' (jailed)' : '') : '', s.service ? s.service + ' tasks' : '', s.probationDays ? s.probationDays + ' days probation' : '', s.restitution ? money(s.restitution) + ' restitution' : ''].filter(Boolean).join(' · ') || 'No penalty'}${s.notes ? ' · ' + esc(s.notes) : ''}</span></div>${pill(cap(s.status), s.status === 'active' ? 'gold' : 'off')}</div>`).join('') : empty('None yet')}</div>
     </div>
     <div class="card mt"><div class="card-title">Bills on this case</div>${fees.length ? `<table><thead><tr><th>Bill</th><th>For</th><th class="num">Amount</th><th>Due</th><th>Status</th></tr></thead><tbody>${fees.map((f) => `<tr><td>${esc(cap(f.kind))} #${f.id}</td><td>${esc(f.reason || '')}</td><td class="num">${money(f.amount)}</td><td>${f.dueAt ? date(f.dueAt) : '—'}</td><td>${pill(cap(f.status), FEE_ST[f.status])}${f.method ? ' <span class="hint">' + esc(f.method) + '</span>' : ''}</td></tr>`).join('')}</tbody></table>` : empty('No bills')}</div>`;

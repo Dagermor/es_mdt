@@ -61,9 +61,9 @@ Whip.register(function()
     if DOJ.registerContests then DOJ.registerContests() end   -- 2.1.0
     DOJ.registerTest()
 
-    -- the courthouse on everyone's map
+    -- the courthouse on everyone's map (2.4.0: only without the job pack; its DOJ station has the blip)
     local B = Config.Courthouse.blip or {}
-    for i, D in ipairs(Config.Courthouse.desks or {}) do
+    for i, D in ipairs(DOJ.stationsOwnDesks() and {} or Config.Courthouse.desks or {}) do
         WC:ShowBlip('everyone', 'es_doj:court:' .. i, { coords = D.coords, label = Config.Courthouse.label, sprite = B.sprite or 419, color = B.color or 5, scale = B.scale or 0.8, shortRange = true })
     end
 
@@ -99,4 +99,14 @@ Whip.register(function()
     local open = MySQL.scalar.await("SELECT COUNT(*) FROM `es_doj_cases` WHERE `status` = 'open' AND `test` = 0") or 0
     print(('[es_doj] ready: %d open case(s); DOJ department: %s; warrants judge-only: %s'):format(open, d and d.short or 'none yet (es_departments makes it)',
         tostring((Config.Warrants or {}).judgeOnly == true)))
+end)
+
+-- 2.4.0: the job pack (es_jobs) reads the old hard-coded clerk windows once, to move them into a DOJ station
+exports('GetCourthouse', function()
+    local desks = {}
+    for _, D in ipairs(Config.Courthouse.desks or {}) do
+        if D.coords then desks[#desks + 1] = { label = D.label, x = D.coords.x, y = D.coords.y, z = D.coords.z, h = D.heading or 0.0 } end
+    end
+    local B = Config.Courthouse.blip or {}
+    return { label = Config.Courthouse.label, blip = { sprite = B.sprite, color = B.color, scale = B.scale }, desks = desks }
 end)

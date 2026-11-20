@@ -4,11 +4,15 @@ One resource for police, sheriff, state police, rangers, EMS and the courts on a
 
 - **MDT** (`/mdt`, F6): dispatch, reports, warrants, BOLOs, fines as invoices, roadside tickets, impound, cases, evidence, weapons registry, firearm permits, a radar and plate reader, FTO, and personnel.
 - **Departments** (`/departments`): departments, logos, ranks, permissions, rosters, duty time, leave, certifications, and department health.
-- **DOJ** (`/doj` tablet, `/court` portal): court cases, hearings, judge-signed warrants, verdicts and sentences, bail, pleas, appeals, a clerk desk, the bar and attorneys, petitions, and records.
+- **DOJ** (`/doj` tablet, `/court` portal): court cases, hearings, judge-signed warrants, verdicts and sentences, pleas, appeals, a clerk desk, the bar and attorneys, petitions, and records.
+
+- **Court phone app** (2.3.0): the `/court` portal as a **Court** app on whip_phone.
+
+Optional companion: **[es_jobs](https://github.com/Dagermor/es_jobs)** (the job pack): stations and peds placed in game, duty and pay by rank, armory, fleet, lockers and uniforms, police actions with es_jail's cuffs, EMS down states and the hospital desk, the impound clerk, the courthouse desks, and player-owned businesses. It reads departments and ranks from es_mdt and sends calls to its dispatch.
 
 Optional companion: **es_jail** (handcuffs, breaking out, lockpicking, searching, and Bolingbroke jail with prison jobs). It is included in this repository. Any other jail script also works through the [jail bridge](#jail-integration-for-developers).
 
-> **Status: public test release (2.1.2).** Read [What is tested](#what-is-tested) before using it on a live server.
+> **Status: public test release (2.4.1).** There is no bail system: bail is off by default (`Config.Bail.enabled` in `es_mdt/doj/config.lua`). Read [What is tested](#what-is-tested) before using it on a live server.
 
 ## Screenshots
 
@@ -28,7 +32,7 @@ All screenshots use made-up test data.
 | ![Street impound](docs/images/23_06_street_impound.png) /mdtimpound: stolen and BOLO warnings, hold, photo preview, the bill | ![Impound lot](docs/images/23_10_mdt_impound_lot.png) MDT Impound lot: holds, what each owes |
 | ![Ticket contest](docs/images/23_09_mdt_ticket_contest.png) A contested ticket: the officer's statement | ![DOJ contests](docs/images/23_16_doj_contests.png) DOJ tablet: Ticket contests (lapsing soon in red) |
 | ![Portal impound](docs/images/23_21_portal_impound.png) /court: pay and get an impounded car back | ![Portal payments](docs/images/23_22_portal_payments.png) /court Payments: tickets as invoices with due dates |
-| ![DOJ money](docs/images/04b_doj_money.png) DOJ fees, bail and fines | ![Urgent announcement](docs/images/11_urgent_announcement.png) Urgent announcement |
+| ![DOJ money](docs/images/04b_doj_money.png) DOJ fees and fines | ![Urgent announcement](docs/images/11_urgent_announcement.png) Urgent announcement |
 | ![Close a call](docs/images/11_outcome_picker.png) Closing a call: pick the outcome | ![Call history](docs/images/11_history_badges.png) Call history with outcome badges |
 | ![Critical call](docs/images/13_critical_card.png) A critical call (alarm until acknowledged) | ![Call board](docs/images/13_call_board.png) The quick call board (O) |
 | ![Merged call](docs/images/13_merged_call.png) Repeat reports merged: ×3, 2 responding, details, a linked report | ![Search circle](docs/images/13_search_circle.png) A witness call's search circle on the live map |
@@ -37,7 +41,7 @@ All screenshots use made-up test data.
 | ![Pause menu](docs/images/14_pause_settings_mdt.png) Each player's MDT size and alert sound in the pause menu | ![Store name](docs/images/14_store_name_card.png) Robbery calls name the store |
 | ![Live map](docs/images/15_live_map.png) The Live map: every unit, live | ![Live map call](docs/images/15_live_map_call.png) A call on the Live map: Respond + GPS |
 | ![Backup follows](docs/images/15_backup_follow_map.png) A backup call that follows the officer | ![Live map colour](docs/images/15_live_map_atlas.png) The colour map, the whole state |
-| ![Department settings](docs/images/16_settings_dept_activity.png) Department activity, live in /whip → Settings → MDT | ![DOJ settings](docs/images/16_settings_doj_money.png) DOJ fees, bail and sentences, live |
+| ![Department settings](docs/images/16_settings_dept_activity.png) Department activity, live in /whip → Settings → MDT | ![DOJ settings](docs/images/16_settings_doj_money.png) DOJ fees and sentences, live |
 | ![In-car radar](docs/images/18_radar_incar_panel.png) The radar in a police vehicle (only there) | ![Radar remote](docs/images/18_radar_remote.png) The radar remote (F7) |
 | ![Radar settings](docs/images/18_whip_settings_radar.png) The radar, live in /whip → Settings → MDT → Radar | ![Pause menu radar](docs/images/18_pause_settings_radar.png) Each player's radar settings in the pause menu |
 | ![Backup banner](docs/images/20_dispatch_backup_banner.png) Backup asked on a call: the call is marked, no new call | ![Backup marker](docs/images/20_livemap_backup_marker.png) The officer who asked, followed on the Live map |
@@ -55,6 +59,8 @@ All screenshots use made-up test data.
 | es_jail (in this repo) or another jail script | optional | serving sentences. Without one, sentences are recorded in the MDT and their time is counted there |
 | whip_evidence (LeSiiN) | optional | forensics. Evidence is uploaded to MDT cases. See [docs/whip_evidence_integration.md](docs/whip_evidence_integration.md) |
 | whip_gunny | optional | weapons registry (gun serials) |
+| [es_jobs](https://github.com/Dagermor/es_jobs) | optional | the job pack: stations, duty, pay, uniforms, EMS, the courthouse desks. Start it after es_mdt. Without it, the courthouse clerk window in `doj/config.lua` is used |
+| whip_phone | optional | owner texts and the Court phone app |
 
 ## Install
 
@@ -131,7 +137,7 @@ New in 2.0.8. **Change live in `/whip` → Settings → MDT.** `config.lua` is t
 | Departments: training and certifications | 2.0.10: ride-alongs a trainee needs, the ride-along checklist, the certification expiry warning, FTOs needing a valid FTO certification (and which one) |
 | Departments: logos | 2.0.10: the largest logo size and file |
 | DOJ: access and warrants | 2.0.10: police read-only access to the DOJ tablet, off-duty read only, warrants needing a judge, warrant expiry, judges told of requests, hearing reminders, the name-change cooldown, the bar number prefix |
-| DOJ: fees, bail and sentences | 2.0.10: every DOJ fee, how long a business license lasts, when court fines are due, where court money goes, bail limits and bond percentage, sentence caps |
+| DOJ: fees and sentences | 2.0.10: every DOJ fee, how long a business license lasts, when court fines are due, where court money goes, sentence caps (2.3.1: bail removed) |
 | Display size | the MDT size range and the default |
 | Commands and keys (restart) | `/mdt` and its key, the 911/311/medical commands, chat suggestions, panic, backup and call-board commands and keys, `/departments`, the DOJ tablet command and key, the DOJ portal command, the radar on / off and remote keys, DevTools. These need a restart. |
 
@@ -328,7 +334,7 @@ Each part keeps its own config file:
 | `es_mdt/shared/suite.lua` | `EsSuite.DevTools`: staff test tools (`/dojtest`, `/ftotest`, MDT → Admin → Test data). **Off by default; keep it off on a live server.** |
 | `es_mdt/departments/config.lua` | department types, the permission list, default ranks and their permissions, the first-start seed (`Config.Seed`), insignia, leave (LOA), FTO program, certifications, department health |
 | `es_mdt/mdt/config.lua` | command and key, off-duty read only, fines, warrants and BOLOs, tablet props, firearm permits, weapons registry, unit statuses, report types and templates, penal code seed, dispatch (911/311 and call cards), display size (`Config.UI`), panic, mugshots, radar, cases, **jail bridge (`Config.Jail`)**, **whip_evidence bridge (`Config.WhipEvidence`)** |
-| `es_mdt/doj/config.lua` | commands and key, who may view, warrants needing a judge, courthouse locations, case kinds and stages, hearings, filings, fees, bail, sentences, service, name changes, the bar, images |
+| `es_mdt/doj/config.lua` | commands and key, who may view, warrants needing a judge, courthouse locations, case kinds and stages, hearings, filings, fees, bail switch (off), sentences, service, name changes, the bar, images |
 | `es_jail/config.lua` | permissions, items, cuffs, breaking out, lockpicking, jail and prison, prison jobs, escape, test mode |
 
 Every option is commented in its file. Most of `mdt/config.lua` can also be changed live in `/whip` → Settings → MDT (see [Changing settings live](#changing-settings-live)). The penal code, report templates, department ranks and permissions are seeded from config on first start. After that you manage them in game.
@@ -591,6 +597,8 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 
 ## What is tested
 
+- **Tested for 2.2.0 to 2.4.1:** Lua sims against the real code (es_jobs server, client, EMS and DOJ sims; the post-mortem impact sim wev241; all earlier es_mdt sims), luac on every file, and browser tests: bail removed from the DOJ tablet and portal (10 checks), the Court phone app in a copy of the whip_phone page (29 checks), the DOJ station spots and New department locations (21 checks), and the post-mortem impact rows (7 checks), with no page errors. On the live server: the courthouse station, the clerk window, the public defender office, the judge's chambers and no bail anywhere were checked in game.
+
 - **Running on a live server (as separate resources, before the merge):** MDT dispatch, reports, warrants, fines, cases, FTO, personnel, Departments, the whip_evidence bridge, es_jail.
 - **Tested for 2.1.0:** in Lua tests against the real es_mdt code (tk210, 86 checks): invoices (due in 3 days, nothing charged at issue, the old behaviour when turned off); texts (the government number made once, phone_messages rows, a push only when online, the queue while offline, the portal copy, skipped without whip_phone); roadside tickets (penal-code prices, no felonies, the sign prompt only for the recipient, signed / refused / logged off / timed out, warnings with no fine, distance checks); contests (unsigned only, needs a reason, off when turned off, the deadline paused, reduce, uphold, lapse); impound (storage capped, holds, an override needs the permission and a reason, the owner pays only after a hold, a double payment is refused and refunded, the history kept). A database test on a scratch MariaDB database (fresh, an old 1.x shape and a 2.0.4 install) covers the new tables and the `002_invoices` migration. In browser tests (Chrome, 64 checks): the roadside ticket, parking and sign prompt, the paper, the street impound with its live photo preview, the tow, MDT Tickets, Impound lot, hold override, release and vehicle page, controller rings, the DOJ Ticket contests and ruling, and /court My tickets, contest, Impounded vehicles and Payments, with no page errors. All 24 earlier test files still pass. 2.1.1/2.1.2 add grant211 (10 checks: permission grants send only the added keys, so a rank holding an old unknown key still gets them, and a refused grant is retried).
 - **Tested for 2.0.17:** against the real whip_evidence 4.2.3 code (read, not changed). In Lua tests against the real es_mdt code: the post-mortem report is cleaned up for the page (unknown wound types, body parts and ranges are dropped, counts are fixed and text is capped; positions and entity ids are not sent); the time of death is the exam time minus the age; a broken or missing report does not error; only report items carry one; photo body rows are passed and junk rows dropped. In browser tests (Chrome): the post-mortem card (figure with 3 marks that do not overlap and 1 fatal ring, the cause, the tiles, every row), samples grouped under the body with the jump to their item, and the real clipboard. Copying works by click (execCommand), through the Clipboard API fallback when execCommand is refused, by Enter on the keyboard and by A on a controller, with the "Copied" toast. Unreadable plates are not copy buttons. No page errors. All 22 earlier test files still pass.
@@ -611,7 +619,7 @@ Calls used to be kept forever. Since 2.0.7, **closed** calls older than `Config.
 - **Tested for 2.0.2:** the display size in browser tests at 70%, 100% and 150% on 1920×1080 and 2560×1440: the pages fit and stay centred, and clicks, the search list, dialogs and the photo viewer line up; the slider, quick sizes, Reset, Esc and a saved size on reload; and `/mdtscale`.
 - **Tested for 2.0.1:** the dispatch exports on a live server (calls filed through `NotifyDispatch` and the old `AddCall` form).
 - **Tested for 2.0.0:** Lua syntax; every file loads in order with each part's globals kept apart and the old export names working; and browser tests of the one-page UI (every part opens, messages and clicks reach the right part, no JS errors).
-- **Not yet tested on a live server:** the DOJ 1.1.0 features (attorneys and the bar, fees, bail, appeals), firearm permits, the jail bridge with a third-party jail script, and a full fresh install in game (the empty-database schema is covered by the 2.0.5 database test).
+- **Not yet tested on a live server:** the DOJ 1.1.0 features (attorneys and the bar, fees, appeals), firearm permits, the jail bridge with a third-party jail script, and a full fresh install in game (the empty-database schema is covered by the 2.0.5 database test).
 
 Please report problems with your server log (F8 and the server console).
 

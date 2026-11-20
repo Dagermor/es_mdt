@@ -1,5 +1,5 @@
 local _ENV = ESAPP('doj'); -- es_doj portal: /court (and the clerk's window at the courthouse) for everyone: your cases and hearings, court
--- notices, paying fines, fees and bail (yours or someone else's), plea offers, petitions (name change, business
+-- notices, paying fines and fees (yours or someone else's), plea offers, petitions (name change, business
 -- license, expungement), civil suits, lawyers, public records. Also community service sentences.
 local WC, str, int, id = DOJ.WC, DOJ.str, DOJ.int, DOJ.id
 
@@ -111,7 +111,7 @@ AddEventHandler('whip_core:player:logout', function(e) if e and e.charId then sv
 -- ---------------------------------------------------------------- the portal
 local function notices(cid)
     return MySQL.query.await([[SELECT `id`,`caseId`,`kind`,`title`,`body`,`test`,UNIX_TIMESTAMP(`createdAt`) AS `at`,UNIX_TIMESTAMP(`readAt`) AS `readAt`
-        FROM `es_doj_notices` WHERE `charId` = ? ORDER BY `id` DESC LIMIT 40]], { cid }) or {}
+        FROM `es_doj_notices` WHERE `charId` = ? AND (? = 1 OR `kind` <> 'bail') ORDER BY `id` DESC LIMIT 40]], { cid, DOJ.bailOn() and 1 or 0 }) or {}
 end
 
 function DOJ.registerPortal()
@@ -131,6 +131,7 @@ function DOJ.registerPortal()
             k.defense = names[k.defenseCharId or 0]
             k.role = k.defendantCharId == cid and 'defendant' or 'plaintiff'
             k.test = k.test == 1
+            if not DOJ.bailOn() then k.bailStatus, k.bailAmount = nil, nil end   -- 2.3.1
         end
         out.notices = notices(cid)
         out.unread = 0
@@ -169,7 +170,7 @@ function DOJ.registerPortal()
         local vis = side == 'defense' and "('public','parties','defense')" or "('public','parties')"
         k.charges = DOJ.chargeList(k.id)
         k.hearings = MySQL.query.await([[SELECT `id`,`kind`,`title`,UNIX_TIMESTAMP(`startsAt`) AS `startsAt`,`minutes`,`room`,`status`,`outcome` FROM `es_doj_hearings`
-            WHERE `caseId` = ? ORDER BY `startsAt`]], { k.id }) or {}
+            WHERE `caseId` = ? AND (? = 1 OR `kind` <> 'bail') ORDER BY `startsAt`]], { k.id, DOJ.bailOn() and 1 or 0 }) or {}
         k.filings = MySQL.query.await(([[SELECT `id`,`kind`,`title`,`body`,(`image` IS NOT NULL) AS `hasImage`,`exhibitNo`,`side`,`status`,`ruling`,`byLabel`,UNIX_TIMESTAMP(`createdAt`) AS `createdAt`
             FROM `es_doj_filings` WHERE `caseId` = ? AND `visibility` IN %s ORDER BY `id`]]):format(vis), { k.id }) or {}
         for _, f in ipairs(k.filings) do f.hasImage = f.hasImage == 1 or f.hasImage == true end
@@ -182,6 +183,7 @@ function DOJ.registerPortal()
         k.stageLabel = k.status == 'open' and DOJ.stageLabel(k.stage) or (k.status == 'dismissed' and 'Dismissed' or 'Closed')
         k.role = side == 'defense' and 'defendant' or 'plaintiff'
         k.bond = math.ceil((k.bailAmount or 0) * ((Config.Bail or {}).bondPercent or 10) / 100)
+        if not DOJ.bailOn() then k.bond, k.bailStatus, k.bailAmount, k.bailFeeId = nil, nil, nil, nil end   -- 2.3.1
         k.summary = k.summary
         k.sealed, k.test = k.sealed == 1, k.test == 1
         k.canAppeal = k.status ~= 'open' and k.kind ~= 'appeal' and k.defendantCharId == p.charId
@@ -213,7 +215,7 @@ function DOJ.registerPortal()
         return DOJ.payMdtFine(p, d.id, d.method)
     end)
 
-    -- pay for someone else (bail, a fine): find them, see what they owe (amounts only)
+    -- pay for someone else (a fine, a fee): find them, see what they owe (amounts only)
     pcb('people', { rate = 400, burst = 6 }, function(_, d)
         local q = str(d.q, 40)
         if #q < 3 then return {} end
@@ -353,7 +355,10 @@ function DOJ.registerPortal()
     -- the courthouse window and blip (the client asks once)
     Whip.core:SecureCallback('es_doj:pub:places', { rateLimit = 2000, burst = 3, params = {} }, function()
         local out = {}
-        for i, D in ipairs(Config.Courthouse.desks or {}) do out[#out + 1] = { i = i, label = D.label, x = D.coords.x, y = D.coords.y, z = D.coords.z } end
+        -- 2.4.0: with the job pack installed, the DOJ's stations (es_jobs) are the clerk windows; these are only a fallback
+        if not DOJ.stationsOwnDesks() then
+            for i, D in ipairs(Config.Courthouse.desks or {}) do out[#out + 1] = { i = i, label = D.label, x = D.coords.x, y = D.coords.y, z = D.coords.z } end
+        end
         return { desks = out, label = Config.Courthouse.label, blip = Config.Courthouse.blip, portal = Config.PortalCommand, tablet = Config.Command, key = Config.Key }
     end)
 end

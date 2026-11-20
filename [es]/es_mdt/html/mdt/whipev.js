@@ -171,86 +171,33 @@
     blunt: '<path d="M0-6.5L6.5 0 0 6.5-6.5 0Z" fill="#facc15" stroke="#1f2937" stroke-width="1"/>',
     other: '<rect x="-5" y="-5" width="10" height="10" rx="2.5" fill="#a78bfa" stroke="#1f2937" stroke-width="1"/>',
   };
-  // 2.0.18: the exact spot of a hit (whip_evidence 4.2.4+). Front view as on a medical chart: the body's own left is on the right.
-  const SPOT_XY = {
-    head: [100, 40], neck: [100, 72], chest: [100, 110], belly: [100, 160], pelvis: [100, 194],
-    shoulder_l: [130, 94], upperarm_l: [150, 128], forearm_l: [151, 172], hand_l: [154, 204],
-    thigh_l: [117, 250], shin_l: [116, 335], foot_l: [114, 388],
-  };
-  Object.keys(SPOT_XY).forEach((k) => { if (k.endsWith('_l')) SPOT_XY[k.slice(0, -1) + 'r'] = [200 - SPOT_XY[k][0], SPOT_XY[k][1]]; });
-  const SPOT_NAME = {
-    head: 'Head', neck: 'Neck', chest: 'Chest', belly: 'Belly', pelvis: 'Pelvis',
-    shoulder_l: 'Left shoulder', upperarm_l: 'Left upper arm', forearm_l: 'Left forearm', hand_l: 'Left hand',
-    thigh_l: 'Left thigh', shin_l: 'Left lower leg', foot_l: 'Left foot',
-    shoulder_r: 'Right shoulder', upperarm_r: 'Right upper arm', forearm_r: 'Right forearm', hand_r: 'Right hand',
-    thigh_r: 'Right thigh', shin_r: 'Right lower leg', foot_r: 'Right foot',
-  };
-  // 2.0.18: the room on this figure: arms and legs top to bottom (y), head / neck / body left to right (x)
-  const SPOT_BOUNDS = { arm: [100, 206], leg: [214, 388], head: [84, 116], neck: [96, 104], torso: [72, 128] };
-  // where the nth hit on one spot goes, as an offset: 0 on it, then 16 apart, alternating sides, but never off the body:
-  // along the arm / leg (a foot's 2nd hit goes up the leg), side by side on head and body, then a row above / below
-  function spotSpread(spot, nth, base) {
-      const limb = /_[lr]$/.test(spot);
-      const group = limb ? (/^(thigh|shin|foot)/.test(spot) ? 'leg' : 'arm') : (spot === 'head' || spot === 'neck' ? spot : 'torso');
-      const [lo, hi] = SPOT_BOUNDS[group], at = limb ? base[1] : base[0];
-      const out = [[0, 0]];
-      for (let k = 1; k <= 8; k++) for (const sg of [1, -1]) {
-          const d = sg * 16 * k;
-          if (at + d >= lo && at + d <= hi) out.push(limb ? [0, d] : [d, 0]);
-      }
-      if (!limb) for (const row of [16, -16]) for (let k = 0; k <= 2; k++) for (const sg of (k ? [1, -1] : [1])) {
-          const d = sg * 16 * k;
-          if (at + d >= lo && at + d <= hi) out.push([d, row]);
-      }
-      const o = out[nth % out.length], extra = Math.floor(nth / out.length) * 5;
-      return [o[0] + extra, o[1] + extra];
-  }   // same rule as whip_evidence's findings sheet
   const markKind = (m) => m.w === 'gunshot' ? (m.i ? 'inside' : 'through') : m.w === 'stab' ? 'stab' : m.w === 'blunt' ? 'blunt' : 'other';
   const MARK_LABEL = { inside: 'Gunshot · bullet still inside', through: 'Gunshot · went through', stab: 'Stab / cut', blunt: 'Blunt force', other: 'Other wound' };
   function bodyFigure(rep) {
     const marks = rep.marks || [];
-    const seen = {}, perPart = {}, seenSpot = {};
-    const spotOf = (m) => (m.s && SPOT_XY[m.s]) ? m.s : null;
+    const seen = {}, perPart = {};
     marks.forEach((m) => { perPart[m.p] = (perPart[m.p] || 0) + 1; });
     const dots = marks.map((m, idx) => {
-      let x, y;
-      const s = spotOf(m);
-      if (s) {
-        // 2.0.18: on the exact spot; more hits on one spot spread out, but stay on the body (spotSpread)
-        const o = spotSpread(s, (seenSpot[s] = (seenSpot[s] || 0) + 1) - 1, SPOT_XY[s]);
-        x = SPOT_XY[s][0] + o[0]; y = SPOT_XY[s][1] + o[1];
-      } else {
-        // older reports (no spot): somewhere on the body part, as before
-        const k = seen[m.p] = (seen[m.p] || 0) + 1;
-        const areas = AREA[m.p] || AREA.torso, a = areas[(k - 1) % areas.length];
-        const nth = Math.floor((k - 1) / areas.length), n = Math.ceil((perPart[m.p] || 1) / areas.length);
-        // spread the hits of one part on a small spiral (golden angle): stable, never on top of each other
-        const ang = nth * 2.39996 + 0.6, rr = n <= 1 ? 0.15 : Math.sqrt((nth + 0.5) / n);
-        x = a[0] + Math.cos(ang) * a[2] * rr; y = a[1] + Math.sin(ang) * a[3] * rr;
-      }
+      const k = seen[m.p] = (seen[m.p] || 0) + 1;
+      const areas = AREA[m.p] || AREA.torso, a = areas[(k - 1) % areas.length];
+      const nth = Math.floor((k - 1) / areas.length), n = Math.ceil((perPart[m.p] || 1) / areas.length);
+      // spread the hits of one part on a small spiral (golden angle): stable, never on top of each other
+      const ang = nth * 2.39996 + 0.6, rr = n <= 1 ? 0.15 : Math.sqrt((nth + 0.5) / n);
+      const x = a[0] + Math.cos(ang) * a[2] * rr, y = a[1] + Math.sin(ang) * a[3] * rr;
       const kind = markKind(m);
       const halo = m.f ? '<circle r="11.5" fill="none" stroke="#fde047" stroke-width="1.8" stroke-dasharray="3 2.4"/>' : '';
-      const where = s ? SPOT_NAME[s] : (PART[m.p] || m.p);
-      return `<g class="pm-m" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><title>${esc(where)}: ${esc(MARK_LABEL[kind])}${m.f ? ' (fatal)' : ''}</title>${halo}${MARK[kind]}</g>`;
+      return `<g class="pm-m" transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><title>${esc(PART[m.p] || m.p)}: ${esc(MARK_LABEL[kind])}${m.f ? ' (fatal)' : ''}</title>${halo}${MARK[kind]}</g>`;
     }).join('');
-    // 2.0.18: tint only the side that was hit when the spot is known (arms_l / legs_r ...); without a spot both sides, as before
-    const tint = {};
-    marks.forEach((m) => {
-      const s = spotOf(m), side = s && /_([lr])$/.exec(s);
-      if (side) tint[m.p + '_' + side[1]] = true;
-      else { tint[m.p] = true; tint[m.p + '_l'] = true; tint[m.p + '_r'] = true; }
-    });
-    const hit = (p) => tint[p] ? ' hit' : '';
+    const hit = (p) => perPart[p] ? ' hit' : '';
     const skin = 'class="pm-skin"';
     const svg = `<svg class="pm-svg" viewBox="0 0 200 410" role="img" aria-label="Body, front: ${marks.length} hit${marks.length === 1 ? '' : 's'}">
       <ellipse ${skin} data-part="head" class="pm-skin${hit('head')}" cx="100" cy="42" rx="23" ry="26"/>
       <path class="pm-skin${hit('torso')}" d="M91 66h18v12H91z"/>
       <path class="pm-skin${hit('torso')}" d="M64 84Q100 72 136 84L140 128Q136 170 134 204Q100 214 66 204Q64 170 60 128Z"/>
-      <path class="pm-skin${hit('arms_r')}" d="M62 86Q48 90 44 104L36 196Q36 210 46 212Q54 212 56 200L64 126Z"/>
-      <path class="pm-skin${hit('arms_l')}" d="M138 86Q152 90 156 104L164 196Q164 210 154 212Q146 212 144 200L136 126Z"/>
-      <path class="pm-skin${hit('legs_r')}" d="M67 204L98 210L95 394Q86 400 76 394L70 300Z"/>
-      <path class="pm-skin${hit('legs_l')}" d="M133 204L102 210L105 394Q114 400 124 394L130 300Z"/>
-      ${marks.some(spotOf) ? '<text class="pm-side" x="16" y="28">R</text><text class="pm-side" x="184" y="28" text-anchor="end">L</text>' : ''}
+      <path class="pm-skin${hit('arms')}" d="M62 86Q48 90 44 104L36 196Q36 210 46 212Q54 212 56 200L64 126Z"/>
+      <path class="pm-skin${hit('arms')}" d="M138 86Q152 90 156 104L164 196Q164 210 154 212Q146 212 144 200L136 126Z"/>
+      <path class="pm-skin${hit('legs')}" d="M67 204L98 210L95 394Q86 400 76 394L70 300Z"/>
+      <path class="pm-skin${hit('legs')}" d="M133 204L102 210L105 394Q114 400 124 394L130 300Z"/>
       ${dots}</svg>`;
     const used = new Set(marks.map(markKind));
     const legend = Object.keys(MARK).filter((k) => used.has(k) || k === 'inside' || k === 'through')
@@ -276,7 +223,7 @@
     if ((rep.ranges || []).length) row('Shot from', esc(rep.ranges.map((r) => RANGE[r] || r).join(', ')));
     if (rep.through || rep.bullets) row('Bullets', `${rep.bullets} still in the body · ${rep.through} went through`, rep.bullets ? 'red' : '');
     if (rep.defense) row('Defence wounds', 'on the arms: they fought back', 'warn');
-    // 2.1.3: whip_evidence 4.2.6, hit by a car: impact speed, and whether the car braked (no line when not known)
+    // 2.4.1: whip_evidence 4.2.6, hit by a car: impact speed, and whether the car braked (no line when not known)
     if (rep.impact) {
       row('Impact speed', `about ${esc(rep.impact.lo)}–${esc(rep.impact.hi)} km/h`, rep.impact.hi >= 60 ? 'red' : 'warn');
       if (rep.impact.skid === 'none') row('Skid marks', 'none: no braking before the impact', 'red');

@@ -184,3 +184,11 @@ A mock stand-in for testing is in `test_resources/whip_evidence_mock/` (rename t
 - **es_mdt 2.0.17:** the report needs no extra call. It comes with the item through Upload / GetCase and is saved in `es_mdt_wev_entries` like every entry, so the MDT still shows it when whip_evidence is stopped. The case page draws it as the post-mortem panel (see the CHANGELOG). Samples are matched to their body by `body`, or for older bags by marker `L#` plus "tested on Body L#". `GetBodyReport` and `bodyExamined` are not used yet.
 - **Config on update:** the same two lines as before (`PoliceJobs`, `ApiResources = { 'es_mdt' }`). The new `BodyReportDays = 30` can stay.
 
+
+## 12. whip_evidence 4.2.6 (LeSiiN, 2026-11-20) — checked against es_mdt 2.1.2
+
+- **Post-mortem report:** a body hit by a car now has `details.impact = { lo, hi, skid }` (impact speed as a range in km/h; `skid` is `'none'` = no braking before the impact, `'yes'` = braked, missing = not known). es_mdt passes it through `reportView` and the post-mortem panel shows "Impact speed" and "Skid marks" rows (red from 60 km/h / without braking). Older reports have no `impact` and look as before.
+- **New bags, no MDT change needed:** they use kinds the MDT already knows, with their own `type` label: "Blood (vehicle, outside)" and "Blood (weapon)" (`kind = 'blood'`, result `blood_type`), "Foreign paint (vehicle)" (`kind = 'vehicle_fragment'`, result `paint`).
+- **Full case locker:** `Upload` refuses each item that does not fit with `why = "The locker of case X is full."` and leaves it where it was. The MDT already shows each `why`, so the officer sees it on the upload result.
+- **Languages:** whip_evidence texts (bag `type`, report `text`) follow its `Config.Locale` (now also fr, es, it, pl). The MDT shows them as they come.
+- **Config on update:** nothing new is needed on the MDT side. Keep `ApiResources = { 'es_mdt' }` in whip_evidence so only the MDT may call its case exports.

@@ -263,6 +263,7 @@
     const lines = [`Body L${rep.no || '?'}`, `Dead for ${dur(rep.age)}${rep.sex ? ' · ' + rep.sex : ''} · ${rep.kind === 'player' ? 'person' : 'passer-by'}`];
     if (rep.fatal) lines.push(`Cause of death: ${WOUND[rep.fatal.w] || rep.fatal.w}, ${rep.fatal.p}`);
     lines.push(`Wounds: ${wList(rep.wounds)} (${rep.hits || 0} hit(s))`);
+    if (rep.impact) lines.push(`Impact speed: about ${rep.impact.lo}–${rep.impact.hi} km/h` + (rep.impact.skid === 'none' ? ' · no skid marks' : rep.impact.skid === 'yes' ? ' · braked before the impact' : ''));
     return lines.join('\n');
   }
   function postMortem(e, all) {
@@ -275,6 +276,12 @@
     if ((rep.ranges || []).length) row('Shot from', esc(rep.ranges.map((r) => RANGE[r] || r).join(', ')));
     if (rep.through || rep.bullets) row('Bullets', `${rep.bullets} still in the body · ${rep.through} went through`, rep.bullets ? 'red' : '');
     if (rep.defense) row('Defence wounds', 'on the arms: they fought back', 'warn');
+    // 2.1.3: whip_evidence 4.2.6, hit by a car: impact speed, and whether the car braked (no line when not known)
+    if (rep.impact) {
+      row('Impact speed', `about ${esc(rep.impact.lo)}–${esc(rep.impact.hi)} km/h`, rep.impact.hi >= 60 ? 'red' : 'warn');
+      if (rep.impact.skid === 'none') row('Skid marks', 'none: no braking before the impact', 'red');
+      else if (rep.impact.skid === 'yes') row('Skid marks', 'braked before the impact');
+    }
     if (rep.armed) row('Weapon', 'had a weapon in hand', 'warn');
     if (rep.moved) row('Position', `moved about ${esc(rep.moved)} m after death`, 'warn');
     const sec = [rep.photo && '📷 photographed', rep.blood && '🩸 blood sample', rep.gsr && '💨 GSR test'].filter(Boolean);

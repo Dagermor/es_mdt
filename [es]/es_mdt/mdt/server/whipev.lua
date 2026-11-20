@@ -183,6 +183,15 @@ local function reportView(r)
     local at = stampOf(r.at)
     local age = num(r.age)
     local fatal = type(d.fatal) == 'table' and WOUND[d.fatal.w] and PART[d.fatal.p] and { w = d.fatal.w, p = d.fatal.p } or nil
+    -- 2.1.3: whip_evidence 4.2.6, hit by a car: the impact speed as a range (km/h) and whether it braked
+    -- (skid 'none' / 'yes'; missing = not known, e.g. police on duty leave no tracks)
+    local impact
+    if type(d.impact) == 'table' then
+        local lo, hi = num(d.impact.lo), num(d.impact.hi)
+        if lo and hi and lo >= 0 and hi >= lo and hi <= 500 then
+            impact = { lo = math.floor(lo), hi = math.floor(hi), skid = (d.impact.skid == 'none' or d.impact.skid == 'yes') and d.impact.skid or nil }
+        end
+    end
     return {
         id = str(r.id, 32), no = num(r.no), kind = r.kind == 'player' and 'player' or 'ped',
         title = str(r.title, 40), text = str(r.text, 4000),
@@ -192,7 +201,7 @@ local function reportView(r)
         photo = r.photo == true or (r.photo ~= nil and r.photo ~= false) or nil, blood = r.blood == true or nil, gsr = r.gsr == true or nil,
         hits = math.floor(num(d.hits) or #marks), byPart = byPart, ranges = ranges, through = math.floor(num(d.through) or 0),
         defense = d.defense == true or nil, armed = d.armed == true or nil, moved = num(d.moved), fatal = fatal,
-        sex = (d.sex == 'male' or d.sex == 'female') and d.sex or nil, marks = marks,
+        sex = (d.sex == 'male' or d.sex == 'female') and d.sex or nil, marks = marks, impact = impact,
     }
 end
 --- photo body rows { n = 'L1', t = 'Body', i = 'Gunshot ×2', d = 4 }

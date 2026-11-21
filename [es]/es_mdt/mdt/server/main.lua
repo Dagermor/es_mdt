@@ -1124,6 +1124,60 @@ local function registerWeapons()
     end)
 end
 
+-- ---------------------------------------------------------------- registry writes (other resources, e.g. a gun store)
+-- Reads exist already: GetWeaponBySerial, GetWeaponLicenses, HasPermit.
+-- The same rules as the Weapons page: a serial already on the registry is never changed by RegisterWeapon,
+-- statuses are WSTATUS, a gun that stops being stolen closes its weapon BOLOs.
+
+--- RegisterWeapon(serial, item, ownerCharId, opts?) -> true, weaponId | false, why
+--- opts = { origin = 'shop' (how it got on the registry, <= 16 letters), label = shown name, detail = log line }
+exports('RegisterWeapon', function(serial, item, ownerCharId, opts)
+    local s = serialOf(serial)
+    if not s then return false, 'bad serial' end
+    if type(item) ~= 'string' or item == '' or #item > 64 then return false, 'bad item' end
+    opts = type(opts) == 'table' and opts or {}
+    local owner = id(ownerCharId)
+    if owner and not charExists(owner) then return false, 'No such person' end
+    if weaponRow(s) then return false, 'already registered' end
+    local origin = (type(opts.origin) == 'string' and opts.origin or 'shop'):gsub('[^%w_]', ''):sub(1, 16)
+    if origin == '' then origin = 'shop' end
+    local label = str(opts.label, 80)
+    if label == '' then label = gunDefs()[item] or item end
+    local wid = MySQL.insert.await([[INSERT IGNORE INTO `es_mdt_weapons` (`serial`,`item`,`label`,`ownerCharId`,`origin`) VALUES (?,?,?,?,?)]],
+        { s, item, label, owner, origin })
+    if not wid or wid == 0 then return false, 'already registered' end
+    local detail = str(opts.detail, 300)
+    if detail == '' then detail = ('Registered by %s'):format(GetInvokingResource() or 'a resource') end
+    MySQL.insert.await('INSERT INTO `es_mdt_weapon_log` (`weaponId`,`byCharId`,`what`,`detail`) VALUES (?,NULL,?,?)', { wid, 'registered', detail })
+    refresh('weapons')
+    return true, wid
+end)
+
+--- SetWeaponStatus(serial, status, note?) -> true | false, why. status: registered / stolen / seized / destroyed
+exports('SetWeaponStatus', function(serial, status, note)
+    local s = serialOf(serial)
+    local w = s and weaponRow(s)
+    if not w then return false, 'That serial is not on the registry' end
+    if not WSTATUS[status] then return false, 'Unknown status' end
+    if w.status == status then return true end
+    if w.status == 'destroyed' then return false, 'That weapon was destroyed' end
+    note = str(note, 300)
+    local who = GetInvokingResource() or 'a resource'
+    local ok = MySQL.transaction.await({
+        { query = 'UPDATE `es_mdt_weapons` SET `status` = ? WHERE `id` = ?', values = { status, w.id } },
+        { query = 'INSERT INTO `es_mdt_weapon_log` (`weaponId`,`byCharId`,`what`,`detail`) VALUES (?,NULL,?,?)',
+          values = { w.id, 'status', (('%s → %s · %s%s'):format(w.status, status, who, note ~= '' and (': ' .. note) or '')):sub(1, 500) } },
+    })
+    if not ok then return false, 'Could not save (database error)' end
+    if w.status == 'stolen' then
+        -- (no officer: closedBy stays NULL)
+        local n = MySQL.update.await("UPDATE `es_mdt_bolos` SET `status` = 'closed' WHERE `kind` = 'weapon' AND `serial` = ? AND `status` = 'active'", { s }) or 0
+        if n > 0 then refresh('bolos') end
+    end
+    refresh('weapons')
+    return true
+end)
+
 local function register()
     -- 1.10.0: the Department of Justice is part of the MDT. With the DOJ department picked, the MDT opens the court
     -- side (es_doj's screen); { law = true } asks for a police department instead (the "Police MDT" button there).

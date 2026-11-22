@@ -2378,6 +2378,30 @@ exports('GetWeaponBySerial', function(serial)
     return s and weaponRow(s) or nil
 end)
 
+--- TransferWeapon(serial, ownerCharId, opts?) -> true | false, why
+--- A gun on the registry that belongs to nobody yet (a store's stock) into a person's name, as a dealer sells it.
+--- opts = { detail = log line }. A gun that already has an owner, or is not 'registered' (stolen, seized,
+--- destroyed), is refused: that is not a dealer's sale.
+exports('TransferWeapon', function(serial, ownerCharId, opts)
+    local s = serialOf(serial)
+    local w = s and weaponRow(s)
+    if not w then return false, 'That serial is not on the registry' end
+    local owner = id(ownerCharId)
+    if not owner or not charExists(owner) then return false, 'No such person' end
+    if w.ownerCharId and tonumber(w.ownerCharId) ~= owner then return false, 'It belongs to someone already' end
+    if w.status ~= 'registered' then return false, ('It is %s'):format(tostring(w.status)) end
+    opts = type(opts) == 'table' and opts or {}
+    local detail = str(opts.detail, 300)
+    if detail == '' then detail = ('Sold by %s'):format(GetInvokingResource() or 'a resource') end
+    local ok = MySQL.transaction.await({
+        { query = 'UPDATE `es_mdt_weapons` SET `ownerCharId` = ? WHERE `id` = ?', values = { owner, w.id } },
+        { query = 'INSERT INTO `es_mdt_weapon_log` (`weaponId`,`byCharId`,`what`,`detail`) VALUES (?,NULL,?,?)', values = { w.id, 'owner', detail } },
+    })
+    if not ok then return false, 'Could not save (database error)' end
+    refresh('weapons')
+    return true
+end)
+
 exports('GetWeaponLicenses', function(charId)
     return MySQL.query.await('SELECT `type`,`status` FROM `es_mdt_weapon_licenses` WHERE `charId` = ?', { tonumber(charId) or 0 }) or {}
 end)
